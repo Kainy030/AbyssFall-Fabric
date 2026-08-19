@@ -4,6 +4,12 @@
 >
 > **这个文件属于你**。它是上一个你留给你的，你也应该在本次工作结束时更新它留给下一个你。
 > 用户会明确要求你更新，但即使他不说，发现文档与事实不符时也应该主动修正。
+>
+> **维护这份文件的规矩**（第二次交接时定下）：
+> - 写进来的每一条都要能说清是「已验证 / 未验证 / 推断」，尤其是别人的验证结果要写明是转述。
+> - 会过时的东西（commit 哈希、构建结果、依赖子模块版本）要么标注获取方法让下一个你现场重查，要么就别写死。
+> - 修文档前先把要改的地方在项目里核一遍，**不要凭读文档时的印象判断文档写错了**——上一次就有人把「用户要求少用 Mixin」误读成「代码里的钩子都该消灭」。
+> - 保持总体意思不变。这份文件的价值在于连续性，不是在于漂亮。
 
 ---
 
@@ -18,7 +24,7 @@
 - 颜色、粒子、音效等视觉/听觉细节。若某配色看不清或效果不好，直接换掉。
 - 语言文件翻译。若用户的翻译有语法错误直接改正；同时必须避免机翻感和僵硬表达。
 - 代码注释、javadoc、命名、内部结构。
-- **GitHub 相关操作全部交给你**（用户在本次工作结束时明确授权：「以后 github 构建都由你来」）。
+- **GitHub 相关操作全部交给你**（用户原话：「以后 github 构建都由你来」）。
 
 **验证强度约定**（用户明确要求，为省 token）：
 - 用户自己跑 `runClient`，他跑得更快且能拿到更多信息。**不要自己跑 runClient**。
@@ -31,6 +37,12 @@
 > **自有数据结构 → Fabric API/事件 → Mixin**
 
 只有前两者做不到时才注入，且注入前必须用 MCP 核实目标版本的精确签名。选择注入时要说明为什么必须注入。
+
+用户对这条原则的原话（第二次会话亲自澄清，照抄以免走形）：
+
+> 「原则是尽量不使用 mixin，因为我以前是写外挂的，我的思考方式就是遇事不决用钩子，所以需要你来最大程度地不用 mixin，用 Fabric API 事件。但凡是有例外，有时候不得不用钩子的时候就要放心大胆地用钩子，**你在代码中看到的钩子就是不得不用的情况**。」
+
+所以：**项目里现存的每一处 Mixin 和事件钩子都已经过评估、是不得不用的**（目前只有一个 Mixin：`WitherRoseBlockMixin`）。不要把它们当成待清理的技术债，也不要试图用 API 重写它们——那条路上一个你已经走过了。反过来，写新功能时该优先找 API 事件，找不到再注入，并说明理由。
 
 **用户的提问风格**：他会问「这两个功能有什么区别，我测感觉差不多」这类问题。这通常不是抱怨，而是真的想搞清语义边界——直接回答区别、并说明什么情况下才看得出差异。他也会说「简单回复即可」，这时就别长篇大论。
 
@@ -48,7 +60,7 @@
 | Fabric Loader | 0.19.3 |
 | Loom | 1.17.19（插件 id 是 `net.fabricmc.fabric-loom-remap`） |
 | Fabric API | 0.141.6+1.21.11 |
-| Gradle | 9.7.0 |
+| Gradle | 9.7.0（`gradle/wrapper/gradle-wrapper.properties`，已核实） |
 | modid / 包名 | `abyssfall` / `com.abyssfall` |
 | 版本 | 0.1-Dev（`gradle.properties` 的 `version`） |
 | 许可 | GPL-3.0-or-later（所有 .java 带 GPL 版权头，新文件必须照抄） |
@@ -66,6 +78,8 @@ cd D:/MC1.21.11-AbyssFall-Fabric
 .\gradlew.bat releaseJars --console=plain --offline                 # 产出三个发布 jar
 ```
 注意：工具有 **30 秒硬上限**，`build` 偶尔被截断，此时重跑一次看 `UP-TO-DATE` 判断上次是否已成功。`Start-Sleep` 超过 30 秒会直接失败，别用。
+
+`build.gradle` 里还留着 `runProductionClient` / `runProductionServer` 两个任务（`net.fabricmc.loom.task.prod.*`，配套 `productionRuntimeMods` 依赖）。**用户明确说过这两个任务现在已无意义**，不要用它们做验证、也不要向用户推荐。留着不删是因为删它们属于与当前需求无关的改动。
 
 ---
 
@@ -96,15 +110,15 @@ src/main/java/com/abyssfall/core/
 └── AbyssFallSanCommand.java    /san 调试命令
 ```
 
-### 技术实现（零 Mixin）
+### 技术实现（零 Mixin，一个 API 事件钩子）
 
 **attachment 注册名**：`abyssfall:core_system_san`（用户指定的名字，是存档 key，**改名会孤立所有存档**）
 
-用 **Fabric Data Attachment API**（`fabric-data-attachment-api-v1:1.8.48`），builder 配了四项：
+用 **Fabric Data Attachment API**（`fabric-data-attachment-api-v1:1.8.48+eed0806f3e`，版本已从项目 pom 实测），builder 配了四项：
 
 | 配置 | 作用 |
 |---|---|
-| `initializer(() -> SanState.INITIAL)` | 首次询问时给 100.00F/100.00F，无需 join 钩子播种 |
+| `initializer(() -> SanState.INITIAL)` | 首次询问时给 100.00F/100.00F，不必自己造默认值 |
 | `persistent(SanState.CODEC)` | 存档持久化 |
 | `copyOnDeath()` | 死亡重生保留（语义判断：San 是经历的记录，重生不该洗白） |
 | `syncWith(STREAM_CODEC, targetOnly())` | 只同步给本人（未来渲染是第一人称的） |
@@ -112,6 +126,17 @@ src/main/java/com/abyssfall/core/
 **为什么不用 Mixin**（用户已认可）：这四件事 API 原生就做了。注入 `Player` 加字段要自己写存读钩子、重生拷贝钩子、同步包，还会和其他 mod 撞车。**没有注入的理由。**
 
 **为什么 current 和 max 合成一个 record**：两者互相约束（`0 ≤ current ≤ max`），分开存会出现瞬时非法状态，且要发两个同步包。invariant 在 canonical constructor 里强制，连反序列化和网络解包都过这一关。
+
+**还有一个 JOIN 钩子，别当成多余的删掉**：`AbyssFallCoreSystem.initialize()` 里注册了 `ServerPlayerEvents.JOIN`（fabric-entity-events-v1），回调里做一次 `player.getAttachedOrCreate(SAN)` 并打 debug 日志。
+
+```java
+ServerPlayerEvents.JOIN.register(player -> {
+    SanState state = player.getAttachedOrCreate(SAN);
+    AbyssFall.LOGGER.debug(...);
+});
+```
+
+原因：`initializer` 只保证「被问到时有值」，纯读（`getAttachedOrElse`）不会把值真正写进 attachment，于是全新玩家可能压根没有存储的 attachment，也就不会触发同步推送。JOIN 时主动 `getAttachedOrCreate` 一次，把值落盘并推给客户端，从第一 tick 起客户端就拿得到。**这是 API 事件而非 Mixin，符合原则。**
 
 **为什么事件从 `set()` 派发而不用 attachment 自带的 `onAttachedSet`**：后者是**按 target 实例**的（`default <A> Event<OnAttachedSet<A>> onAttachedSet(...)`），必须先拿到每个玩家实例才能订阅，无法全局监听。而所有写入本来就汇聚在 `set()`。
 
@@ -122,6 +147,7 @@ player.setAttached(SAN, state);
 SanState stored = get(player);   // 回读：传入值可能被 clamp
 ```
 事件必须携带**真实存储值**，否则监听方会基于一个从未存在过的值做判断。
+
 ### API 一览
 
 **读（5 个，两端安全，收 `Player`）**：`get` `getCurrent` `getMax` `getRatio` `getPercent`
@@ -245,6 +271,10 @@ Mixin 逻辑刻意**只做加法**（只把 false 翻成 true，从不反向覆�
 
 事件同时接管「点玫瑰」和「点污泥」两种点击（把点击位置统一解析到污泥坐标），这样两条路径行为一致，也避免 vanilla 的 `levelEvent(1505)` 绿色粒子和自定义特效叠在一起。
 
+`stack.causeUseVibration(...)` 仅在 `context.getPlayer() != null` 时触发（`AbyssFallBoneMealHandler:84-85`），兼容发射器（无玩家）路径。
+
+**这是 mod 唯一获得深渊之花的「制作」途径。原版无任何办法用骨粉催熟凋零玫瑰，所以这是唯一路径**——这个事实是成就设计的基础。
+
 ### 6. 催熟特效（灵魂主题）
 `AbyssDirtBlock.playBloomEffects()`。刻意避开骨粉默认的绿色欢快粒子，因为这是「献祭」而非「施肥」：
 
@@ -302,14 +332,14 @@ Mixin 逻辑刻意**只做加法**（只把 false 翻成 true，从不反向覆�
 - lang：`en_us.json` + `zh_cn.json`（**无 BOM 的 UTF-8**）
 - `data/abyssfall/loot_table/blocks/abyss_dirt.json`（方块掉落自身）
 - `data/minecraft/tags/block/mineable/shovel.json`
-- `abyssfall.mixins.json` 已登记 `WitherRoseBlockMixin`；`abyssfall.client.mixins.json` 的 `client` 数组仍为空
+- `abyssfall.mixins.json`（`package: com.abyssfall.mixin`，`compatibilityLevel: JAVA_21`）已登记 `WitherRoseBlockMixin`；`abyssfall.client.mixins.json`（`package: com.abyssfall.client.mixin`）的 `client` 数组仍为空。两份都设了 `injectors.defaultRequire = 1` 和 `overwrites.requireAnnotations = true`——**前者意味着注入点找不到会直接崩，这是故意的**：宁可启动失败也不要静默失效。
 
 ### 11. 美术脚本（PowerShell + System.Drawing）
 `make-icon.ps1`（128×128 mod 图标）、`make-item-texture.ps1`（16×16 物品贴图）、`make-effect-icon.ps1`（18×18 效果图标）。均用 `$PSScriptRoot` 相对定位，直接 `powershell -NoProfile -ExecutionPolicy Bypass -File .\xxx.ps1` 运行。
 
 ---
 
-## Git / 发布流程（本次新建，以后由你负责）
+## Git / 发布流程（第一次交接时新建，以后由你负责）
 
 用户明确授权：**「以后 github 构建都由你来」**。
 
@@ -322,12 +352,15 @@ Mixin 逻辑刻意**只做加法**（只把 false 翻成 true，从不反向覆�
 | 凭据 | 已缓存（`credential.helper=manager`），push 无需交互 |
 | git 用户 | Kainy / 1747110555@qq.com（global 已配） |
 
-提交历史：
+提交历史（截至本次交接，`main` 已推送到远端，工作区 clean）：
 ```
+4fd816c  Rewrite HANDOFF.md for the next session
 260b8a0  Add release workflow so tagged builds carry their jars
 56a8877  Initial commit: AbyssFall 0.1-Dev
 ```
-tag `0.1-Dev` → `260b8a0`。
+tag `0.1-Dev` → `260b8a0`（唯一的 tag）。
+
+**注意**：这张表容易过时。开工时用 `git --no-pager log --oneline -5; git status --short; git --no-pager tag` 现场核一遍，别信文档里的哈希。
 
 ### tag 命名规则（重要）
 
@@ -416,12 +449,6 @@ for($i=1;$i -le 5;$i++){
 
 ---
 
-
-`stack.causeUseVibration(...)` 仅在 `context.getPlayer() != null` 时触发，兼容发射器（无玩家）路径。
-
-**这是 mod 唯一获得深渊之花的「制作」途径。原版无任何办法用骨粉催熟凋零玫瑰，所以这是唯一路径**——这个事实是成就设计的基础。
-
-
 ## 血泪教训（务必避免重犯）
 
 1. **路径必须用项目实际 vanilla jar 验证**，不能只信官方参考仓库。方块 tag 的正确路径是 `data/minecraft/tags/block/dirt.json`（带 registry 子目录），而 fabric-docs 参考里有个无 `block/` 的旧格式遗留文件会误导人。验证方法：
@@ -453,30 +480,39 @@ $z.Dispose()
 
 11. **删 tag 重建时先确认远端删成功了再建本地**。我这次远端删除失败（网络）但本地已删，导致中间状态不一致，多花了几轮才理清。
 
+12. **别把文档里的「原则」当成「待办」**。第二次交接时，我读到 HANDOFF 写「零 Mixin」、又在代码里看到 `ServerPlayerEvents.JOIN` 钩子，就当成矛盾去报给用户。用户澄清：他的原则是「最大程度不用 Mixin、优先用 Fabric API 事件」，而**代码里存在的钩子都是不得不用的、已经评估过的**。教训：看到文档与代码「像是」冲突时，先读代码注释里的理由，多数时候上一个你已经解释过了。
+
+13. **`Select-String` 没有 `-Recurse` 参数**。要递归搜项目文件得先 `Get-ChildItem -Recurse -File src -Include *.java` 再管道给 `Select-String`。我这次直接写 `-Recurse` 报错浪费了一轮。
+
 ---
 
-## 当前状态（本次工作结束时）
+## 当前状态（第二次交接时）
 
-- 最后一次 `gradlew build`：**BUILD SUCCESSFUL**（已实际执行并观察输出）
+- 编译：**用户本人已验证「编译全部没问题」**（第二次会话开头亲口确认）。我本次交接**没有**再跑一遍 `gradlew build`，这一条是转述用户的验证结果，不是我的观察。
 - CI 首次运行：**成功**，三个 jar 已附加到 Release `0.1-Dev`，mod jar 与 source jar 与本地产物字节级一致
 - 产物：`build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`
+- Git 工作区：clean，`main` 与远端同步（**已用 `git status` 实测**）
 
 ### 用户已在 runClient 实测通过的功能
 创造标签双色标题、tooltip 不再变蓝、深渊之花 EPIC 紫色、宝箱掉落、药水效果必定掉落、村民箱子不掉落、玫瑰可种深渊污泥、其他作物不可种、骨粉催熟出花且玫瑰被消耗、灵魂特效、三个成就正常触发。
 
-### San 系统：尚未 runClient 实测
+### San 系统：已实测通过
 
-编译通过，但**运行时行为全部未验证**。待确认项：
+用户在第二次会话开始时明确回报：
 
-1. `/san` → `<名字>: San 100.00 / 100.00 (100.00%)`
-2. `/san add <你> -20.05` → `79.95 / 100.00 (79.95%)`
-3. `/san max add <你> 20` → 上限 120，current 仍 79.95，百分比 66.63%（**验证「提高上限不白送」**）
-4. `/san max set <你> 20` → current 被夹到 20.00（100%）
-5. 退出世界再进 → 值保持（持久化）
-6. 自杀重生 → 值保持（copyOnDeath）
-7. 非 OP：`/san` 可用，`/san set` 等不可用
+> 「编译全部没问题，我本人已验证。San 系统运行正常，完全没问题，这一点可以放心了。」
 
-**如果用户还没测，主动提醒他测这些。**
+也就是说这些都已经过实测，**不要再把它们列成待确认项去催用户测**：
+
+1. `/san` 输出 `<名字>: San 100.00 / 100.00 (100.00%)`
+2. `/san add` / `/san set` 增减 current
+3. `/san max add` / `/san max set` 改上限，且「提高上限不白送 San」
+4. 上限降到 current 以下时 current 被夹下来
+5. 退出世界再进值保持（持久化）
+6. 死亡重生值保持（copyOnDeath）
+7. 权限分级：`/san` 人人可用，其余需 gamemaster
+
+**未验证的仍然只有一件事**：客户端是否真的收到了同步值——因为客户端至今没有任何代码去读它，无从观察。等第一个客户端消费方出现时才能验证。
 
 ---
 
@@ -487,7 +523,7 @@ $z.Dispose()
 - 差异化渲染（San 低的玩家看到不同渲染）—— 用户明确说以后开发
 - 什么行为改变 San、什么行为改变上限 —— 全未设计
 - 无 HUD（用户明确要求「暂时别设置可视化的 HUD」）
-- 客户端侧无任何代码读取该值（同步通道已配好但未验证真的收到）
+- 客户端侧无任何代码读取该值（同步通道已配好，但没有消费方，因此「客户端确实收到」这一点仍未验证）
 
 **内容**
 - 深渊污泥仍用原版泥土材质（用户说「暂时」）
@@ -495,7 +531,7 @@ $z.Dispose()
 - 深渊之花无实际功能（纯注册占位）
 - 「深渊探索者」效果无获取途径，只被战利品侧读取
 - 无配方、无 datagen、无自定义音效资源
-- client mixin 配置为空，尚无客户端逻辑
+- `abyssfall.client.mixins.json` 的 `client` 数组为空，`src/client` 下只有一个空实现的 `AbyssFallClient`，尚无任何客户端逻辑
 
 ---
 
@@ -503,15 +539,30 @@ $z.Dispose()
 
 1. 读 `gradle.properties`、`fabric.mod.json`、`AbyssFall.java` 确认状态与本文档一致
 2. 读 `src/main/java/com/abyssfall/core/` 全部四个文件——这是项目地基
-3. 用 `Fabric-Knowledge` MCP 查 1.21.11 官方参考（`get_fabric_context` 返回 `version_match_only`，其 Fabric API 是 0.141.1 与本项目 0.141.6 略有差异，属正常）
+3. 用 `Fabric-Knowledge` MCP 查 1.21.11 官方参考。**本次实测**：`get_fabric_context(minecraft_version="1.21.11", fabric_api_version="0.141.6+1.21.11", mapping_system="mojmap")` 返回 `status = version_match_only`、`exact_match = false`，命中的是 `reference/1.21.11`（Fabric API 0.141.1，与本项目 0.141.6 有小差异）。另外 `reference/latest` 现在指向的是 **MC 26.2 / Fabric API 0.155.2**，跟本项目毫无关系，**永远不要拿 `latest` 当本项目证据**。
 4. 用 `minecraft-dev` MCP（`mapping: "mojmap"`, `version: "1.21.11"`）核实所有类/方法/字段签名，**不要凭记忆**
 5. 涉及 Mixin 时用 `analyze_mixin` 校验
 6. **查 Fabric API 实际行为时，直接读 Gradle 缓存里的 sources jar 最可靠**：
 ```powershell
-$j="$env:USERPROFILE\.gradle\caches\modules-2\files-2.1\net.fabricmc.fabric-api"
-# 先从 fabric-api-<版本>.pom 查子模块确切版本，再解压对应 sources jar
+$p="$env:USERPROFILE\.gradle\caches\modules-2\files-2.1\net.fabricmc.fabric-api\fabric-api\0.141.6+1.21.11"
+$f=(Get-ChildItem -Recurse -Filter *.pom $p).FullName
+[xml]$x=Get-Content $f; $x.project.dependencies.dependency | ForEach-Object { "$($_.artifactId) $($_.version)" }
 ```
 这比官方文档更贴近项目实际依赖（文档对应 0.141.1，项目是 0.141.6）。
+
+本次已用上面的方法查出、项目实际用到的四个子模块版本（**已验证**）：
+
+| 子模块 | 版本 | 项目里用它做什么 |
+|---|---|---|
+| `fabric-data-attachment-api-v1` | `1.8.48+eed0806f3e` | San attachment |
+| `fabric-entity-events-v1` | `3.1.1+1d0ab4303e` | `ServerPlayerEvents.JOIN` |
+| `fabric-events-interaction-v0` | `4.1.1+3b89ecf63e` | `ItemEvents.USE_ON` 骨粉催熟 |
+| `fabric-loot-api-v3` | `2.0.20+78c8b4663e` | `LootTableEvents.MODIFY` |
+
+7. **lang 文件用 `Get-Content` 看会是乱码**（PowerShell 默认按 GBK 解，文件是无 BOM UTF-8）。这是显示问题不是文件坏了，要看真实内容用：
+```powershell
+[System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes('src/main/resources/assets/abyssfall/lang/zh_cn.json'))
+```
 
 ---
 
@@ -524,5 +575,6 @@ $j="$env:USERPROFILE\.gradle\caches\modules-2\files-2.1\net.fabricmc.fabric-api"
 - **先确认理念再写抽象**。San 的 `SanStage` 就是反面教材。
 - **该问就问，但别为小事问**。视觉细节、翻译、注释直接改；涉及玩法语义和数据结构走向时问一句。
 - **保持简洁**。他明确说过省 token。长回复只在真的有必要时用。
+- **信任已有的决策，但要理解它**。项目里每个看起来「不够优雅」的地方（JOIN 钩子、`set()` 里的回读、双色标题的空根组件、代码授予成就）都有写在注释里的理由。先读理由，再判断要不要动。他要求过「最大程度按 HANDOFF 执行，有矛盾随时通知我」——照做，但矛盾要先自己核实过再报。
 
 祝顺利。
