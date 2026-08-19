@@ -1,0 +1,87 @@
+# Builds the mod and attaches the three distributable jars to a GitHub release.
+#
+# GitHub never compiles anything by itself: a release created from a tag only ever carries the
+# auto-generated source archives. This workflow is what turns a pushed tag into an actual
+# downloadable build.
+name: Release
+
+on:
+  push:
+    # This project tags plain versions such as "0.1-Dev", with no leading "v", so the usual
+    # "v*" pattern would never match. Both shapes are accepted so the workflow keeps working if
+    # the convention ever changes.
+    tags:
+      - '[0-9]+.[0-9]+*'
+      - 'v[0-9]+.[0-9]+*'
+  # Also runnable by hand, which is how an existing release gets its jars attached without
+  # having to delete and re-push a tag.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and attach the jars to'
+        required: true
+
+permissions:
+  # Required for the release step to upload assets.
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v7
+        with:
+          # For a manual run the tag comes from the input; for a tag push the default checkout
+          # already points at the right commit.
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          # Loom needs no history, and a shallow clone is much faster.
+          fetch-depth: 1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          # The mod targets Java 21 because that is Minecraft 1.21.11's runtime
+          # (java-runtime-delta). Building on 21 directly means the toolchain never has to be
+          # provisioned, which matters here: gradle.properties disables auto-download.
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build the release jars
+        # No --offline here: unlike a local build, the runner starts with an empty cache and has
+        # to fetch Minecraft, Loom and Fabric API from Maven. Expect several minutes on a cold
+        # cache. releaseJars pulls in remapJar, remapSourcesJar and javadocJar.
+        run: ./gradlew build releaseJars --stacktrace
+
+      - name: List what was produced
+        # Cheap, and it makes a failed upload much easier to diagnose than an empty asset list.
+        run: ls -lh build/release build/libs
+
+      - name: Attach the jars to the release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          # Keeps any release notes that were already written by hand instead of overwriting
+          # them with an empty body.
+          body: ''
+          append_body: true
+          files: |
+            build/release/abyssfall.jar
+            build/release/abyssfall-doc.jar
+            build/release/abyssfall-source.jar
+          # A missing jar means the build silently produced nothing useful, which should fail
+          # the run rather than publish an incomplete release.
+          fail_on_unmatched_files: true
+
+      - name: Keep the jars as workflow artifacts too
+        # Independent of the release, so a build can still be inspected if the upload step is
+        # the thing that failed.
+        uses: actions/upload-artifact@v7
+        with:
+          name: abyssfall-jars
+          path: build/release/*.jar
+          if-no-files-found: error
