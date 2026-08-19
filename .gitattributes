@@ -1,0 +1,15 @@
+# Normalise line endings in the repository so a checkout on another platform does not show the
+# whole tree as modified. Text files are stored with LF; Git converts them to the platform's
+# convention in the working copy.
+* text=auto eol=lf
+
+# The Gradle wrapper script is executed by /bin/sh, which cannot cope with CRLF.
+gradlew text eol=lf
+
+# Windows-only scripts stay CRLF so they open correctly in Notepad and are executed by cmd.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary files must never be touched.
+*.png binary
+*.jar binary

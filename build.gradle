@@ -1,0 +1,174 @@
+plugins {
+	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+	id 'maven-publish'
+}
+
+version = project.version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	// Add repositories to retrieve artifacts from in here.
+	// You should only use this when depending on other mods because
+	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
+	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
+	// for more information about repositories.
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		"abyssfall" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+dependencies {
+	// To change the versions see the gradle.properties file
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings loom.officialMojangMappings()
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+	// Fabric API. This is technically optional, but you probably want it anyway.
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Fabric API is loaded as a real remapped mod by the production run tasks below.
+	productionRuntimeMods "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+// Launches the remapped (intermediary) jar with the real Fabric production launcher on a
+// Java 21 runtime, matching the official 1.21.11 client environment. Use these to confirm
+// the built mod loads outside the dev environment.
+tasks.register("runProductionClient", net.fabricmc.loom.task.prod.ClientProductionRunTask) {
+	// Only useful on headless Linux CI; must stay off on Windows.
+	useXVFB = false
+
+	// Keep this isolated from the manual "run" directory used by runClient.
+	runDir = layout.buildDirectory.dir("run/prodClient").get().asFile
+
+	javaLauncher = javaToolchains.launcherFor {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+tasks.register("runProductionServer", net.fabricmc.loom.task.prod.ServerProductionRunTask) {
+	installerVersion = "1.1.2"
+	runDir = layout.buildDirectory.dir("run/prodServer").get().asFile
+
+	javaLauncher = javaToolchains.launcherFor {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.encoding = "UTF-8"
+	// Minecraft 1.21.11's official runtime is java-runtime-delta (Java 21), so the produced
+	// bytecode must target Java 21 even though Gradle itself runs on JDK 25.
+	it.options.release = 21
+}
+
+// The sources carry Chinese comments and typographic dashes, so the doclet has to be told the
+// encoding explicitly: it otherwise falls back to the platform default (GBK on this machine)
+// and fails to read them.
+tasks.withType(Javadoc).configureEach {
+	options.encoding = "UTF-8"
+	options {
+		it.docEncoding = "UTF-8"
+		it.charSet = "UTF-8"
+		// Minecraft and Fabric API are not documented for us, so linking to them would only
+		// produce warnings. Missing comments on private members are likewise not errors.
+		it.addStringOption("Xdoclint:none", "-quiet")
+	}
+}
+
+tasks.register("javadocJar", Jar) {
+	description = "Assembles a jar archive containing the Javadoc API documentation."
+	group = "build"
+
+	dependsOn tasks.javadoc
+	archiveClassifier = "javadoc"
+	from tasks.javadoc.destinationDir
+}
+
+// Collects the three distributable jars under short, stable names.
+//
+// The versioned Gradle names (abyssfall-<version>[-sources|-javadoc].jar) remain the real build
+// outputs and are what gets published; this task only copies them, so nothing downstream has to
+// care. It exists because a release is easier to hand over and to attach to a GitHub release when
+// the file names do not move every time the version does.
+tasks.register("releaseJars", Copy) {
+	description = "Gathers the mod, sources and javadoc jars into build/release under short names."
+	group = "build"
+
+	// remapJar is the jar that actually runs: the plain "jar" output is still dev-mapped.
+	dependsOn tasks.remapJar, tasks.remapSourcesJar, tasks.javadocJar
+
+	into layout.buildDirectory.dir("release")
+
+	from(tasks.remapJar) {
+		rename { "abyssfall.jar" }
+	}
+
+	from(tasks.remapSourcesJar) {
+		rename { "abyssfall-source.jar" }
+	}
+
+	from(tasks.javadocJar) {
+		rename { "abyssfall-doc.jar" }
+	}
+}
+
+java {
+	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
+	// if it is present.
+	// If you remove this line, sources will not be generated.
+	withSourcesJar()
+
+	// Compile against a real Java 21 toolchain instead of whatever JDK runs Gradle.
+	// This guarantees the mod only links against APIs present in the official 1.21.11 runtime.
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+jar {
+	def projectName = project.name
+	inputs.property "projectName", projectName
+
+	from("LICENSE") {
+		rename { "${it}_$projectName"}
+	}
+}
+
+// configure the maven publication
+publishing {
+	publications {
+		create("mavenJava", MavenPublication) {
+			artifactId = project.archives_base_name
+			from components.java
+		}
+	}
+
+	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+	repositories {
+		// Add repositories to publish to here.
+		// Notice: This block does NOT have the same function as the block in the top level.
+		// The repositories here will be used for publishing your artifact, not for
+		// retrieving dependencies.
+	}
+}

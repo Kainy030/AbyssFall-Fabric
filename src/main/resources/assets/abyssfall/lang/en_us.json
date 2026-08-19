@@ -1,0 +1,13 @@
+{
+	"itemGroup.abyssfall.head": "Abyss",
+	"itemGroup.abyssfall.tail": "Fall",
+	"item.abyssfall.abyss_flower": "Flower of the Abyss",
+	"block.abyssfall.abyss_dirt": "Abyss Dirt",
+	"effect.abyssfall.abyss_explorer": "Abyss Explorer",
+	"advancements.abyssfall.abyss_fall.title": "AbyssFall",
+	"advancements.abyssfall.abyss_fall.description": "A strange flower...that seems to have never been seen in the overworld...",
+	"advancements.abyssfall.abyssdirt.title": "It's so sticky...",
+	"advancements.abyssfall.abyssdirt.description": "There seem to be dark rose petals and crushed bone fragments scattered across the mud. Black... rose petals... and... crushed bones?",
+	"advancements.abyssfall.abyss_gardeners.title": "The Gardener of The Abyss",
+	"advancements.abyssfall.abyss_gardeners.description": "Spend a wither rose on abyss dirt to force the first Flower of the Abyss into bloom"
+}

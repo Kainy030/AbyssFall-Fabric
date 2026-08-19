@@ -1,0 +1,14 @@
+{
+	"required": true,
+	"package": "com.abyssfall.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"mixins": [
+		"WitherRoseBlockMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}

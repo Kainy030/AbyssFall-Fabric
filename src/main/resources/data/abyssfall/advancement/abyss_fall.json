@@ -1,0 +1,37 @@
+{
+  "criteria": {
+    "obtain_abyss_flower": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "abyssfall:abyss_flower"
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "obtain_abyss_flower"
+    ]
+  ],
+  "display": {
+    "icon": {
+      "id": "abyssfall:abyss_flower",
+      "count": 1
+    },
+    "title": {
+      "translate": "advancements.abyssfall.abyss_fall.title"
+    },
+    "description": {
+      "translate": "advancements.abyssfall.abyss_fall.description"
+    },
+    "background": "minecraft:gui/advancements/backgrounds/end",
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "sends_telemetry_event": false
+}

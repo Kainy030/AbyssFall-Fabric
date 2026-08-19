@@ -1,0 +1,25 @@
+# Build / IDE output
+build/
+out/
+classes/
+
+# Gradle
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Loom / run dir
+.fabric/
+run/
+
+# IDEA
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Eclipse / VSCode
+.classpath
+.project
+.settings/
+bin/
+.vscode/

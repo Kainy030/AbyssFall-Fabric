@@ -1,0 +1,43 @@
+{
+  "parent": "abyssfall:abyssdirt",
+  "criteria": {
+    "bloom_wither_rose": {
+      "trigger": "minecraft:impossible"
+    },
+    "obtain_abyss_flower": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "abyssfall:abyss_flower"
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "bloom_wither_rose"
+    ],
+    [
+      "obtain_abyss_flower"
+    ]
+  ],
+  "display": {
+    "icon": {
+      "id": "minecraft:sunflower",
+      "count": 1
+    },
+    "title": {
+      "translate": "advancements.abyssfall.abyss_gardeners.title"
+    },
+    "description": {
+      "translate": "advancements.abyssfall.abyss_gardeners.description"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "sends_telemetry_event": false
+}
