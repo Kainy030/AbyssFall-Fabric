@@ -66,7 +66,7 @@
 | Fabric API | 0.141.6+1.21.11 |
 | Gradle | 9.7.0（`gradle/wrapper/gradle-wrapper.properties`，已核实） |
 | modid / 包名 | `abyssfall` / `com.abyssfall` |
-| 版本 | 0.1-Dev（`gradle.properties` 的 `version`） |
+| 版本 | 0.2-Dev（`gradle.properties` 的 `version`） |
 | 许可 | GPL-3.0-or-later（所有 .java 带 GPL 版权头，新文件必须照抄） |
 | JDK | 本机 Gradle 跑 JDK 25，编译 toolchain JDK 21 + `release = 21` |
 | 源集 | `splitEnvironmentSourceSets()`：`src/main` + `src/client` |
@@ -514,7 +514,7 @@ en_us 的 `.dev` 值是 `" Dev Inventory"`（**有前导空格**），因为英�
 
 **刻意只在服务端读值**（`player instanceof ServerPlayer`）：客户端那份 attachment 只是服务端推送的镜像，debug 工具必须报告权威值，否则它验证不了任何东西。返回 `InteractionResult.SUCCESS`（`SwingSource.CLIENT`）让挥手动画立刻播放，不等往返。
 
-**注意**：这个物品**不是**「客户端消费 San 同步值」的证明——它读的是服务端。所以下面「客户端是否真收到同步值」那条**仍然未验证**。
+**注意**：这个物品读的是**服务端**权威值，所以它本身不构成「客户端消费 San 同步值」的实现。不过客户端同步这件事用户已另行实测确认无误（见「当前状态」一节）。
 
 
 ---
@@ -544,9 +544,17 @@ tag `0.1-Dev` → `260b8a0`（唯一的 tag）。
 
 ### tag 命名规则（重要）
 
-**tag 不带 `v` 前缀**，就是项目版本本身：`0.1-Dev`。
+**历史**：`0.1-Dev` 无前缀，`v0.2-Dev` 起改为**带 `v` 前缀**（用户第三次会话时指定 `v0.2-Dev`）。
 
-所以 workflow 触发器写的是 `[0-9]+.[0-9]+*` 和 `v[0-9]+.[0-9]+*` 两种，**不要改成常见的 `v*` 模板**，那样永远不会触发。
+workflow 触发器同时接受两种形状，所以两者都能触发：
+```yaml
+tags:
+  - '[0-9]+.[0-9]+*'      # 匹配 0.1-Dev
+  - 'v[0-9]+.[0-9]+*'     # 匹配 v0.2-Dev
+```
+**别把它简化成只留一种**——旧 tag 还在，两种都要能构建。也别改成常见的 `v*` 单一模板前先看清当前实际用的是哪种。
+
+注意 tag 名与 `gradle.properties` 的 `version` **不必完全一致**：`version=0.2-Dev`（jar 里的版本号，无 `v`），tag 是 `v0.2-Dev`。
 
 ### 三个发布产物
 
@@ -716,7 +724,9 @@ tasks.register('afPrintCp') { doLast { println sourceSets.main.runtimeClasspath.
    abyssfall.json.broken-2026-08-20_10-52-50 and replaced with default settings
    ```
 
-`run/config/` 里现在同时有 `abyssfall.json` 和一个 `abyssfall.json.broken-2026-08-20_10-52-50`，后者是用户测试留下的，可以删。
+5. **客户端确实收到了同步的 San 值**（用户第三次会话结束时确认「已验证，完全没问题」）
+
+坏文件测试留下的 `abyssfall.json.broken-...` 用户已手动删除，`run/config/` 现在只有 `abyssfall.json`。
 
 ### 我本次用真实 classpath 实测过的行为（非推断）
 
@@ -727,9 +737,10 @@ tasks.register('afPrintCp') { doLast { println sourceSets.main.runtimeClasspath.
 
 `/san` 全部 8 条、持久化、死亡保留、权限分级都已实测。**不要再列成待确认项去催用户测。**
 
-**未验证的仍然只有一件事**：客户端是否真的收到了同步值。理智计数器读的是服务端，**没有**解决这一点。等第一个真正在客户端读 attachment 的消费方出现时才能验证。
+**San 系统已全部实测通过，包括客户端同步。** 用户在第三次会话结束时明确回报「客户端是否真收到 San 同步值 —— 已验证，完全没问题」。**这条悬了两次交接的未验证项现在已经关闭，不要再把它列成待确认项。**
 
 ### 第二次交接时的 CI 结论（仍然有效，本次未重跑）
+
 
 CI 首次运行**成功**，三个 jar 已附加到 Release `0.1-Dev`，mod jar 与 source jar 与本地产物字节级一致。**本次会话没有再跑 CI，也没有新增 tag**，所以远端 Release 里的产物不含本次的配置系统与两个新物品。
 
@@ -742,7 +753,7 @@ CI 首次运行**成功**，三个 jar 已附加到 Release `0.1-Dev`，mod jar 
 - 差异化渲染（San 低的玩家看到不同渲染）—— 用户明确说以后开发
 - 什么行为改变 San、什么行为改变上限 —— 全未设计
 - 无 HUD（用户明确要求「暂时别设置可视化的 HUD」）
-- 客户端侧无任何代码读取该值（同步通道已配好，但没有消费方，因此「客户端确实收到」这一点仍未验证）
+- 客户端侧仍无任何代码读取该值。**同步通道本身已实测可用**（用户确认客户端确实收到了值），但还没有任何功能去消费它
 
 **内容**
 - 深渊污泥仍用原版泥土材质（用户说「暂时」）
@@ -804,7 +815,7 @@ $f=(Get-ChildItem -Recurse -Filter *.pom $p).FullName
 
 ## 给下一个你的话
 
-用户和我们之间已经建立了很高的信任度。维持它的关键不是「多做」，而是：
+用户和我们给之间已经建立了很高的信任度。维持它的关键不是「多做」，而是：
 
 - **不撒谎**。没验证就说没验证。他会因此更信你，而不是更少。
 - **说清「为什么」**。他不只要能跑的代码，他要知道为什么这样做。每个非平凡决策都给出依据。

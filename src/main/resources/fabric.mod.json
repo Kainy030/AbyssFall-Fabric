@@ -3,7 +3,7 @@
 	"id": "abyssfall",
 	"version": "${version}",
 	"name": "Abyss Fall",
-	"description": "AbyssFall mod for Minecraft 1.21.11 (Fabric).",
+	"description": "A Fabric mod built around Sanity and Perception. The Abyss is not merely dangerous: as your SAN falls, familiar blocks, items and surroundings drift out of true, and no two players perceive the same Abyss. SAN is not a measure of how long you can endure, but of how much of the world you are still able to believe.",
 	"authors": [
 		"Kainy"
 	],
