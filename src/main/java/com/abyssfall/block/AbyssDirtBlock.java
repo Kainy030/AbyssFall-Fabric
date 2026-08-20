@@ -34,6 +34,8 @@ import net.minecraft.world.level.block.BonemealableBlock;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 
+import com.abyssfall.config.AbyssFallConfig;
+import com.abyssfall.config.VisualSettings;
 import com.abyssfall.item.AbyssFallItems;
 
 /**
@@ -105,28 +107,45 @@ public class AbyssDirtBlock extends Block implements BonemealableBlock {
 	 * green {@code HAPPY_VILLAGER} burst bone meal normally produces: the rose is being
 	 * consumed, not fertilised. Three layers are stacked so the effect reads well both up
 	 * close and from a distance.
+	 *
+	 * <p>Particle counts and sound volumes are scaled by the configured multipliers, so the
+	 * whole display can be toned down or switched off without changing what it is made of. The
+	 * pitches are not configurable: the low-then-high pairing is what makes the moment read as
+	 * "something was given, something arrived" rather than a generic pop.
 	 */
 	private static void playBloomEffects(ServerLevel level, BlockPos rosePos) {
+		VisualSettings visuals = AbyssFallConfig.visuals();
+
 		double x = rosePos.getX() + 0.5;
 		double y = rosePos.getY() + 0.4;
 		double z = rosePos.getZ() + 0.5;
 
-		// Souls drifting upward out of the spent rose.
-		level.sendParticles(ParticleTypes.SOUL, x, y, z, 12, 0.22, 0.30, 0.22, 0.02);
+		if (visuals.hasParticles()) {
+			// Souls drifting upward out of the spent rose.
+			level.sendParticles(ParticleTypes.SOUL, x, y, z,
+					visuals.scaleParticles(12), 0.22, 0.30, 0.22, 0.02);
 
-		// A short-lived dark bloom hugging the ground, hinting at what came through.
-		level.sendParticles(ParticleTypes.SCULK_SOUL, x, y + 0.1, z, 8, 0.28, 0.12, 0.28, 0.01);
+			// A short-lived dark bloom hugging the ground, hinting at what came through.
+			level.sendParticles(ParticleTypes.SCULK_SOUL, x, y + 0.1, z,
+					visuals.scaleParticles(8), 0.28, 0.12, 0.28, 0.01);
 
-		// Downward-pulling motes: the abyss reclaiming the flower's price.
-		level.sendParticles(ParticleTypes.REVERSE_PORTAL, x, y + 0.6, z, 20, 0.30, 0.20, 0.30, 0.05);
+			// Downward-pulling motes: the abyss reclaiming the flower's price.
+			level.sendParticles(ParticleTypes.REVERSE_PORTAL, x, y + 0.6, z,
+					visuals.scaleParticles(20), 0.30, 0.20, 0.30, 0.05);
 
-		// Smoke where the rose stood, so the destruction itself is legible.
-		level.sendParticles(ParticleTypes.SMOKE, x, y, z, 6, 0.18, 0.10, 0.18, 0.01);
+			// Smoke where the rose stood, so the destruction itself is legible.
+			level.sendParticles(ParticleTypes.SMOKE, x, y, z,
+					visuals.scaleParticles(6), 0.18, 0.10, 0.18, 0.01);
+		}
 
-		// A soul escaping, layered under the sculk catalyst's bloom chime. The two together
-		// land as "something was given, something arrived" rather than a generic pop.
-		level.playSound(null, rosePos, SoundEvents.SOUL_ESCAPE.value(), SoundSource.BLOCKS, 0.7F, 0.6F);
-		level.playSound(null, rosePos, SoundEvents.SCULK_CATALYST_BLOOM, SoundSource.BLOCKS, 0.5F, 1.4F);
+		if (visuals.hasSounds()) {
+			// A soul escaping, layered under the sculk catalyst's bloom chime. The two together
+			// land as "something was given, something arrived" rather than a generic pop.
+			level.playSound(null, rosePos, SoundEvents.SOUL_ESCAPE.value(), SoundSource.BLOCKS,
+					visuals.scaleVolume(0.7F), 0.6F);
+			level.playSound(null, rosePos, SoundEvents.SCULK_CATALYST_BLOOM, SoundSource.BLOCKS,
+					visuals.scaleVolume(0.5F), 1.4F);
+		}
 	}
 
 	@Override

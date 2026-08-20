@@ -46,6 +46,10 @@
 
 **用户的提问风格**：他会问「这两个功能有什么区别，我测感觉差不多」这类问题。这通常不是抱怨，而是真的想搞清语义边界——直接回答区别、并说明什么情况下才看得出差异。他也会说「简单回复即可」，这时就别长篇大论。
 
+**他也会用「本轮只做理论验证，不要写代码」来划定范围**（第三次会话用过）。遇到这句就老老实实只出方案、只收集证据，不要顺手改文件。方案里该问的问题一次问清，他会逐条回答甚至编号回应。
+
+**关于设计取舍的立场（第三次会话确立）**：涉及与其他 mod / 数据包冲突时，用户的原则是「**保留自己的权益的同时尊重他人，而不是牺牲自己的权益去尊重他人**」。所以不要提「为了礼貌而放弃功能」的方案——他明确说过这类选项以后不要再提。可以提「照做 + 记日志让冲突可见」这种两全方案。
+
 **语言**：中文（zh-CN）回复。
 
 ---
@@ -199,7 +203,118 @@ float intensity = f(change.current().ratio());
 ---
 
 
-## 其余已实现内容
+## 配置系统（第三次交接时新建，仅次于 San 的第二块地基）
+
+用户的定位：「我预感咱们项目以后的可自定义配置会特别多，别欠技术债，趁现在没什么代码的时候赶紧重构」。
+
+**所以这套系统是为「配置项会长到很多」设计的，不是为当前这几项设计的。加配置时请沿用它，不要另起炉灶。**
+
+### 文件位置与格式
+
+`config/abyssfall.json`。**是 JSON，不是 properties**——第一版曾用 `.properties`，同一次会话内就被用户要求换成主流 mod 的 JSON 格式。旧实现已删除，别复活它。
+
+用户当时问过「为什么不用 json 或 conf」，换之前给的理由是「properties 能带注释、零依赖」。换成 JSON 的决定性理由是**结构化配置**：`.properties` 表达列表只能靠逗号分隔字符串自己解析，而 `target_tables` 天生是数组。代价是 JSON 不能写注释，接受了。
+
+### 分块结构（加配置就是加块）
+
+```
+config/
+├── AbyssFallConfig.java       静态门面：load() / save() / get() + 便捷访问器
+├── AbyssFallConfigData.java   根 record，持有各块
+├── DeveloperSettings.java     developer 块
+├── LootSettings.java          loot 块
+└── VisualSettings.java        visuals 块
+```
+
+每个块都是 `record` + 三件套：`DEFAULT`、`CODEC`、`LENIENT_CODEC`。
+
+**加一个配置项**：往对应块的 record 加字段、`CODEC` 里加一行 `fieldOf`、`DEFAULT` 给值。完事。
+**加一整块**：照抄任一现有块写 record，然后在 `AbyssFallConfigData` 加一个字段 + 一段 `fieldOf(...).orElse(...)`。
+
+### 关键设计：读写用不同的 Codec（勿「优化」成一个）
+
+| | 用什么 | 为什么 |
+|---|---|---|
+| **写** | `CODEC`（`fieldOf`） | 总是输出全部字段，生成的文件列出每一项，玩家看得见有什么可配 |
+| **读** | `LENIENT_CODEC`（`CODEC.orElse(...)`） | 缺字段/整块坏掉 → 回落该块默认，**不废掉整个文件** |
+
+**这不是过度设计，是实测踩出来的**：第一版两边都用 `optionalFieldOf`，跑测试发现默认配置文件被写成 `{}`——因为 `optionalFieldOf` 在值等于默认值时**编码时会省略该字段**。玩家打开文件是个空对象，根本不知道能配什么。
+
+副作用：加字段永不破坏旧文件（旧文件缺新字段 → 回落默认），**所以不需要任何迁移代码**。
+
+`Codec.orElse` / `MapCodec.orElse` 有 `Consumer<String>` 和 `UnaryOperator<String>` 两个重载，**直接传 lambda 会编译不过（引用不明确）**，必须显式 `(Consumer<String>)` 强转。代码里那些 cast 是必需的。
+
+### 三种失败的区别（很重要，别合并处理）
+
+| 情形 | 行为 | 日志 |
+|---|---|---|
+| 文件不存在 | 写一份默认 | INFO |
+| **JSON 语法坏了** | **备份原文件 + 写一份默认** | ERROR |
+| 语法对但某个值不合法 | 该块回落默认，**其余字段照常生效，不动文件** | WARN |
+
+第三种**刻意不重写文件**：玩家可能配了几十项只错一个，重写会把对的全冲掉。第二种才重写，因为整个文件无法解析、没有任何东西可救。
+
+`read()` 返回 `null` 表示「第二种」，返回对象表示「第一或第三种」——这个 null 语义写在 javadoc 里，别改成 Optional 顺手改掉含义。
+
+### 坏文件备份
+
+`abyssfall.json.broken-yyyy-MM-dd_HH-mm-ss`，同秒撞名追加 `-2`/`-3`（备份被备份覆盖就失去意义）。
+
+**分隔符必须是 `-` 和 `_`，不能用 `:`**。用户最初要的格式是 `broken-yyyy:MM:dd:HH:mm:ss`，我实测 Windows 拒绝含 `:` 的文件名（`不支持给定路径的格式`），报给用户后改成了现在这个。**若后人想「改回冒号更好看」——不行，rename 会直接失败，导致坏文件既没备份也没替换。**
+
+用户已实测这条路径可用，回报的日志：
+```
+[Render thread/ERROR] (abyssfall) Could not understand ...\run\config\abyssfall.json;
+it has been moved to abyssfall.json.broken-2026-08-20_10-52-50 and replaced with default settings
+```
+
+### 不做热加载（用户明确要求）
+
+配置只在 `onInitialize()` 读一次，改完必须重启。
+
+**但要知道这是需求决定，不是技术限制**：`LootTableEvents.MODIFY` 本身每次数据包重载都会触发（读 fabric-loot-api-v3 源码确认，它 mixin 到 `ReloadableServerRegistries.reload`，在 `map.replaceAll` 里逐表调用）。想开热加载只需在回调里实时读配置，几行的事。注释里也写了这一点。
+
+### 当前全部配置项（默认值 = 改动前的行为，逐值实测对齐）
+
+```json
+{
+  "developer": { "dev_inventory": false },
+  "loot": {
+    "flower_chance": 0.05,
+    "target_tables": [ "...18 个 minecraft:chests/..." ]
+  },
+  "visuals": {
+    "bloom_particle_scale": 1.0,
+    "bloom_sound_volume": 1.0
+  }
+}
+```
+
+用户要求「所有默认值除开发者模式外全部按项目当前状态写」，已做到：`0.05` 对应原 `1:19` 权重、`1.0` 倍率对应原粒子数 12/8/20/6 与音量 0.7/0.5。**改默认值就等于改游戏行为，动之前想清楚。**
+
+### `flower_chance`：概率而非权重（用户明确要求）
+
+「建议表达为玩家理解的概率，而不是暴露内部 LootPool 权重」。
+
+换算在 `LootSettings.emptyWeight(int)`：`EMPTY = max(1, round((1-p)/p * flowerWeight))`，`FLOWER_WEIGHT` 恒为 1。
+
+**两个边界必须特判，别删**：
+- `p >= 1.0` → `isGuaranteed()` → **不加空条目**。否则公式算出 0、被 `max(1,..)` 兜成 1，结果只有 50%——设成 100% 却掉一半，这是实测跑出来的 bug。
+- `p <= 0.0` → `injectsBaselinePool()` 为 false → **整个基础池不注入**，而不是加一个永不中奖的池。
+
+实测换算精度：0.05→19(5.000%)、0.01→99、0.1→9、0.25→3、0.5→1，全部精确还原。
+
+### `visuals`：倍率而非开关（用户明确要求）
+
+「声音大小和粒子效果都可以自定义大小多少，而不是一刀切开或者关」。
+
+两项各自独立、范围 `0.0~2.0`（`Codec.floatRange`）。`0.0` 仍可完全关闭，所以倍率是开关的超集。
+
+- `scaleParticles(int)`：**非零倍率保证至少 1 个粒子**。否则 `0.05` 倍会让 SMOKE(6) 算成 0 而静默消失，看起来像 bug。
+- `scaleVolume(float)`：**只乘音量，不动音调**。0.6/1.4 的一低一高是「付出→到来」的设计意图，不是可调参数。
+
+---
+
 
 ### 目录结构
 ```
@@ -209,14 +324,21 @@ src/main/java/com/abyssfall/
 ├── block/AbyssDirtBlock.java
 ├── block/AbyssFallBlocks.java
 ├── block/AbyssFallBoneMealHandler.java
+├── config/AbyssFallConfig.java         ← 配置加载/保存，见「配置系统」一节
+├── config/AbyssFallConfigData.java     ← 配置根记录
+├── config/DeveloperSettings.java
+├── config/LootSettings.java
+├── config/VisualSettings.java
 ├── core/AbyssFallCoreSystem.java       ← San 系统，见上一节
 ├── core/AbyssFallSanCommand.java
 ├── core/SanChangedCallback.java
 ├── core/SanState.java
 ├── effect/AbyssExplorerEffect.java
 ├── effect/AbyssFallEffects.java
+├── item/AbyssFallDevInventory.java     ← 开发者物品栏（条件注册）
 ├── item/AbyssFallItemGroups.java
 ├── item/AbyssFallItems.java
+├── item/SanCounterItem.java            ← 理智计数器（debug 工具）
 ├── loot/AbyssFallLootTables.java
 └── mixin/WitherRoseBlockMixin.java
 src/client/java/com/abyssfall/client/AbyssFallClient.java   （空实现）
@@ -224,14 +346,16 @@ src/client/java/com/abyssfall/client/AbyssFallClient.java   （空实现）
 
 `AbyssFall.onInitialize()` 的调用顺序（有依赖关系，勿随意调整）：
 ```java
+AbyssFallConfig.load();               // 最先！注册与否取决于配置，注册后无法回头
 AbyssFallCoreSystem.initialize();     // San 最先，它是其他一切要移动的值
 AbyssFallSanCommand.initialize();
 AbyssFallEffects.initialize();
 AbyssFallItems.initialize();
 AbyssFallBlocks.initialize();
 AbyssFallItemGroups.initialize();     // 依赖 Items 和 Blocks
-AbyssFallLootTables.initialize();
+AbyssFallLootTables.initialize();     // 读配置，必须在 load() 之后
 AbyssFallBoneMealHandler.initialize();
+AbyssFallDevInventory.initialize();   // 最后，条件注册
 ```
 
 ### 1. 创造模式物品栏
@@ -278,16 +402,18 @@ Mixin 逻辑刻意**只做加法**（只把 false 翻成 true，从不反向覆�
 ### 6. 催熟特效（灵魂主题）
 `AbyssDirtBlock.playBloomEffects()`。刻意避开骨粉默认的绿色欢快粒子，因为这是「献祭」而非「施肥」：
 
-| 粒子 | 数量 |
+| 粒子 | 基准数量 |
 |---|---|
 | `SOUL` | 12 |
 | `SCULK_SOUL` | 8 |
 | `REVERSE_PORTAL` | 20 |
 | `SMOKE` | 6 |
 
-音效：`SOUL_ESCAPE.value()`（音量 0.7 / 音调 0.6）+ `SCULK_CATALYST_BLOOM`（0.5 / 1.4）。一低一高，读作「付出 → 到来」。
+音效：`SOUL_ESCAPE.value()`（基准音量 0.7 / 音调 0.6）+ `SCULK_CATALYST_BLOOM`（0.5 / 1.4）。一低一高，读作「付出 → 到来」。
 
 注意 `SOUL_ESCAPE` 是 `Holder.Reference<SoundEvent>` 需 `.value()`，`SCULK_CATALYST_BLOOM` 本身是 `SoundEvent`。
+
+**第三次交接时接入了配置倍率**：上表数量与音量都会乘 `visuals.bloom_particle_scale` / `bloom_sound_volume`（默认 1.0，即上表原值）。**音调不受配置影响**，理由见「配置系统」一节。骨粉催熟机制本身**没有开关**——用户明确说骨粉是核心机制，不给其他 mod 让路，只有特效可调。
 
 ### 7. 药水效果：深渊探索者 `abyssfall:abyss_explorer`
 `MobEffectCategory.BENEFICIAL`，颜色 `0x9B6BC9`。**纯标记效果，不覆盖任何 tick 方法**，逻辑全在战利品侧。18×18 图标由 `make-effect-icon.ps1` 生成。
@@ -298,15 +424,38 @@ Mixin 逻辑刻意**只做加法**（只把 false 翻成 true，从不反向覆�
 
 
 ### 8. 战利品表注入
-`AbyssFallLootTables` 用 `LootTableEvents.MODIFY`（`net.fabricmc.fabric.api.loot.v3`），回调签名 `(key, tableBuilder, source, registries)`，带 `source.isBuiltin()` 检查（尊重数据包作者的重写意图）。
+`AbyssFallLootTables` 用 `LootTableEvents.MODIFY`（`net.fabricmc.fabric.api.loot.v3`），回调签名 `(key, tableBuilder, source, registries)`。
 
-覆盖 18 张高价值结构宝箱表（沙漠神殿、丛林神庙、末地城宝藏、林地府邸、要塞×3、堡垒残骸×4、沉船宝藏、远古城市、试炼密室 unique×2、下界要塞、掠夺者前哨站、埋藏的宝藏）。
+**第三次交接时已改为读配置**：注入哪些表、概率多少都来自 `LootSettings`，见「配置系统」一节。默认仍是原来那 18 张高价值结构宝箱表（沙漠神殿、丛林神庙、末地城宝藏、林地府邸、要塞×3、堡垒残骸×4、沉船宝藏、远古城市、试炼密室 unique×2、下界要塞、掠夺者前哨站、埋藏的宝藏），**行为与改动前一致**。
 
 **两个独立池**：
-1. 基础概率：空条目权重 19 + 花权重 1 ≈ 5%
+1. 基础概率池：由 `flower_chance` 决定（默认 5%）
 2. 带「深渊探索者」效果时**必定**额外给 1 个
 
 第 2 个池的条件是 `LootItemEntityPropertyCondition.hasProperties(EntityTarget.THIS, EntityPredicate.effects(...))`。**能这样做的依据**：`RandomizableContainer.unpackLootTable()` 在玩家开箱时会 `withParameter(LootContextParams.THIS_ENTITY, player)`，所以战利品表知道开箱者是谁、身上有什么效果。破坏箱子不走这条路径，符合「开启宝箱」语义。
+
+#### `isBuiltin()` 门槛已被刻意移除（用户明确决定，别加回去）
+
+原先有 `if (!source.isBuiltin()) return;`，意图是「尊重数据包作者的重写」。**第三次交接时用户明确要求去掉**，原话：
+
+> 「我没那么礼貌，我们的mod保留自己的权益的同时尊重他人即可，而不是牺牲自己的权益去尊重他人。」
+
+用户同时明确表示，**「保持现状（继续拦）」这个选项以后不要再提**。
+
+技术上的重要澄清（我上一轮判断错过一次，别重犯）：`LootTableSource` 有四个值，`VANILLA(true)` / `MOD(true)` / `DATA_PACK(false)` / `REPLACED(false)`。**其他 mod 自带的战利品表是 `MOD`，`isBuiltin()` 为 true**，所以那个检查从来就没有拦住别的 mod，它实际只拦「外部数据包」和「被 REPLACE 替换过的表」。
+
+移除它的正当性：我们用 `withPool` **追加独立池**，不编辑任何既有池、不移除或改权重任何既有条目。别人写的东西一字不动。现在改为**遇到非 builtin 来源时打 INFO 说明「按配置追加了一个池」**，冲突可见但不改变行为。
+
+#### 未命中的表会 WARN
+
+配置里写了但整个加载周期从未出现的表 ID，会在 `LootTableEvents.ALL_LOADED` 时逐个 WARN，提示检查拼写或对应 mod 是否安装。
+
+**为什么只能这样检测**：`LootTableEvents.Modify` 返回 `void`，`withPool` 也没有返回值或异常，**回调内部压根不存在「注入失败」这个状态**。真正的失败形态只有「回调从未被调用」（因为表不存在），而这只能等全部加载完才知道。用户原本要求的是「API 状态导致无法注入就 WARN」，我核实后报告了这一点，改成了现在的形态。
+
+用 `ConcurrentHashMap.newKeySet()` 跟踪待命中集合，因为 Fabric 自己的 loot 实现注释写明「due to possible cross-thread handling」，战利品加载可能跨线程。`ALL_LOADED` 里会重新填充集合以支持 `/reload` 后再次检测。
+
+**`target_tables` 不限于箱子、不限于原版**：用的是 `ResourceKey.codec(Registries.LOOT_TABLE)`，任何命名空间的任何战利品表都能写，包括 `gameplay/fishing/treasure`（钓鱼）、`gameplay/piglin_bartering`（猪灵交易）、`entities/*`（生物掉落）。这是换成字符串 ID 后免费获得的扩展性。
+
 
 **重要事实**：用户最初要求「加入所有含 EPIC 物品的原版箱子」，但实测 vanilla 只有 2 张箱子表含真正 EPIC 物品（试炼密室 `reward_ominous_unique` 的沉重核心、远古城市的静默盔甲纹饰模板），**沙漠神殿并不含 EPIC**（附魔金苹果是 `RARE`）。用户据此改为「高价值结构宝箱」口径。
 
@@ -336,6 +485,37 @@ Mixin 逻辑刻意**只做加法**（只把 false 翻成 true，从不反向覆�
 
 ### 11. 美术脚本（PowerShell + System.Drawing）
 `make-icon.ps1`（128×128 mod 图标）、`make-item-texture.ps1`（16×16 物品贴图）、`make-effect-icon.ps1`（18×18 效果图标）。均用 `$PSScriptRoot` 相对定位，直接 `powershell -NoProfile -ExecutionPolicy Bypass -File .\xxx.ps1` 运行。
+
+### 12. 开发者物品栏 `abyssfall:abyssfall_dev_inventory`（第三次交接时新增）
+
+第二个创造模式标签，**仅当 `developer.dev_inventory = true` 时才注册**，默认 false。
+
+标题是**三色**：「深渊」DARK_GRAY 粗 + 「浮现」GRAY 粗 + 「开发者物品栏」血红 `0xB01030` 粗斜。前两段**复用主标签的 lang key**（`itemGroup.abyssfall.head` / `.tail`），第三段是新增的 `itemGroup.abyssfall.dev`。用户已实测三色标题显示正常、tooltip 不变蓝。
+
+血红用 `TextColor.fromRgb(0xB01030)` 而非 `ChatFormatting.DARK_RED`，因为创造界面背景偏亮，原版暗红读起来发棕。
+
+en_us 的 `.dev` 值是 `" Dev Inventory"`（**有前导空格**），因为英文三段拼接不加空格会变成 `AbyssFallDev Inventory`；中文不需要空格。
+
+**关键实现约束**：`AbyssFallDevInventory` 里的物品与标签**都不是 `static final`**，而是在 `initialize()` 里创建、用普通 static 字段持有。原因是 `static final` 在类被触碰的瞬间就完成注册，开关根本没机会起作用。`getSanCounter()` 在关闭时返回 null，javadoc 里说明了这是刻意的（项目里没有 `@Nullable` 依赖，所以只写在文档里）。
+
+**后果要知道**：关掉开关后，存档里已有的这些物品会在加载时被当作未知物品**丢弃**。这是「真的没注册」的必然结果，不是 bug。用户当初的要求原话就是「物品也不会被注册」。若哪天想改成「物品仍存在、只是标签不显示」，那是另一套语义（只把标签注册设为条件性）。
+
+### 13. 理智计数器 `abyssfall:san_counter`（第三次交接时新增）
+
+开发者专用 debug 物品，放在开发者物品栏里，`stacksTo(1)`。图标暂用原版时钟贴图（`assets/abyssfall/items/san_counter.json` 直接指向 `minecraft:item/clock_00`）。
+
+**作用**：主手右键，在生命/饱食度条上方显示 `理智值：当前 / 最大`，3 秒后淡出，再按重新计时。
+
+**「3 秒 + 淡出 + 重按续期」全部是原版行为，一行计时器都没写。** 依据（1.21.11 mojmap 源码实测）：
+- `Gui.setOverlayMessage`（`Gui:1130-1134`）把 `overlayMessageTime` 无条件设为 **60 ticks = 精确 3 秒**，无条件赋值所以重按即重置
+- `Gui:313-314` 的 alpha 是 `(overlayMessageTime - partialTick) * 255 / 20` 且上限 255，所以最后 20 ticks（1 秒）线性淡出
+- `Gui:325` 渲染位置 `translate(guiWidth/2, guiHeight - 68)`，正是生命/饱食度上方
+- 传输链：`ServerPlayer.displayClientMessage(c, true)`（`:1541`）→ `sendSystemMessage(c, true)`（`:1755`）→ `ClientboundSystemChatPacket(overlay=true)` → 客户端 `ChatListener.handleSystemMessage`（`:186-188`）→ `gui.setOverlayMessage`
+
+**刻意只在服务端读值**（`player instanceof ServerPlayer`）：客户端那份 attachment 只是服务端推送的镜像，debug 工具必须报告权威值，否则它验证不了任何东西。返回 `InteractionResult.SUCCESS`（`SwingSource.CLIENT`）让挥手动画立刻播放，不等往返。
+
+**注意**：这个物品**不是**「客户端消费 San 同步值」的证明——它读的是服务端。所以下面「客户端是否真收到同步值」那条**仍然未验证**。
+
 
 ---
 
@@ -484,35 +664,74 @@ $z.Dispose()
 
 13. **`Select-String` 没有 `-Recurse` 参数**。要递归搜项目文件得先 `Get-ChildItem -Recurse -File src -Include *.java` 再管道给 `Select-String`。我这次直接写 `-Recurse` 报错浪费了一轮。
 
+14. **不要凭公式自证，跑一遍**（第三次交接）。`flower_chance` 的权重换算我推导完觉得没问题，实际编译跑起来才发现 `p=1.0` 会算出 50% 而不是 100%。同一轮里还发现 `optionalFieldOf` 会让默认配置文件写成 `{}`。**这两个 bug 都是「跑」发现的，读代码读不出来。** 涉及数值换算和序列化时，写个临时类挂到项目真实 classpath 上跑一次，成本极低：
+```powershell
+# 临时往 build.gradle 加个任务取 classpath，用完删掉并用 git diff 确认还原
+tasks.register('afPrintCp') { doLast { println sourceSets.main.runtimeClasspath.asPath } }
+# 然后 javac -nowarn -proc:none -cp <classpath> -d out Check.java && java -cp out;<classpath> Check
+```
+用完记得删临时文件、还原 `build.gradle`，并用 `git status` / `git diff` 确认工作区干净。
+
+15. **`editor` 工具不能直接覆盖已存在的文件**（没有 `old_text` 会报错）。要整体重写一个文件就先 `Remove-Item` 再创建。
+
+16. **文件名里不能有 `:`**（Windows）。用户要的时间戳格式含冒号，实测创建失败。**任何要写进文件名的用户输入格式都先验一下**，别等运行时才炸。
+
+17. **报告技术约束时先核实，别顺着需求答应**。用户要求「注入失败就 WARN」，我先去读了 `LootTableEvents.Modify` 的签名，发现返回 `void`、不存在失败状态，于是把方案改成「检测配置的表从未加载」并说明了原因。**上一轮我还犯过反例**：没核实就断言「别的 mod 的表往往不是 builtin」，实际 `LootTableSource.MOD` 的 `isBuiltin()` 是 true，判断完全错了，下一轮读源码才纠正。
+
+
 ---
 
-## 当前状态（第二次交接时）
+## 当前状态（第三次交接时）
 
-- 编译：**用户本人已验证「编译全部没问题」**（第二次会话开头亲口确认）。我本次交接**没有**再跑一遍 `gradlew build`，这一条是转述用户的验证结果，不是我的观察。
-- CI 首次运行：**成功**，三个 jar 已附加到 Release `0.1-Dev`，mod jar 与 source jar 与本地产物字节级一致
-- 产物：`build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`
-- Git 工作区：clean，`main` 与远端同步（**已用 `git status` 实测**）
+- 编译：**已验证**，本次会话多次 `gradlew build --offline` 全部 `BUILD SUCCESSFUL`，`remapJar` 实际执行
+- Git 工作区：**有未提交改动**（见下），`main` 落后于本地工作区。上一次提交是 `0286a0f`
+- tag 仍只有 `0.1-Dev`
+- 产物：`build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`（需 `releaseJars` 生成）
+
+**本次会话结束时未提交的改动**（下一个你开工前先决定要不要提交）：
+```
+ M src/main/java/com/abyssfall/AbyssFall.java
+ M src/main/java/com/abyssfall/block/AbyssDirtBlock.java
+ M src/main/java/com/abyssfall/loot/AbyssFallLootTables.java
+ M src/main/resources/assets/abyssfall/lang/{en_us,zh_cn}.json
+?? src/main/java/com/abyssfall/config/          （5 个文件）
+?? src/main/java/com/abyssfall/item/AbyssFallDevInventory.java
+?? src/main/java/com/abyssfall/item/SanCounterItem.java
+?? src/main/resources/assets/abyssfall/items/san_counter.json
+```
+用「开工前请做」里的命令现场核一遍，别信这张清单的时效性。
 
 ### 用户已在 runClient 实测通过的功能
-创造标签双色标题、tooltip 不再变蓝、深渊之花 EPIC 紫色、宝箱掉落、药水效果必定掉落、村民箱子不掉落、玫瑰可种深渊污泥、其他作物不可种、骨粉催熟出花且玫瑰被消耗、灵魂特效、三个成就正常触发。
 
-### San 系统：已实测通过
+**前两次会话**：创造标签双色标题、tooltip 不再变蓝、深渊之花 EPIC 紫色、宝箱掉落、药水效果必定掉落、村民箱子不掉落、玫瑰可种深渊污泥、其他作物不可种、骨粉催熟出花且玫瑰被消耗、灵魂特效、三个成就正常触发。
 
-用户在第二次会话开始时明确回报：
+**第三次会话（用户明确回报「功能全部验证完毕，全部可用」）**：
+1. 理智计数器右键显示 San、3 秒淡出、重按续期（用户评价「第三条实现的很完美」，指三色标题 tooltip 不变蓝）
+2. 开发者物品栏三色标题、条件注册（`false` 时标签与物品都不存在）
+3. 配置文件生成、读取、各项生效
+4. **坏 JSON 备份+重写**，用户提供的日志证据：
+   ```
+   [Render thread/ERROR] (abyssfall) Could not understand
+   D:\...\run\config\abyssfall.json; it has been moved to
+   abyssfall.json.broken-2026-08-20_10-52-50 and replaced with default settings
+   ```
 
-> 「编译全部没问题，我本人已验证。San 系统运行正常，完全没问题，这一点可以放心了。」
+`run/config/` 里现在同时有 `abyssfall.json` 和一个 `abyssfall.json.broken-2026-08-20_10-52-50`，后者是用户测试留下的，可以删。
 
-也就是说这些都已经过实测，**不要再把它们列成待确认项去催用户测**：
+### 我本次用真实 classpath 实测过的行为（非推断）
 
-1. `/san` 输出 `<名字>: San 100.00 / 100.00 (100.00%)`
-2. `/san add` / `/san set` 增减 current
-3. `/san max add` / `/san max set` 改上限，且「提高上限不白送 San」
-4. 上限降到 current 以下时 current 被夹下来
-5. 退出世界再进值保持（持久化）
-6. 死亡重生值保持（copyOnDeath）
-7. 权限分级：`/san` 人人可用，其余需 gamemaster
+编译临时测试类挂项目 classpath 跑出来的，9 项全过：
+默认配置文件三块完整输出、往返一致、默认 18 张表、权重换算 5 个值精确、`p=1.0` 走 guaranteed、`p=0.0` 不注入池、粒子倍率（含 `0.05→1` 不归零）、音量倍率、残缺文件其余项回落默认、外部 mod 表 ID 可解析、越界值整块回落。
 
-**未验证的仍然只有一件事**：客户端是否真的收到了同步值——因为客户端至今没有任何代码去读它，无从观察。等第一个客户端消费方出现时才能验证。
+### San 系统：已实测通过（第二次会话确认，本次未变动）
+
+`/san` 全部 8 条、持久化、死亡保留、权限分级都已实测。**不要再列成待确认项去催用户测。**
+
+**未验证的仍然只有一件事**：客户端是否真的收到了同步值。理智计数器读的是服务端，**没有**解决这一点。等第一个真正在客户端读 attachment 的消费方出现时才能验证。
+
+### 第二次交接时的 CI 结论（仍然有效，本次未重跑）
+
+CI 首次运行**成功**，三个 jar 已附加到 Release `0.1-Dev`，mod jar 与 source jar 与本地产物字节级一致。**本次会话没有再跑 CI，也没有新增 tag**，所以远端 Release 里的产物不含本次的配置系统与两个新物品。
 
 ---
 
@@ -528,10 +747,22 @@ $z.Dispose()
 **内容**
 - 深渊污泥仍用原版泥土材质（用户说「暂时」）
 - `abyss_gardeners` 图标是向日葵占位、`abyssdirt` 是原版泥土（用户说「暂时替换」）
+- 理智计数器图标是原版时钟 `clock_00` 占位（**指针不会转**，因为原版时钟靠 `range_dispatch` 切 64 个模型才会转；要转就改那个 json）
 - 深渊之花无实际功能（纯注册占位）
 - 「深渊探索者」效果无获取途径，只被战利品侧读取
 - 无配方、无 datagen、无自定义音效资源
 - `abyssfall.client.mixins.json` 的 `client` 数组为空，`src/client` 下只有一个空实现的 `AbyssFallClient`，尚无任何客户端逻辑
+
+**配置系统（本次新建，已可用，可继续扩展）**
+- 只有 3 个块 7 个配置项。用户预期「以后可自定义配置会特别多」，架构已就绪，加块加项照「配置系统」一节的流程即可
+- **不做热加载**是用户明确要求，别自作主张开
+- 上一轮讨论中被用户明确否决/搁置的候选项，别再提：
+  - 凋零玫瑰能种在深渊污泥上 —— **不进配置**，用户说是核心机制
+  - 骨粉催熟机制开关 —— **不进配置**，用户说是核心机制、不给别的 mod 让路（只有特效可调）
+  - `isBuiltin()` 保留拦截 —— 用户明确要求以后不要再提这个选项
+- 我曾建议但**用户尚未表态**的：San 相关阈值不该进配置（因为 San 上限是存档数据，改配置会让新老玩家规则不一致，还可能静默 clamp 玩家数据）。真要做之前先问。
+- `ALL_LOADED` 是否在每次 `/reload` 都触发，**仍未实测**。若不触发，未命中表的 WARN 只会在首次加载时报告一次。
+
 
 ---
 
@@ -539,6 +770,11 @@ $z.Dispose()
 
 1. 读 `gradle.properties`、`fabric.mod.json`、`AbyssFall.java` 确认状态与本文档一致
 2. 读 `src/main/java/com/abyssfall/core/` 全部四个文件——这是项目地基
+2b. 读 `src/main/java/com/abyssfall/config/` 全部五个文件——这是第二块地基，以后加配置都走它
+2c. 现场核实 Git 状态，别信文档里的清单：
+```powershell
+git --no-pager log --oneline -5; git status --short; git --no-pager tag
+```
 3. 用 `Fabric-Knowledge` MCP 查 1.21.11 官方参考。**本次实测**：`get_fabric_context(minecraft_version="1.21.11", fabric_api_version="0.141.6+1.21.11", mapping_system="mojmap")` 返回 `status = version_match_only`、`exact_match = false`，命中的是 `reference/1.21.11`（Fabric API 0.141.1，与本项目 0.141.6 有小差异）。另外 `reference/latest` 现在指向的是 **MC 26.2 / Fabric API 0.155.2**，跟本项目毫无关系，**永远不要拿 `latest` 当本项目证据**。
 4. 用 `minecraft-dev` MCP（`mapping: "mojmap"`, `version: "1.21.11"`）核实所有类/方法/字段签名，**不要凭记忆**
 5. 涉及 Mixin 时用 `analyze_mixin` 校验
@@ -575,6 +811,7 @@ $f=(Get-ChildItem -Recurse -Filter *.pom $p).FullName
 - **先确认理念再写抽象**。San 的 `SanStage` 就是反面教材。
 - **该问就问，但别为小事问**。视觉细节、翻译、注释直接改；涉及玩法语义和数据结构走向时问一句。
 - **保持简洁**。他明确说过省 token。长回复只在真的有必要时用。
-- **信任已有的决策，但要理解它**。项目里每个看起来「不够优雅」的地方（JOIN 钩子、`set()` 里的回读、双色标题的空根组件、代码授予成就）都有写在注释里的理由。先读理由，再判断要不要动。他要求过「最大程度按 HANDOFF 执行，有矛盾随时通知我」——照做，但矛盾要先自己核实过再报。
+- **信任已有的决策，但要理解它**。项目里每个看起来「不够优雅」的地方（JOIN 钩子、`set()` 里的回读、双色标题的空根组件、代码授予成就、配置读写用两个不同 Codec、`p=1.0` 和 `p=0.0` 的特判）都有写在注释里的理由。先读理由，再判断要不要动。他要求过「最大程度按 HANDOFF 执行，有矛盾随时通知我」——照做，但矛盾要先自己核实过再报。
+- **能跑就跑一遍**。第三次会话里两个真 bug（`p=1.0` 只出 50%、默认配置写成 `{}`）都是靠临时编译一个测试类挂真实 classpath 跑出来的，读代码读不出来。用户不要你跑 runClient，但**不禁止你跑纯 Java 验证**，这条路成本极低且他很认这种证据。
 
 祝顺利。

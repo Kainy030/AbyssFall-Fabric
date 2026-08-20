@@ -1,7 +1,10 @@
 {
 	"itemGroup.abyssfall.head": "Abyss",
 	"itemGroup.abyssfall.tail": "Fall",
+	"itemGroup.abyssfall.dev": " Dev Inventory",
 	"item.abyssfall.abyss_flower": "Flower of the Abyss",
+	"item.abyssfall.san_counter": "San Counter",
+	"item.abyssfall.san_counter.readout": "San: %s / %s",
 	"block.abyssfall.abyss_dirt": "Abyss Dirt",
 	"effect.abyssfall.abyss_explorer": "Abyss Explorer",
 	"advancements.abyssfall.abyss_fall.title": "AbyssFall",

@@ -1,7 +1,10 @@
 {
 	"itemGroup.abyssfall.head": "深渊",
 	"itemGroup.abyssfall.tail": "浮现",
+	"itemGroup.abyssfall.dev": "开发者物品栏",
 	"item.abyssfall.abyss_flower": "深渊之花",
+	"item.abyssfall.san_counter": "理智计数器",
+	"item.abyssfall.san_counter.readout": "理智值：%s / %s",
 	"block.abyssfall.abyss_dirt": "深渊污泥",
 	"effect.abyssfall.abyss_explorer": "深渊探索者",
 	"advancements.abyssfall.abyss_fall.title": "深渊浮现",

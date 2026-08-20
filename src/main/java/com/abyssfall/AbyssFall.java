@@ -28,9 +28,11 @@ import org.slf4j.LoggerFactory;
 
 import com.abyssfall.block.AbyssFallBlocks;
 import com.abyssfall.block.AbyssFallBoneMealHandler;
+import com.abyssfall.config.AbyssFallConfig;
 import com.abyssfall.core.AbyssFallCoreSystem;
 import com.abyssfall.core.AbyssFallSanCommand;
 import com.abyssfall.effect.AbyssFallEffects;
+import com.abyssfall.item.AbyssFallDevInventory;
 import com.abyssfall.item.AbyssFallItemGroups;
 import com.abyssfall.item.AbyssFallItems;
 import com.abyssfall.loot.AbyssFallLootTables;
@@ -44,6 +46,11 @@ public class AbyssFall implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
+		// The configuration decides whether some content is registered at all, and registries
+		// cannot be amended once the game is running, so it has to be read before anything
+		// else happens.
+		AbyssFallConfig.load();
+
 		// The San system comes first: it is the value the rest of the mod is meant to move, and
 		// registering its attachment before anything else can consult it keeps that ordering
 		// honest.
@@ -56,6 +63,9 @@ public class AbyssFall implements ModInitializer {
 		AbyssFallItemGroups.initialize();
 		AbyssFallLootTables.initialize();
 		AbyssFallBoneMealHandler.initialize();
+
+		// Last, and conditional: it registers nothing at all unless the config allows it.
+		AbyssFallDevInventory.initialize();
 
 		LOGGER.info("AbyssFall initialized!");
 		LOGGER.info("深渊浮现已加载完毕！");
