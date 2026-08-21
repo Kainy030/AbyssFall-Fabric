@@ -30,17 +30,18 @@ import com.abyssfall.AbyssFall;
  * Settings that exist purely to serve development, and that a released build is expected to
  * leave switched off.
  *
- * @param devInventory whether the developer creative tab and the items inside it are registered
+ * @param devTools   whether the developer creative tab and the items inside it are registered
+ * @param devCommand whether the mod's in-game commands are registered
  */
-public record DeveloperSettings(boolean devInventory) {
+public record DeveloperSettings(boolean devTools, boolean devCommand) {
 	/**
 	 * What a fresh configuration file contains, and the fallback for anything unreadable.
 	 *
-	 * <p>Developer tooling defaults to off. It has to be asked for deliberately rather than
-	 * opted out of, because a build that ships with it enabled hands players content that was
-	 * never meant for them.
+	 * <p>Developer tooling defaults to off, every part of it. It has to be asked for
+	 * deliberately rather than opted out of, because a build that ships with it enabled hands
+	 * players content and commands that were never meant for them.
 	 */
-	public static final DeveloperSettings DEFAULT = new DeveloperSettings(false);
+	public static final DeveloperSettings DEFAULT = new DeveloperSettings(false, false);
 
 	/**
 	 * Describes the block for both reading and writing.
@@ -53,7 +54,8 @@ public record DeveloperSettings(boolean devInventory) {
 	 * {@code LENIENT_CODEC} still accepts a file that is missing some of them.
 	 */
 	public static final Codec<DeveloperSettings> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-			Codec.BOOL.fieldOf("dev_inventory").forGetter(DeveloperSettings::devInventory)
+			Codec.BOOL.fieldOf("dev_tools").forGetter(DeveloperSettings::devTools),
+			Codec.BOOL.fieldOf("dev_command").forGetter(DeveloperSettings::devCommand)
 	).apply(instance, DeveloperSettings::new));
 
 	/**
@@ -66,9 +68,16 @@ public record DeveloperSettings(boolean devInventory) {
 			DEFAULT);
 
 	/**
-	 * This settings block with {@code devInventory} changed.
+	 * This settings block with {@code devTools} changed.
 	 */
-	public DeveloperSettings withDevInventory(boolean value) {
-		return new DeveloperSettings(value);
+	public DeveloperSettings withDevTools(boolean value) {
+		return new DeveloperSettings(value, this.devCommand);
+	}
+
+	/**
+	 * This settings block with {@code devCommand} changed.
+	 */
+	public DeveloperSettings withDevCommand(boolean value) {
+		return new DeveloperSettings(this.devTools, value);
 	}
 }

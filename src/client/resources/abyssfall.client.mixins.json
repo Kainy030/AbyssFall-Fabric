@@ -3,6 +3,7 @@
 	"package": "com.abyssfall.client.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
+		"HudStatusBarHeightRegistryImplMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

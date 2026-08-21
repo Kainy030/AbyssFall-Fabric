@@ -21,9 +21,13 @@ package com.abyssfall.client;
 
 import net.fabricmc.api.ClientModInitializer;
 
+import com.abyssfall.client.hud.AbyssFallSanHud;
+
 public class AbyssFallClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
-		// This entrypoint is suitable for setting up client-specific logic, such as rendering.
+		// Must happen during client initialisation: both HUD registries freeze once the client
+		// has finished starting, so there is no later opportunity to register.
+		AbyssFallSanHud.initialize();
 	}
 }

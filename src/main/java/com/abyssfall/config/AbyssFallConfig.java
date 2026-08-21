@@ -101,12 +101,24 @@ public final class AbyssFallConfig {
 	/**
 	 * Whether the developer creative tab and its contents should be registered.
 	 *
-	 * <p>A shortcut for the one setting that currently has a consumer. Accessors like this are
-	 * worth adding only for settings read from several places; anything else should go through
-	 * {@link #get()} rather than growing this class a method per field.
+	 * <p>A shortcut for one of the two registration gates. Accessors like this are worth adding
+	 * only for settings consulted at registration time, where the call site has to stay a plain
+	 * condition; anything else should go through {@link #get()} rather than growing this class a
+	 * method per field.
 	 */
-	public static boolean isDevInventoryEnabled() {
-		return data.developer().devInventory();
+	public static boolean isDevToolsEnabled() {
+		return data.developer().devTools();
+	}
+
+	/**
+	 * Whether the mod's in-game commands should be registered.
+	 *
+	 * <p>Separate from {@link #isDevToolsEnabled()} on purpose: wanting the debug items in a
+	 * creative test world and wanting command access on a server are different decisions, and
+	 * either one should be grantable without the other.
+	 */
+	public static boolean isDevCommandEnabled() {
+		return data.developer().devCommand();
 	}
 
 	/**
@@ -121,6 +133,13 @@ public final class AbyssFallConfig {
 	 */
 	public static VisualSettings visuals() {
 		return data.visuals();
+	}
+
+	/**
+	 * The hud settings: when the San readout above the hotbar is shown.
+	 */
+	public static HudSettings hud() {
+		return data.hud();
 	}
 
 	/**

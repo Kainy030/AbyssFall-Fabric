@@ -35,49 +35,68 @@ import net.minecraft.server.level.ServerPlayer;
 
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 
+import com.abyssfall.AbyssFall;
+import com.abyssfall.config.AbyssFallConfig;
+
 /**
  * {@code /san} — the operator-facing window onto the San system.
  *
- * <p>With no HUD yet, this is the only way to see and steer the value in game, so it exists
- * mainly as a test and authoring tool rather than as player-facing content. Every mutating
- * branch is gated behind the permission vanilla uses for {@code /effect} and friends; a bare
- * {@code /san} reports your own reading and needs no privilege, since it tells you nothing you
- * are not entitled to know about yourself.
+ * <p>This is a test and authoring tool, not player-facing content. Two things follow from that.
+ *
+ * <p>First, it is registered only when {@code developer.dev_command} is enabled in the config,
+ * which it is not by default. A distributed build therefore has no {@code /san} at all — not a
+ * hidden one, not a permission-denied one, simply none.
+ *
+ * <p>Second, the whole tree — reads included — sits behind {@link Commands#LEVEL_ADMINS}, one
+ * step above the {@code LEVEL_GAMEMASTERS} that {@code /effect} and {@code /give} use. An earlier
+ * version let a bare {@code /san} through unprivileged on the reasoning that your own reading is
+ * yours to know. That reasoning no longer holds: the design intends players to learn their San as
+ * a percentage through in-game means, never as the underlying float, so a command that prints the
+ * float is a debug facility rather than an entitlement.
  */
 public final class AbyssFallSanCommand {
 	private AbyssFallSanCommand() {
 	}
 
+	/**
+	 * Registers {@code /san}, if the configuration allows it.
+	 *
+	 * <p>Reads {@link AbyssFallConfig}, so the configuration must already be loaded.
+	 */
 	public static void initialize() {
+		if (!AbyssFallConfig.isDevCommandEnabled()) {
+			AbyssFall.LOGGER.info("Developer commands disabled; /san is not registered");
+			return;
+		}
+
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
 				dispatcher.register(build()));
 	}
 
 	private static LiteralArgumentBuilder<CommandSourceStack> build() {
 		return Commands.literal("san")
+				// One check on the root rather than one per branch: every branch wants the same
+				// permission, and Brigadier will not descend into a node the caller fails.
+				.requires(Commands.hasPermission(Commands.LEVEL_ADMINS))
 				// Bare /san reports the caller's own San.
 				.executes(context -> reportSelf(context.getSource()))
 				.then(Commands.literal("query")
-						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
 						.then(Commands.argument("target", EntityArgument.player())
 								.executes(context -> report(context.getSource(),
 										EntityArgument.getPlayer(context, "target")))))
 				.then(Commands.literal("set")
-						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
 						.then(Commands.argument("target", EntityArgument.player())
 								.then(Commands.argument("value", FloatArgumentType.floatArg(0.0F))
 										.executes(context -> apply(context, player ->
 												AbyssFallCoreSystem.setCurrent(player,
 														FloatArgumentType.getFloat(context, "value")))))))
 				.then(Commands.literal("add")
-						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
 						.then(Commands.argument("target", EntityArgument.player())
 								.then(Commands.argument("delta", FloatArgumentType.floatArg())
 										.executes(context -> apply(context, player ->
 												AbyssFallCoreSystem.addCurrent(player,
 														FloatArgumentType.getFloat(context, "delta")))))))
 				.then(Commands.literal("max")
-						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
 						.then(Commands.literal("set")
 								.then(Commands.argument("target", EntityArgument.player())
 										.then(Commands.argument("value", FloatArgumentType.floatArg(
@@ -92,11 +111,9 @@ public final class AbyssFallSanCommand {
 														AbyssFallCoreSystem.addMax(player,
 																FloatArgumentType.getFloat(context, "delta"))))))))
 				.then(Commands.literal("restore")
-						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
 						.then(Commands.argument("target", EntityArgument.player())
 								.executes(context -> apply(context, AbyssFallCoreSystem::restore))))
 				.then(Commands.literal("reset")
-						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
 						.then(Commands.argument("target", EntityArgument.player())
 								.executes(context -> apply(context, AbyssFallCoreSystem::reset))));
 	}
