@@ -16,6 +16,9 @@
 	"icon": "assets/abyssfall/icon.png",
 	"environment": "*",
 	"entrypoints": {
+		"preLaunch": [
+			"com.abyssfall.agreement.TestAgreement"
+		],
 		"main": [
 			"com.abyssfall.AbyssFall"
 		],
