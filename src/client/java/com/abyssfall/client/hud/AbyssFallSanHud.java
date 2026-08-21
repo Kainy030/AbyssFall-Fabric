@@ -28,21 +28,31 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import com.abyssfall.AbyssFall;
 
 /**
- * Registers the San bar into the HUD, directly above the hunger row.
+ * Registers the San readout into the HUD, directly above the hunger row.
+ *
+ * <h2>Which readout is registered</h2>
+ *
+ * <p>{@link SanIconHudElement} — the row of ten icons. It is the ambient display: legible at a
+ * glance and in the visual language the status bar area already speaks.
+ *
+ * <p>{@link SanBarHudElement}, the violet bar with the percentage written across it, is
+ * <em>deliberately not registered</em> and is not dead code. It is the detailed reading, kept for
+ * an item that will show it on demand. Do not delete it, and do not "unify" the two: the point is
+ * that the always-on display and the precise one differ in kind.
  *
  * <h2>Why the position is registered rather than measured</h2>
  *
  * <p>Nothing here computes a pixel offset. The element is attached after the vanilla food bar
  * and a height provider is registered alongside it, which lets the game lay the status bars out:
  * the air bubbles, the held item name and the action bar text all shift up by exactly the space
- * this bar claims, and other mods' bars take part in the same sum. Hardcoding a Y coordinate
- * would have put the bar on top of whatever else happened to be there.
+ * this row claims, and other mods' bars take part in the same sum. Hardcoding a Y coordinate
+ * would have put the row on top of whatever else happened to be there.
  *
  * <p>Attaching <em>after</em> {@link VanillaHudElements#FOOD_BAR} rather than before is what
- * places the bar above the hunger row while leaving the hunger row itself where it was.
+ * places the row above the hunger row while leaving the hunger row itself where it was.
  * Attaching before would have taken over the hunger row's own line and pushed hunger upward.
  *
- * <p>Two further things come free from attaching to a vanilla element: the bar inherits that
+ * <p>Two further things come free from attaching to a vanilla element: the row inherits that
  * element's render condition, so it disappears with the rest of the HUD when the player hides it,
  * and it inherits the right side of the screen for layout purposes, which is the side hunger is
  * on.
@@ -56,9 +66,14 @@ import com.abyssfall.AbyssFall;
  */
 public final class AbyssFallSanHud {
 	/**
-	 * Identifier of the San bar element. Registered in two places that must agree — the element
+	 * Identifier of the San element. Registered in two places that must agree — the element
 	 * registry and the status bar height registry — and used again to look the resulting offset
 	 * back up while rendering.
+	 *
+	 * <p>Still {@code san_bar} rather than {@code san_icons}. The name is what the reordering
+	 * mixin looks the layer up by and what any other mod would key off, so renaming it would be a
+	 * visible change with no benefit; it identifies the mod's San readout, whatever that readout
+	 * currently looks like.
 	 */
 	public static final Identifier SAN_BAR_ID = AbyssFall.id("san_bar");
 
@@ -66,16 +81,17 @@ public final class AbyssFallSanHud {
 	}
 
 	public static void initialize() {
-		SanBarHudElement element = new SanBarHudElement();
+		SanIconHudElement element = new SanIconHudElement();
 
 		HudElementRegistry.attachElementAfter(VanillaHudElements.FOOD_BAR, SAN_BAR_ID, element);
 
-		// Zero whenever the bar is not drawn, so a player at full San costs the layout nothing:
+		// Zero whenever the row is not drawn, so a player at full San costs the layout nothing:
 		// the air bubbles and the text above the hotbar stay exactly where vanilla puts them
 		// until San actually drops. The element is asked rather than the config, because it is
 		// the element that knows whether it is mid-fade.
 		HudStatusBarHeightRegistry.addRight(SAN_BAR_ID, player -> element.occupiedHeight());
 
-		AbyssFall.LOGGER.debug("San bar registered above the hunger row");
+		AbyssFall.LOGGER.debug("San icon row registered above the hunger row");
 	}
 }
+

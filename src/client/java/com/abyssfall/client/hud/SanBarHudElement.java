@@ -38,7 +38,24 @@ import com.abyssfall.core.AbyssFallCoreSystem;
 import com.abyssfall.core.SanState;
 
 /**
- * Draws the player's own San as a bar above the hotbar, with the reading written across it.
+ * Draws the player's San as a bar with the reading written across it.
+ *
+ * <h2>⚠ Kept on purpose, not currently registered</h2>
+ *
+ * <p>This element is <strong>not</strong> attached to the HUD. {@link SanIconHudElement} is what
+ * {@link AbyssFallSanHud} registers, and this class is <em>not</em> dead code left behind by that
+ * change: it is the detailed reading, kept for an item that will show it on demand. Deleting it,
+ * or folding it into the icon row, would throw away the only display that gives the exact figure.
+ *
+ * <p>It implements {@link HudElement} because that is still the shape it wants — something that
+ * draws into a {@link GuiGraphics} at a position the layout gives it. Whether the item ends up
+ * registering it as a real HUD element or calling {@link #render} from its own screen is a
+ * question for whoever writes the item.
+ *
+ * <p>One thing to know before reusing it: {@link #render} looks its Y position up from
+ * {@link HudStatusBarHeightRegistry} under {@link AbyssFallSanHud#SAN_BAR_ID}, which is now the
+ * icon row's identifier. Drawing this bar somewhere other than the status bar area means giving it
+ * a position rather than letting it ask for one.
  *
  * <h2>Where the number comes from</h2>
  *
@@ -52,8 +69,8 @@ import com.abyssfall.core.SanState;
  * <h2>Why the bar is drawn rather than blitted</h2>
  *
  * <p>Filled rectangles and a string, with no texture of its own. This is deliberately the plain
- * version asked for: the mod has no art for a San bar yet, and a placeholder built from solid
- * colours can be restyled or replaced outright without leaving an unused sprite behind.
+ * version asked for: a placeholder built from solid colours can be restyled or replaced outright
+ * without leaving an unused sprite behind.
  *
  * <h2>Visibility and the fade</h2>
  *
