@@ -5,11 +5,12 @@
 > **这个文件属于你**。它是上一个你留给你的，你也应该在本次工作结束时更新它留给下一个你。
 > 用户会明确要求你更新，但即使他不说，发现文档与事实不符时也应该主动修正。
 >
-> **维护这份文件的规矩**（第二次交接时定下）：
+> **维护这份文件的规矩**（第二次交接时定下，第四次补充）：
 > - 写进来的每一条都要能说清是「已验证 / 未验证 / 推断」，尤其是别人的验证结果要写明是转述。
 > - 会过时的东西（commit 哈希、构建结果、依赖子模块版本）要么标注获取方法让下一个你现场重查，要么就别写死。
 > - 修文档前先把要改的地方在项目里核一遍，**不要凭读文档时的印象判断文档写错了**——上一次就有人把「用户要求少用 Mixin」误读成「代码里的钩子都该消灭」。
 > - 保持总体意思不变。这份文件的价值在于连续性，不是在于漂亮。
+> - **只写「下一个你会因为不知道而做错事」的内容。** 更新时优先合并同类项、删掉已被推翻的旧状态和纯过程叙述（谁在第几轮说了什么、精确行号、逐条实测清单），不要为了显得详尽而堆砌。用户第四次交接时明确要求过精简。
 
 ---
 
@@ -131,16 +132,7 @@ src/main/java/com/abyssfall/core/
 
 **为什么 current 和 max 合成一个 record**：两者互相约束（`0 ≤ current ≤ max`），分开存会出现瞬时非法状态，且要发两个同步包。invariant 在 canonical constructor 里强制，连反序列化和网络解包都过这一关。
 
-**还有一个 JOIN 钩子，别当成多余的删掉**：`AbyssFallCoreSystem.initialize()` 里注册了 `ServerPlayerEvents.JOIN`（fabric-entity-events-v1），回调里做一次 `player.getAttachedOrCreate(SAN)` 并打 debug 日志。
-
-```java
-ServerPlayerEvents.JOIN.register(player -> {
-    SanState state = player.getAttachedOrCreate(SAN);
-    AbyssFall.LOGGER.debug(...);
-});
-```
-
-原因：`initializer` 只保证「被问到时有值」，纯读（`getAttachedOrElse`）不会把值真正写进 attachment，于是全新玩家可能压根没有存储的 attachment，也就不会触发同步推送。JOIN 时主动 `getAttachedOrCreate` 一次，把值落盘并推给客户端，从第一 tick 起客户端就拿得到。**这是 API 事件而非 Mixin，符合原则。**
+**还有一个 JOIN 钩子，别当成多余的删掉**：`initialize()` 里注册了 `ServerPlayerEvents.JOIN`（fabric-entity-events-v1），回调里做一次 `player.getAttachedOrCreate(SAN)` 并打 debug 日志。原因是 `initializer` 只保证「被问到时有值」，纯读（`getAttachedOrElse`）不会把值真正写进 attachment，于是全新玩家可能压根没有存储的 attachment、也就不触发同步推送。JOIN 时主动创建一次即可落盘并推给客户端。**这是 API 事件而非 Mixin，符合原则。**
 
 **为什么事件从 `set()` 派发而不用 attachment 自带的 `onAttachedSet`**：后者是**按 target 实例**的（`default <A> Event<OnAttachedSet<A>> onAttachedSet(...)`），必须先拿到每个玩家实例才能订阅，无法全局监听。而所有写入本来就汇聚在 `set()`。
 
@@ -178,39 +170,19 @@ float intensity = f(change.current().ratio());
 
 ### /san 命令（8 条）
 
-**两道门，第四次交接时改的**：整棵树都要 `dev_command=true` 才注册，且**每一个分支**（含无参数的 `/san`）都要 3 级权限 `LEVEL_ADMINS`。
+**两道门（第四次交接时改的）**：整棵树都要 `dev_command=true` 才注册，且所有分支（含无参数的 `/san`）都要 3 级权限 `LEVEL_ADMINS`。
 
-| 指令 | 权限 |
-|---|---|
-| `/san` | **admins（3 级）** |
-| `/san query <玩家>` | admins |
-| `/san set <玩家> <值>` | admins |
-| `/san add <玩家> <增量>` | admins |
-| `/san max set <玩家> <值>` | admins |
-| `/san max add <玩家> <增量>` | admins |
-| `/san restore <玩家>` | admins |
-| `/san reset <玩家>` | admins |
+八条分支：`/san`（看自己）、`query <玩家>`、`set <玩家> <值>`、`add <玩家> <增量>`、`max set`、`max add`、`restore <玩家>`、`reset <玩家>`。
 
-`.requires()` **只写在根节点一处**，不是每个分支各写一遍。Brigadier 对 `requires` 失败的节点不会向下遍历，所以根节点一次检查等价于全树检查。**别「补全」成每分支一遍**，那是冗余。
+`.requires()` **只写在根节点一处**——Brigadier 对 `requires` 失败的节点不会向下遍历，所以根节点一次检查等价于全树检查。**别「补全」成每分支一遍。**
 
-**无参数 `/san` 从「无权限」改成 3 级，是设计意图变化而非收紧安全**。旧注释写的理由是「你自己的值你当然有权知道」；现在的设计是**玩家只应通过游戏内手段得知百分比、永不得知底层 float**（见「三层信息可见性模型」一节），所以一个打印 float 的指令就是 debug 设施而不是权利。这个理由的转变已写进 `AbyssFallSanCommand` 的 javadoc，不要当成旧注释删掉。
+**无参数 `/san` 从「无权限」改成 3 级，是设计意图变化而非收紧安全**。旧注释的理由是「你自己的值你当然有权知道」；现在的设计是玩家只应通过游戏内手段得知百分比、永不得知底层 float（见「三层信息可见性模型」），所以打印 float 的指令是 debug 设施而非权利。这个转变已写进 `AbyssFallSanCommand` 的 javadoc，不要当成旧注释删掉。
 
-输出格式：`<名字>: San 100.00 / 100.00 (100.00%)`。刻意用英文调试格式（`Component.literal`），因为这是工具而非内容，所以没有 lang key。百分比两位小数是为了能看清 0.1% 级变化。
+输出格式：`<名字>: San 100.00 / 100.00 (100.00%)`。刻意用英文调试格式（`Component.literal`），因为这是工具而非内容，所以没有 lang key。两位小数是为了能看清 0.1% 级变化。
 
-**1.21.11 权限 API 变了**：不是老的 `hasPermission(int)`，而是
-`Commands.hasPermission(Commands.LEVEL_ADMINS)` 返回 `PermissionProviderCheck<T>`（`net.minecraft.server.permissions`，`record ... implements Predicate<T>`），可直接传给 `.requires()`。
+**1.21.11 权限 API 变了**：不是老的 `hasPermission(int)`，而是 `Commands.hasPermission(Commands.LEVEL_ADMINS)` 返回 `PermissionProviderCheck<T>`（`net.minecraft.server.permissions`，`record ... implements Predicate<T>`），可直接传给 `.requires()`。
 
-⚠️ **术语坑（第四次交接踩到，MCP 实测确认）**：`GAMEMASTERS` **不是** 4 级。1.21.11 的 `net.minecraft.server.permissions.PermissionLevel` 枚举实际是：
-
-| 名称 | 等级 | vanilla 用途 |
-|---|---|---|
-| `ALL` | 0 | |
-| `MODERATORS` | 1 | |
-| **`GAMEMASTERS`** | **2** | `/effect` `/give` `/gamemode` `/advancement` |
-| `ADMINS` | 3 | |
-| `OWNERS` | **4** | `/stop` `/ban` |
-
-用户当时说「4 级权限（管理员权限 GameMaster）」，把 4 级和 GameMaster 当成同一个东西了。报给他之后他选了 3 级 `ADMINS`。**以后遇到「给 N 级权限」的要求，先核实枚举再动手，别按印象对应。**
+⚠️ **术语坑（MCP 实测确认）**：`PermissionLevel` 枚举是 `ALL`=0 / `MODERATORS`=1 / **`GAMEMASTERS`=2**（`/effect` `/give` 用这级）/ `ADMINS`=3 / **`OWNERS`=4**（`/stop` `/ban`）。**`GAMEMASTERS` 不是 4 级。** 以后遇到「给 N 级权限」的要求，先核实枚举再动手。
 
 ### San 系统当前状态
 
@@ -220,15 +192,13 @@ float intensity = f(change.current().ratio());
 
 ### 🔴 三层信息可见性模型（第四次交接确立，架构级设计意图）
 
-用户明确的设计意图，原话带三个感叹号：
+用户的设计意图（原话带三个感叹号）：
 
 > **但是玩家永远不可以知道 San 值的真实 Folt 值，只可以知道百分比，这是故意的游戏设计！！**
 
-他随后澄清了这条的**强度边界**（很重要，别按最严格的读）：
+他随后澄清了**强度边界**（重要，别按最严格的读）：
 
-> 我的意思是，玩家不可知真实 Folt 数值并不是针对那种逆向的人，而是玩家在游戏过程中不知道，**是游戏性行为，而不是技术行为**。咱们的项目本来就是基于协议开源的项目，他们闲的蛋疼非要逆向咱们的项目那就让他们做……所以这部分无需改动代码。
-
-**所以这是三层可见性，而不是加密需求**：
+> 玩家不可知真实 Folt 数值并不是针对那种逆向的人，而是玩家在游戏过程中不知道，**是游戏性行为，而不是技术行为**……所以这部分无需改动代码。
 
 | 层 | 途径 | 玩家看到什么 | 门禁 |
 |---|---|---|---|
@@ -236,13 +206,9 @@ float intensity = f(change.current().ratio());
 | **游戏内进阶层** | 未来的显示道具 | 百分比 | 玩法解锁（制作） |
 | **游戏内基础层** | HUD 默认态 | 脑子图标（约 5% 粒度） | 无 |
 
-**核心原则：内部连续、外部模糊。** 系统内部（事件、渲染强度、行为规则）读真实 ratio，保持「0.1% 变化也有意义」；玩家**感知**是粗糙的，而「能知道多精确」本身是玩法内容。
+**核心原则：内部连续、外部模糊。** 系统内部（事件、渲染强度、行为规则）读真实 ratio，保持「0.1% 变化也有意义」；玩家**感知**是粗糙的，而「能知道多精确」本身是玩法内容。这也解答了一个曾经的张力：图标式 HUD 看不出 5% 以内的变化，看似与「连续参数」矛盾——但那正是设计意图。
 
-**这解决了一个曾经的张力**：图标式 HUD 20 刻度看不出 5% 以内的变化，看似与「San 是连续参数」矛盾——但那正是设计意图，玩家不该精确感知。
-
-**已知且被接受的「泄漏」，不要去修**：
-- `SanState.STREAM_CODEC` 确实把 `current` 和 `max` 两个 float 同步给客户端（读源码确认）。**这是已知的，用户明确说不改。** 不要为此重构 `STREAM_CODEC`——那会让 `AbyssFallCoreSystem.get(Player)` 在两端返回不同可信度的数据，语义分裂。
-- 抓包、逆向、看源码都能拿到 float。项目是 GPL 开源，这不在设计目标内。
+**已知且被接受的「泄漏」，不要去修**：`SanState.STREAM_CODEC` 确实把 `current` 和 `max` 两个 float 同步给客户端。**用户明确说不改**——为此重构会让 `AbyssFallCoreSystem.get(Player)` 在两端返回不同可信度的数据，语义分裂。抓包和逆向也能拿到 float，项目是 GPL 开源，这不在设计目标内。
 
 **要守住的只有一件事：所有游戏内官方界面只显示百分比。** 新增任何 San 显示途径时，问一句它属于哪一层。
 
@@ -257,9 +223,7 @@ float intensity = f(change.current().ratio());
 
 ### 文件位置与格式
 
-`config/abyssfall.json`。**是 JSON，不是 properties**——第一版曾用 `.properties`，同一次会话内就被用户要求换成主流 mod 的 JSON 格式。旧实现已删除，别复活它。
-
-用户当时问过「为什么不用 json 或 conf」，换之前给的理由是「properties 能带注释、零依赖」。换成 JSON 的决定性理由是**结构化配置**：`.properties` 表达列表只能靠逗号分隔字符串自己解析，而 `target_tables` 天生是数组。代价是 JSON 不能写注释，接受了。
+`config/abyssfall.json`。**是 JSON，不是 properties**——第一版曾用 `.properties`，同一次会话内就被用户要求换成主流 mod 的 JSON 格式。决定性理由是**结构化配置**：`target_tables` 天生是数组，`.properties` 只能靠逗号分隔字符串自己解析。代价是不能写注释，接受了。**旧实现已删除，别复活它。**
 
 ### 分块结构（加配置就是加块）
 
@@ -289,18 +253,11 @@ config/
 
 副作用：加字段永不破坏旧文件（旧文件缺新字段 → 回落默认），**所以不需要任何迁移代码**。
 
-⚠️ **但改名会破坏旧文件**（第四次交接实测确认）。`dev_inventory` → `dev_tools` 那次，旧文件里的 `dev_inventory` 不再被任何 `fieldOf` 认领，`dev_tools` 又缺失，于是 `LENIENT_CODEC` 让**整块**回落默认——用户原本设为 `true` 的开关静默变回 `false`。
-
-实测输出（真实 classpath 跑的，非推断）：
-```
-read {"dev_inventory":true}                → DeveloperSettings[devTools=false, devCommand=false]
-read {"dev_tools":true}                    → DeveloperSettings[devTools=false, devCommand=false]  ← 缺一个字段，整块回落
-read {"dev_tools":true,"dev_command":true} → DeveloperSettings[devTools=true,  devCommand=true]
-```
+⚠️ **但改名会破坏旧文件**（第四次交接实测确认）。`dev_inventory` → `dev_tools` 那次，旧键不再被任何 `fieldOf` 认领、新键又缺失，于是 `LENIENT_CODEC` 让**整块**回落默认——用户原本设为 `true` 的开关静默变回 `false`。实测：`{"dev_inventory":true}` 和 `{"dev_tools":true}`（缺另一个字段）都会回落成全 `false`，只有两个键都给才生效。
 
 **两条结论**：
-1. **改配置键名前必须告知用户手动改本机文件**，否则他的设置会静默失效（当时是用户直接删掉重新生成解决的）。
-2. **块是原子单元**：一块里任何一个字段缺失或不合法，整块回落。这是 `CODEC.orElse(DEFAULT)` 的固有行为，不是 bug。若哪天想让字段各自独立容错，得把 `LENIENT_CODEC` 改成逐字段 `optionalFieldOf`——但那样读写两个 Codec 的字段集就不一致了，动之前先重读上面「读写用不同 Codec」那一节的理由。
+1. **改配置键名前必须告知用户手动改本机文件**，否则设置静默失效。
+2. **块是原子单元**：一块里任何字段缺失或不合法，整块回落。这是 `CODEC.orElse(DEFAULT)` 的固有行为，不是 bug。想让字段各自独立容错就得把 `LENIENT_CODEC` 改成逐字段 `optionalFieldOf`，但那样读写两个 Codec 的字段集会不一致——动之前先重读上面的理由。
 
 `Codec.orElse` / `MapCodec.orElse` 有 `Consumer<String>` 和 `UnaryOperator<String>` 两个重载，**直接传 lambda 会编译不过（引用不明确）**，必须显式 `(Consumer<String>)` 强转。代码里那些 cast 是必需的。
 
@@ -392,6 +349,7 @@ it has been moved to abyssfall.json.broken-2026-08-20_10-52-50 and replaced with
 
 ---
 
+## 已实现的内容与机制
 
 ### 目录结构
 ```
@@ -528,22 +486,19 @@ Mixin 逻辑刻意**只做加法**（只把 false 翻成 true，从不反向覆�
 
 用户同时明确表示，**「保持现状（继续拦）」这个选项以后不要再提**。
 
-技术上的重要澄清（我上一轮判断错过一次，别重犯）：`LootTableSource` 有四个值，`VANILLA(true)` / `MOD(true)` / `DATA_PACK(false)` / `REPLACED(false)`。**其他 mod 自带的战利品表是 `MOD`，`isBuiltin()` 为 true**，所以那个检查从来就没有拦住别的 mod，它实际只拦「外部数据包」和「被 REPLACE 替换过的表」。
-
-移除它的正当性：我们用 `withPool` **追加独立池**，不编辑任何既有池、不移除或改权重任何既有条目。别人写的东西一字不动。现在改为**遇到非 builtin 来源时打 INFO 说明「按配置追加了一个池」**，冲突可见但不改变行为。
+技术澄清（我上一轮判断错过一次，别重犯）：`LootTableSource` 四个值是 `VANILLA(true)` / `MOD(true)` / `DATA_PACK(false)` / `REPLACED(false)`。**其他 mod 自带的表是 `MOD`、`isBuiltin()` 为 true**，所以那个检查从来没拦住别的 mod，它实际只拦「外部数据包」和「被 REPLACE 替换过的表」。移除它是正当的：我们用 `withPool` **追加独立池**，不编辑既有池、不改任何既有条目权重，别人写的东西一字不动。现在改为遇到非 builtin 来源打 INFO，**冲突可见但不改变行为**。
 
 #### 未命中的表会 WARN
 
-配置里写了但整个加载周期从未出现的表 ID，会在 `LootTableEvents.ALL_LOADED` 时逐个 WARN，提示检查拼写或对应 mod 是否安装。
+配置里写了但整个加载周期从未出现的表 ID，会在 `LootTableEvents.ALL_LOADED` 时逐个 WARN。
 
-**为什么只能这样检测**：`LootTableEvents.Modify` 返回 `void`，`withPool` 也没有返回值或异常，**回调内部压根不存在「注入失败」这个状态**。真正的失败形态只有「回调从未被调用」（因为表不存在），而这只能等全部加载完才知道。用户原本要求的是「API 状态导致无法注入就 WARN」，我核实后报告了这一点，改成了现在的形态。
+**为什么只能这样检测**：`LootTableEvents.Modify` 返回 `void`，`withPool` 也无返回值或异常，**回调内部压根不存在「注入失败」这个状态**。真正的失败形态只有「回调从未被调用」（表不存在），而这只能等全部加载完才知道。用户原本要求「API 状态导致无法注入就 WARN」，我核实后报告了这一点并改成现在的形态。
 
-用 `ConcurrentHashMap.newKeySet()` 跟踪待命中集合，因为 Fabric 自己的 loot 实现注释写明「due to possible cross-thread handling」，战利品加载可能跨线程。`ALL_LOADED` 里会重新填充集合以支持 `/reload` 后再次检测。
+用 `ConcurrentHashMap.newKeySet()` 跟踪待命中集合，因为 Fabric 自己的 loot 实现注释写明「due to possible cross-thread handling」。`ALL_LOADED` 里会重新填充集合以支持 `/reload` 后再次检测。
 
-**`target_tables` 不限于箱子、不限于原版**：用的是 `ResourceKey.codec(Registries.LOOT_TABLE)`，任何命名空间的任何战利品表都能写，包括 `gameplay/fishing/treasure`（钓鱼）、`gameplay/piglin_bartering`（猪灵交易）、`entities/*`（生物掉落）。这是换成字符串 ID 后免费获得的扩展性。
+**`target_tables` 不限箱子、不限原版**：用的是 `ResourceKey.codec(Registries.LOOT_TABLE)`，任何命名空间的任何战利品表都能写，含钓鱼 `gameplay/fishing/treasure`、猪灵交易、生物掉落 `entities/*`。
 
-
-**重要事实**：用户最初要求「加入所有含 EPIC 物品的原版箱子」，但实测 vanilla 只有 2 张箱子表含真正 EPIC 物品（试炼密室 `reward_ominous_unique` 的沉重核心、远古城市的静默盔甲纹饰模板），**沙漠神殿并不含 EPIC**（附魔金苹果是 `RARE`）。用户据此改为「高价值结构宝箱」口径。
+**一个事实**：用户最初要求「加入所有含 EPIC 物品的原版箱子」，但实测 vanilla 只有 2 张表含真正 EPIC 物品（试炼密室 `reward_ominous_unique` 的沉重核心、远古城市的静默盔甲纹饰模板），**沙漠神殿并不含 EPIC**（附魔金苹果是 `RARE`）。用户据此改为「高价值结构宝箱」口径。
 
 ### 9. 成就系统（3 个，链式）
 
@@ -567,7 +522,7 @@ Mixin 逻辑刻意**只做加法**（只把 false 翻成 true，从不反向覆�
 - lang：`en_us.json` + `zh_cn.json`（**无 BOM 的 UTF-8**）
 - `data/abyssfall/loot_table/blocks/abyss_dirt.json`（方块掉落自身）
 - `data/minecraft/tags/block/mineable/shovel.json`
-- `abyssfall.mixins.json`（`package: com.abyssfall.mixin`，`compatibilityLevel: JAVA_21`）已登记 `WitherRoseBlockMixin`；`abyssfall.client.mixins.json`（`package: com.abyssfall.client.mixin`）的 `client` 数组仍为空。两份都设了 `injectors.defaultRequire = 1` 和 `overwrites.requireAnnotations = true`——**前者意味着注入点找不到会直接崩，这是故意的**：宁可启动失败也不要静默失效。
+- `abyssfall.mixins.json`（`package: com.abyssfall.mixin`，`compatibilityLevel: JAVA_21`）登记 `WitherRoseBlockMixin`；`abyssfall.client.mixins.json`（`package: com.abyssfall.client.mixin`）登记 `HudStatusBarHeightRegistryImplMixin`。两份都设了 `injectors.defaultRequire = 1` 和 `overwrites.requireAnnotations = true`——**前者意味着注入点找不到会直接崩，这是故意的**：宁可启动失败也不要静默失效。
 
 ### 11. 美术脚本（PowerShell + System.Drawing）
 `make-icon.ps1`（128×128 mod 图标）、`make-item-texture.ps1`（16×16 物品贴图）、`make-effect-icon.ps1`（18×18 效果图标）。均用 `$PSScriptRoot` 相对定位，直接 `powershell -NoProfile -ExecutionPolicy Bypass -File .\xxx.ps1` 运行。
@@ -592,121 +547,72 @@ en_us 的 `.dev` 值是 `" Dev Inventory"`（**有前导空格**），因为英�
 
 **作用**：主手右键，在生命/饱食度条上方显示 `理智值：当前 / 最大`，3 秒后淡出，再按重新计时。
 
-**「3 秒 + 淡出 + 重按续期」全部是原版行为，一行计时器都没写。** 依据（1.21.11 mojmap 源码实测）：
-- `Gui.setOverlayMessage`（`Gui:1130-1134`）把 `overlayMessageTime` 无条件设为 **60 ticks = 精确 3 秒**，无条件赋值所以重按即重置
-- `Gui:313-314` 的 alpha 是 `(overlayMessageTime - partialTick) * 255 / 20` 且上限 255，所以最后 20 ticks（1 秒）线性淡出
-- `Gui:325` 渲染位置 `translate(guiWidth/2, guiHeight - 68)`，正是生命/饱食度上方
-- 传输链：`ServerPlayer.displayClientMessage(c, true)`（`:1541`）→ `sendSystemMessage(c, true)`（`:1755`）→ `ClientboundSystemChatPacket(overlay=true)` → 客户端 `ChatListener.handleSystemMessage`（`:186-188`）→ `gui.setOverlayMessage`
+**「3 秒 + 淡出 + 重按续期」全部是原版行为，一行计时器都没写。** 依据（1.21.11 mojmap 源码实测）：`Gui.setOverlayMessage` 把 `overlayMessageTime` **无条件**设为 60 ticks（= 精确 3 秒，无条件赋值所以重按即重置）；alpha 算式 `(overlayMessageTime - partialTick) * 255 / 20` 上限 255，所以最后 20 ticks 线性淡出；渲染位置 `translate(guiWidth/2, guiHeight - 68)` 正是生命/饱食度上方。传输链是 `ServerPlayer.displayClientMessage(c, true)` → `ClientboundSystemChatPacket(overlay=true)` → 客户端 `ChatListener.handleSystemMessage` → `gui.setOverlayMessage`。
 
 **刻意只在服务端读值**（`player instanceof ServerPlayer`）：客户端那份 attachment 只是服务端推送的镜像，debug 工具必须报告权威值，否则它验证不了任何东西。返回 `InteractionResult.SUCCESS`（`SwingSource.CLIENT`）让挥手动画立刻播放，不等往返。
 
-**注意**：这个物品读的是**服务端**权威值，所以它本身不构成「客户端消费 San 同步值」的实现。不过客户端同步这件事用户已另行实测确认无误（见「当前状态」一节）。
-
-
----
 ### 14. DEV 图标 `abyssfall:abyss_dev_icon`（第四次交接新增）
 
-**纯工具物品，只为做开发者物品栏的标签图标而生。** 不命名（保持键值 `item.abyssfall.abyss_dev_icon`）、不赋予任何行为、**不放入该物品栏的内容中**（`.icon(() -> new ItemStack(devIcon))` 即用）。`Properties` 全默认。
+**纯工具物品，只为做开发者物品栏的标签图标而生。** 不命名（保持键值 `item.abyssfall.abyss_dev_icon`）、无任何行为、**不放入该物品栏的内容中**，`Properties` 全默认。用专门物品而非借用已有工具做 icon，是为了让标签图标不随工具外观变化而变。
 
-**为什么不是用已有物品做 icon**：用户说「充当开发者物品栏的 icon」。如果借用一个工具做 icon，那个工具的外观变化会改变标签图标，用专门物品可以避免。
-
-**图标**：16×16 像素纯黑 `DEV` 三个字母，字母外零像素，无抗锯齿。四行逐像素 `SetPixel` 绘制，不依赖 `System.Drawing` 画字功能。脚本 `make-dev-icon.ps1` 可重复运行，`$PSScriptRoot` 相对定位。
-
-**V 必须 5 列宽才有单像素尖底**（偶数宽度末行必然为两个像素 → 平底 → 读作 U）。这是像素网格的硬约束，不是审美选择。
+**图标**：16×16 纯黑 `DEV`，字母外零像素、无抗锯齿。`make-dev-icon.ps1` 逐像素 `SetPixel` 绘制而不用 `System.Drawing` 的画字功能——16×16 上任何抗锯齿都会把 1px 笔画糊成灰色。**V 必须 5 列宽才有单像素尖底**（偶数宽度末行必然两像素 → 平底 → 读作 U），这是像素网格的硬约束，不是审美选择。
 
 ### 15. HUD 系统（第四次交接新增，客户端侧初次活跃）
 
-**背景**：这是客户端侧第一次有实质性代码。用户拿着进度条 mockup 来，说「现在把玩家当前的理智值可视化」。
-
 #### 15a. 位置系统（两个公共 API + 一个 Mixin）
 
-**使用的 API**（`fabric-rendering-v1` 16.2.10，版本已确认）：
+**API**（`fabric-rendering-v1` 16.2.10）：
 - `HudElementRegistry.attachElementAfter(FOOD_BAR, SAN_BAR_ID, element)` → 层序从下到上：**快捷栏 → 饱食度 → 理智值 → 其他 mod**
-- `HudStatusBarHeightRegistry.addRight(SAN_BAR_ID, provider)` → 占用高度，vanilla 的氧气条、手持物品名、overlay 文本自动上移让位
+- `HudStatusBarHeightRegistry.addRight(SAN_BAR_ID, provider)` → 报告占用高度，vanilla 的氧气条、手持物品名、overlay 文本自动上移让位
 - 渲染坐标向 `getHeight(SAN_BAR_ID)` **询问**而非固定像素
 
-**`getHeight(id)` 坐标语义（我踩了两次的坑，必须记）：**
-- 它返回的是**顶边 Y**，vanilla 直接把精灵画在这个 Y 上
-- 求和时**遇到自身即返回**，不含自己的高度（`resolveHeightProvider` 里 `if (heightProviderLocation.equals(id)) return heightProvider;`）
-- 正确写法：`guiHeight - getHeight(id)`，零额外偏移
-- 我第一次多减了 `BAR_HEIGHT`（条飘高一行），第二次又多减了 `OCCUPIED_HEIGHT`（还是高）
+**`getHeight(id)` 语义**：返回**顶边 Y**，且求和时**遇到自身即返回**（不含自己的高度）。正确写法 `guiHeight - getHeight(id)`，零额外偏移。这个坑我踩了两次，详见血泪教训 16。
 
-**Mixin `HudStatusBarHeightRegistryImplMixin`（第二个 Mixin，经评估无法避免）：**
+**Mixin `HudStatusBarHeightRegistryImplMixin`（第二个 Mixin，经评估无法避免）**
 
-注入点：`HudStatusBarHeightRegistryImpl.init()` 的 `@Inject HEAD`。时机是 `CLIENT_STARTED`，所有 mod 的 `onInitializeClient()` 都已执行完毕、`layers` ArrayList 已填满，但 `init()` 尚未读取它。
+注入 `HudStatusBarHeightRegistryImpl.init()` 的 `@Inject HEAD`——那是「所有 mod 注册完毕、`layers` 已填满，但顺序尚未被读取」的唯一时刻。职责**只是卡时机**：重排 `FOOD_BAR` 根层的 `layers`，把我们放在 vanilla `food_bar` 之后的第一位，这样其他 mod 排在我们上面。
 
-**Mixin 的唯一职责是卡时机，不改逻辑**：重排 `FOOD_BAR` 根层的 `layers`，把我们排在 vanilla `food_bar` 之后的第一位。这样其他 mod 排在我们上面，我们永远紧贴饱食度。
+**为什么不得不注入**：公共 API 无法表达「永远最后注册」。各 mod 的 `onInitializeClient()` 都早于 `CLIENT_STARTED`，而我们无法保证自己的 `CLIENT_STARTED` 监听器早于 fabric-rendering-v1 自己的。不需要 Accessor：`ROOT_ELEMENTS` 是 `public static final`，`RootLayer.layers()` 返回可变 `ArrayList`。
 
-**为什么不得不 Mixin**：公共 API 没有「永远最后注册」的表达能力。各 mod 的 `onInitializeClient()` 都早于 `CLIENT_STARTED`，但我们无法保证自己的 `CLIENT_STARTED` 监听器早于 fabric-rendering-v1 自己的——监听器按注册顺序触发，而模块初始化顺序不由我们控制。
-
-**不需要 Accessor**：`ROOT_ELEMENTS` 是 `public static final`，`RootLayer.layers()` 返回可变 `ArrayList`。
-
-**⚠️ 版本敏感警告**（类头已经写了，这里再强调一次）：
-这个 Mixin 针对 **Fabric API 内部实现**（`impl` 包），不是公共 API。仅在 MC 1.21.11 / fabric-rendering-v1 16.2.10 上验证过。**Fabric API 或 Minecraft 升级时必须重新验证以下三个点**（任何一个改变都会让本类失效）：
-1. `HudStatusBarHeightRegistryImpl.init()` 的方法签名和调用时机
-2. `HudElementRegistryImpl.ROOT_ELEMENTS` 的字段类型与访问性
-3. `RootLayer.layers()` 的返回类型（是否仍是 `ArrayList`）
+⚠️ **这是对 Fabric API `impl` 包的注入，不是公共 API**，仅在 MC 1.21.11 / fabric-rendering-v1 16.2.10 验证过。升级时必须重新核实三点（类头也写了）：`init()` 的签名与调用时机、`ROOT_ELEMENTS` 的类型与访问性、`RootLayer.layers()` 是否仍是 `ArrayList`。
 
 #### 15b. 渲染逻辑（SanBarHudElement）
 
-**常态**：81px 宽 × 10px 高的进度条，右对齐到饱食行右边缘（`guiWidth/2 + 91`）。颜色从 `0x9B6BC9`（紫，高 San）到 `0x7A1030`（血红，低 San）线性插值。文本 `San: 90.00%` 在条内居中。
+81px 宽 × 10px 高，右对齐到饱食行右边缘（`guiWidth/2 + 91`）。颜色 `0x9B6BC9`（紫，高 San）→ `0x7A1030`（血红，低 San）线性插值，文本 `San: 90.00%` 居中。
 
-**可见性规则**：
-- San 满 100% 时**不显示 HUD**，且**不占垂直空间**（`occupiedHeight()` 返回 0）
-- 低于阈值（默认 `show_below_percent: 100.0`）时一直显示
-- 回满时**约 1 秒淡出**，同时上方邻居平滑回落（高度随 alpha 同步收缩：`Math.max(1, Math.round(10 * alpha))`）
-- 淡出期间条本身位置不动（`getHeight` 求和不含自身高度），所以是「条原地变淡、上方东西平稳回落」
+**可见性**：满 100% 时不显示**且不占垂直空间**；低于阈值（`show_below_percent`）时常显；回满后约 1 秒淡出，**高度随 alpha 同步收缩**（`max(1, round(10 * alpha))`）——否则结束瞬间上方元素会跳 10 像素。淡出期间条本身位置不动（`getHeight` 不含自身），所以是「条原地变淡、上方平稳回落」。淡出用 `Util.getMillis()` 真实时间，不受 `/tick freeze` 影响。
 
-**淡出机制**：`Util.getMillis()` 真实时间（不受 `/tick freeze` 影响）。
+**数据来源**：`AbyssFallCoreSystem.get(player)`，即同步来的服务端权威值，与理智计数器同源。
 
-**数据来源**：与理智计数器同源——`AbyssFallCoreSystem.get(player)`，即 `syncWith(targetOnly())` 同步来的服务端权威值。计数器在服务端读（debug 工具不能信镜像），HUD 每帧从同步副本读（HUD 别无选择，且无理由不信）。
+#### 15c. 未来：图标式 HUD（可行性已验证，尚未实现）
 
-#### 15c. 未来：图标式 HUD（已验证可行，尚未实现）
+用户设想换成「和原版饱食度类似的 HUD，脑子图标」。已验证的证据：
 
-用户说「未来设想是将这个简陋的初版 HUD 换成一个和原版饱食度类似的 HUD」，已对可行性做了完整技术验证（第四次交接，**不动代码，只收集证据**）：
-
-**贴图自动注册**：vanilla 的 `DirectoryLister` 走 `ResourceManager.listResources` 遍历所有命名空间，`FileToIdConverter.fileToId` 用 `withPath` 只改路径、**保留原命名空间**。所以只要把贴图放在 `assets/abyssfall/textures/gui/sprites/hud/brain_full.png`，它就会自动进入 GUI 图集、得到 ID `abyssfall:hud/brain_full`。**不需要注册代码、不需要 Mixin、不需要 datagen。** 和 vanilla 的 `hud/food_full` 是平等的一等公民。
-
-**排布逻辑**：vanilla `Gui.renderFood` 的算法（已读 1.21.11 mojmap 源码）非常简单——`for (int i = 0; i < 10; i++)` 从右往左排，三种贴图（empty / half / full），20 点刻度。San 的 0~100 映射到 20 格就是 `Math.round(percent / 5)`。
-
-**位置系统完全不用改**：`OCCUPIED_HEIGHT = 10` 刚好就是 vanilla 一行状态栏高度，天生匹配图标式 HUD。`AbyssFallSanHud`（`attachElementAfter` + `addRight` + Mixin）一行都不动，只改 `SanBarHudElement.render` 的内容。
-
-**vanilla 现成范式**（免费效果）：
-- 状态异常换一套贴图：饥饿效果下 `food_*_hunger` 三套独立 sprite（`Gui:919-921`）
-- 抖动：饱和度为 0 时 `y += random.nextInt(3) - 1`（`renderFood` 里）——与 San 低时的「感知不可靠」主题契合度极高
-- 闪烁：生命值受伤时 `healthBlinkTime` 控制交替
+- **贴图零代码注册**：`DirectoryLister` 走 `ResourceManager.listResources` 遍历所有命名空间，`FileToIdConverter.fileToId` 用 `withPath` 保留命名空间。所以把图放进 `assets/abyssfall/textures/gui/sprites/hud/brain_full.png` 就自动进 GUI 图集、得到 `abyssfall:hud/brain_full`，**无需注册代码/Mixin/datagen**，与 vanilla 的 `hud/food_full` 平等。附带好处：玩家可用资源包替换。
+- **排布抄 `Gui.renderFood`**：10 个图标从右往左排、间距 8、三套贴图（empty/half/full）、20 点刻度。San 映射就是 `round(percent / 5)`。
+- **位置系统一行不用改**：`OCCUPIED_HEIGHT = 10` 正是 vanilla 一行状态栏高度，只需重写 `render` 内容。
+- **vanilla 现成范式**：饥饿效果换整套贴图（`Gui:919-921`）、饱和度为 0 时 `y += random.nextInt(3) - 1` 抖动（**与 San 主题契合度极高**）、受伤时 `healthBlinkTime` 闪烁。
 
 ### 16. 测试协议系统（第四次交接新增）
 
-`preLaunch` 入口点，在 Mixin bootstrap 之后、`onInitialize()` 之前执行。**目前是唯一一个 `preLaunch` 入口点。**
+唯一的 `preLaunch` 入口点，在 Mixin bootstrap 之后、`onInitialize()` 之前几秒执行。
 
-#### 为什么存在
-
-用户说：「算是和玩家的一些小约定，它们二次分发我们的 mod 我们也没办法，所以无需考虑 mod 被二次分发的后果，咱们的项目本来就是开源项目。」
-
-所以这是一个**告知机制，不是安全措施**。jar 是开源 GPL 的，检查可被轻易移除，这正是设计意图——没有人能声称他们不知道自己在运行什么。
-
-#### 行为
+用户的定位：「算是和玩家的一些小约定，它们二次分发我们的 mod 我们也没办法……咱们这个项目本来就是开源项目。」所以这是**告知机制而非安全措施**——jar 是 GPL 的、检查可被轻易移除，这正是设计意图。
 
 | 环境 | 行为 |
 |---|---|
-| **开发环境**（`isDevelopmentEnvironment()`） | 静默通过，不展示任何内容 |
-| **客户端（有显示器）** | 弹 Swing 对话框，显示中英双语文案 + 输入框 + 「复制仓库链接」按钮 |
-| **客户端（无头）** | 日志 WARN + **降级为服务器行为**（实测验证，无 `HeadlessException`） |
-| **服务器** | 日志 WARN 协议文案 + 日志 INFO Server 说明 + 日志 INFO 链接 |
+| 开发环境（`isDevelopmentEnvironment()`） | 静默通过，`runClient` 不受干扰 |
+| 客户端（有显示） | Swing 对话框：双语文案 + 输入框 + 「复制仓库链接」按钮 |
+| 客户端（无头） | WARN 后**降级为服务器行为**（已实测，无 `HeadlessException`） |
+| 服务器 | WARN 协议文案 + INFO Server 说明 + INFO 链接，**永不阻止启动** |
 
-**接受**：输入 `accept`（不区分大小写，去首尾空格）→ 日志 INFO → 正常加载。
+**接受**：`accept`（不区分大小写、去首尾空格）→ INFO → 继续加载。
+**拒绝**（输错/空/取消/关窗）：ERROR → 抛 `RuntimeException`。Loader 的 `handleFormattedException` 会自动记日志 + 弹错误窗 + `System.exit(1)`，**所以不要自己调 `System.exit()`**，那会绕过日志和错误窗。
 
-**拒绝**（输入其他、空、取消、关窗）：日志 ERROR → 抛 `RuntimeException` → Loader 自动包成 `FormattedException` → 日志记录原因 → 弹出错误窗口 → `System.exit(1)`。**不自己调 `System.exit()`**，Loader 的 `handleFormattedException`（`FabricLauncherBase:185-199`，源码已验证）已做全整套流程。
-
-**文案硬编码**（`agreement/AgreementText`）：`preLaunch` 阶段 Minecraft 翻译系统不存在，所以双语文案必须写在 Java 里。中文优先，英文在后，与 mod 其他玩家面向字符串的次序一致。
-
-**一个技术细节**：`preLaunch` 阶段**配置系统尚未加载**（`AbyssFallConfig.load()` 在 `onInitialize()` 中执行），所以记不住玩家的接受状态。协议要求每次都问，这正好符合「每次启动都看到」的设计意图。
-
-**实现注意事项**：
-- 必须是一个**独立的类**（`TestAgreement`），不引用任何其他 mod 类（包括 `AbyssFall.LOGGER`），否则会过早触发静态初始化器。为什么有「自己的 Logger」已在 javadoc 里写明。
-- 复制按钮走 `Toolkit.getDefaultToolkit().getSystemClipboard()` 而非 `Desktop.browse()`，因为该阶段启动浏览器不可预测，且 `Desktop` 支持不普遍。
-- 对话框文字用 JLabel 的 HTML 渲染（`width: 460px`）确保换行可读。
+**三个约束**：
+- **文案必须硬编码在 Java 里**（`agreement/AgreementText`）：该阶段无资源管理器、无翻译系统，lang 文件到不了这里。
+- **必须是独立类**，不引用任何其他 mod 类（含 `AbyssFall.LOGGER`），否则会过早触发静态初始化器——这是 `PreLaunchEntrypoint` javadoc 自己的警告。所以它有自己的 Logger。
+- **配置系统此时尚未加载**，记不住接受状态。正好符合「每次都问」的要求（用户明确要每次问，理由是记住的答案就是不再被阅读的答案）。
 
 ## Git / 发布流程（第一次交接时新建，以后由你负责）
 
@@ -714,111 +620,56 @@ en_us 的 `.dev` 值是 `" Dev Inventory"`（**有前导空格**），因为英�
 
 ### 仓库状态
 
-| 项 | 值 |
-|---|---|
-| 远端 | `https://github.com/Kainy030/AbyssFall-Fabric.git` |
-| 分支 | `main` |
-| 凭据 | 已缓存（`credential.helper=manager`），push 无需交互 |
-| git 用户 | Kainy / 1747110555@qq.com（global 已配） |
+远端 `https://github.com/Kainy030/AbyssFall-Fabric.git`，分支 `main`，凭据已缓存（`credential.helper=manager`，push 无需交互），git 用户 Kainy / 1747110555@qq.com。
 
-提交历史（**这张表必然过时，只作参考**，开工时现场核实）：
-```
-（截至第四次交接，main 已推送到远端，工作区 clean，最新提交是 v0.3-Dev 那批）
-```
-tag：`0.1-Dev`、`v0.2-Dev`、`v0.3-Dev`。
-
-**注意**：这一节容易过时。开工时用 `git --no-pager log --oneline -5; git status --short; git --no-pager tag` 现场核一遍，别信文档里的哈希。
+tag：`0.1-Dev`、`v0.2-Dev`、`v0.3-Dev`。**提交历史和哈希一律现场核实**（`git --no-pager log --oneline -5; git status --short; git --no-pager tag`），别信文档里写死的。
 
 ### tag 命名规则（重要）
 
-**历史**：`0.1-Dev` 无前缀，`v0.2-Dev` 起改为**带 `v` 前缀**（用户第三次会话时指定 `v0.2-Dev`，第四次会话的 `v0.3-Dev` 延续）。
-
-workflow 触发器同时接受两种形状，所以两者都能触发：
+`0.1-Dev` 无前缀，`v0.2-Dev` 起改为**带 `v` 前缀**。workflow 触发器同时接受两种形状：
 ```yaml
 tags:
   - '[0-9]+.[0-9]+*'      # 匹配 0.1-Dev
   - 'v[0-9]+.[0-9]+*'     # 匹配 v0.2-Dev
 ```
-**别把它简化成只留一种**——旧 tag 还在，两种都要能构建。也别改成常见的 `v*` 单一模板前先看清当前实际用的是哪种。
+**别简化成只留一种**——旧 tag 还在，两种都要能构建。
 
-注意 tag 名与 `gradle.properties` 的 `version` **不必完全一致**：`version=0.3-Dev`（jar 里的版本号，无 `v`），tag 是 `v0.3-Dev`。
+tag 名与 `gradle.properties` 的 `version` **不必一致**：`version=0.3-Dev`（jar 内的版本号，无 `v`），tag 是 `v0.3-Dev`。
 
 ### 三个发布产物
 
-`build.gradle` 里加了两个自定义任务：
+`build.gradle` 加了两个自定义任务：`javadocJar`（打包 API 文档，项目原本只有 `javadoc` 无打包任务）和 `releaseJars`（把三个 jar 按短名汇总到 `build/release/`）。
 
-| 任务 | 作用 |
-|---|---|
-| `javadocJar` | 打包 API 文档（项目原本只有 `javadoc` 任务，没有打包任务） |
-| `releaseJars` | 把三个 jar 按短名汇总到 `build/release/` |
-
-产出（`build/release/`）：
-
-| 文件 | 来源 |
-|---|---|
-| `abyssfall.jar` | `remapJar`（**不是 `jar`**，后者是 dev-mapped，真实环境跑不了） |
-| `abyssfall-doc.jar` | `javadocJar` |
-| `abyssfall-source.jar` | `remapSourcesJar` |
-
-`build/libs/` 同时保留 Gradle 标准命名版（`abyssfall-0.1-Dev[-sources|-javadoc].jar`），内容字节一致。
+产出：`abyssfall.jar`（来自 **`remapJar`**，不是 `jar`——后者 dev-mapped、真实环境跑不了）、`abyssfall-doc.jar`、`abyssfall-source.jar`。`build/libs/` 同时保留 Gradle 标准命名版，内容字节一致。
 
 **Javadoc 必须显式设 UTF-8**（`options.encoding` / `docEncoding` / `charSet`）：源码含中文注释和排印破折号，doclet 默认用平台编码（本机 GBK）会读失败。同时关了 doclint，因为 MC / Fabric API 无外链文档。
 
 ### GitHub Actions
 
-`.github/workflows/release.yml`，tag push 或手动 `workflow_dispatch` 触发。
-
-action 版本（都是当时查证过的最新版，将来可能需要再查）：
-`checkout@v7` / `setup-java@v5` / `setup-gradle@v6` / `action-gh-release@v3` / `upload-artifact@v7`
+`.github/workflows/release.yml`，tag push 或手动 `workflow_dispatch` 触发。action 版本（当时查证过的最新版，将来需再查）：`checkout@v7` / `setup-java@v5` / `setup-gradle@v6` / `action-gh-release@v3` / `upload-artifact@v7`。
 
 **三个关键设计点**：
-1. **不加 `--offline`** —— 本地能 offline 是因为缓存完整；CI 空缓存必须联网拉 Minecraft / Loom / Fabric API。首次约 3–8 分钟。
-2. **直接用 `setup-java` 提供 JDK 21，不靠 Gradle toolchain** —— `gradle.properties` 里 `auto-download=false` 且硬编码了本机 JDK 路径，CI 上那路径不存在。
-3. **`gradlew` 必须是 `100755`** —— Windows 建仓时它是 `100644`，Linux runner 上 `./gradlew` 会 `Permission denied`。已用 `git update-index --chmod=+x gradlew` 修好。**以后新建仓库或重置权限时要留意这一点。**
+1. **不加 `--offline`** —— 本地能 offline 是因为缓存完整；CI 空缓存必须联网拉 Minecraft / Loom / Fabric API，首次约 3–8 分钟。
+2. **直接用 `setup-java` 提供 JDK 21，不靠 Gradle toolchain** —— `gradle.properties` 里 `auto-download=false` 且硬编码了本机 JDK 路径，CI 上不存在。
+3. **`gradlew` 必须是 `100755`** —— Windows 建仓时它是 `100644`，Linux runner 上会 `Permission denied`。已用 `git update-index --chmod=+x gradlew` 修好。
 
-### 已验证的 CI 结果
-
-用户回报的 SHA256 与本地产物比对：
-
-| 文件 | 结果 |
-|---|---|
-| `abyssfall.jar` | ✅ `4ac04815...` 字节级一致 |
-| `abyssfall-source.jar` | ✅ `72f83330...` 字节级一致 |
-| `abyssfall-doc.jar` | ⚠️ 不一致（Javadoc HTML 内嵌时间戳/JDK 版本，CI 的 Temurin 与本机 JDK 21.0.10+7 不同。内容等价，非问题——这是推断，未逐字节 diff 证明） |
+**已验证的 CI 结果**（0.1-Dev 那次，用户回报 SHA256 比对）：`abyssfall.jar` 和 `abyssfall-source.jar` 字节级一致；`abyssfall-doc.jar` 不一致，因为 Javadoc HTML 内嵌时间戳/JDK 版本（内容等价，是推断，未逐字节 diff 证明）。
 
 ### 发布流程
 
 ```powershell
-# 1. 改代码、提交
-git add -A; git commit -m "..."
-git push origin main
-
-# 2. 打 tag 并推送 → CI 自动构建并附加三个 jar
-git tag -a '<版本>' -m 'AbyssFall <版本>'
-git push origin '<版本>'
+git add -A; git commit -m "..."; git push origin main
+git tag -a '<版本>' -m 'AbyssFall <版本>'; git push origin '<版本>'   # CI 自动构建并附加三个 jar
 ```
-
 也可在 Actions 页面手动 `workflow_dispatch` 选任意已有 tag 触发，不必重新打 tag。
 
-### 网络坑（实际遇到过）
-
-push 时偶发 `schannel: failed to receive handshake, SSL/TLS connection failed`。**读操作（`ls-remote`）正常、写操作失败 → 是网络不稳定，不是权限问题。** 这次连续失败 3 次、第 4 次成功。用重试循环：
-
-```powershell
-$env:GIT_TERMINAL_PROMPT='0'
-for($i=1;$i -le 5;$i++){
-  git push origin main 2>&1 | Out-String | Write-Output
-  if($LASTEXITCODE -eq 0){ Write-Output 'SUCCESS'; break }
-  Start-Sleep -Seconds 4
-}
-```
-注意 `Start-Sleep` 总时长要控制在 30 秒内，否则工具超时。
+**两个坑**：
+- push 时偶发 `schannel: failed to receive handshake`。**读操作（`ls-remote`）正常、写操作失败 → 是网络不稳定，不是权限问题**，重试即可（有次连失败 3 次、第 4 次成功）。重试循环的 `Start-Sleep` 总时长要控制在 30 秒内。
+- push 成功时 git 会把进度写到 stderr，**PowerShell 会因此报非零退出码**。看输出里有没有 `<old>..<new> main -> main` 才是判断依据，别信退出码。
 
 ### GitHub 的一个认知点
 
-用户曾疑惑「手动用 tag 构建版本，Assets 里只有 Source code (.zip/.tar.gz)」。
-
-**这是正常的**：那两个源码包是 GitHub 按 tag 自动生成、无法删除；编译产物 GitHub 永远不会自己生成，必须上传或用 CI。「用 tag 创建 Release」只是建了个条目，没有发生任何编译。
+用户曾疑惑「手动用 tag 构建版本，Assets 里只有 Source code」。**这是正常的**：那两个源码包由 GitHub 按 tag 自动生成、无法删除；编译产物 GitHub 永远不会自己生成，必须上传或用 CI。「用 tag 创建 Release」只是建了个条目，没有发生任何编译。
 
 **`gh` CLI 本机未安装**，所以你无法查询 Actions 运行状态或创建 Release。需要时让用户去页面看，或建议他装 `winget install --id GitHub.cli`。
 
@@ -847,43 +698,33 @@ $z.Dispose()
 
 7. **先问清设计理念，再动手写抽象**。San 系统第一版我自作主张加了 `SanStage` 三档枚举，用户随后明确要求改成连续参数，整个枚举白写。**用户说「引入一个概念」时，先确认它是离散的还是连续的。**
 
-8. **别凭记忆写 action 版本号**。我第一版写 `upload-artifact@v4`，查证后实际最新是 v7。GitHub Actions 生态版本迭代快，写之前去 `releases/latest` 查。
+9. **工具的硬限制**（都实际撞过）：`editor` 单次 6000 字符上限，写长文件要分段；`editor` 不能无 `old_text` 覆盖已存在文件，要整体重写就先 `Remove-Item`；`run_commands` 30 秒硬上限，`Start-Sleep 45` 直接失败、长构建可能被截断（重跑看 `UP-TO-DATE` 判断上次是否已成功）；`Select-String` **没有** `-Recurse`，要递归搜得先 `Get-ChildItem -Recurse -File src -Include *.java` 再管道；PowerShell **不支持 heredoc**，多行 commit message 要先写进临时文件再 `git commit -F`。
 
-9. **`editor` 工具单次 6000 字符上限**。写长文件要分段插入，否则报错重来浪费 token。
-
-10. **`run_commands` 30 秒硬上限**。`Start-Sleep 45` 会直接失败；长构建可能被截断，重跑看 `UP-TO-DATE`。
+10. **别凭记忆写版本号**。我第一版写 `upload-artifact@v4`，查证后实际最新是 v7。GitHub Actions 生态迭代快，写之前去 `releases/latest` 查。同理适用于 Minecraft API：本轮我按印象写 `ARGB.lerp`（1.21.11 **不存在**，改用逐通道 `Mth.lerpInt`）、又搞错 `Util` 的包名（是 `net.minecraft.util.Util`）。**颜色和工具类的 API 变动频繁，写之前用 MCP 核实。**
 
 11. **删 tag 重建时先确认远端删成功了再建本地**。我这次远端删除失败（网络）但本地已删，导致中间状态不一致，多花了几轮才理清。
 
 12. **别把文档里的「原则」当成「待办」**。第二次交接时，我读到 HANDOFF 写「零 Mixin」、又在代码里看到 `ServerPlayerEvents.JOIN` 钩子，就当成矛盾去报给用户。用户澄清：他的原则是「最大程度不用 Mixin、优先用 Fabric API 事件」，而**代码里存在的钩子都是不得不用的、已经评估过的**。教训：看到文档与代码「像是」冲突时，先读代码注释里的理由，多数时候上一个你已经解释过了。
 
-13. **`Select-String` 没有 `-Recurse` 参数**。要递归搜项目文件得先 `Get-ChildItem -Recurse -File src -Include *.java` 再管道给 `Select-String`。我这次直接写 `-Recurse` 报错浪费了一轮。
-
-14. **不要凭公式自证，跑一遍**（第三次交接）。`flower_chance` 的权重换算我推导完觉得没问题，实际编译跑起来才发现 `p=1.0` 会算出 50% 而不是 100%。同一轮里还发现 `optionalFieldOf` 会让默认配置文件写成 `{}`。**这两个 bug 都是「跑」发现的，读代码读不出来。** 涉及数值换算和序列化时，写个临时类挂到项目真实 classpath 上跑一次，成本极低：
+13. **不要凭公式自证，跑一遍**。`flower_chance` 的权重换算我推导完觉得没问题，实际编译跑起来才发现 `p=1.0` 会算出 50% 而不是 100%；同一轮还发现 `optionalFieldOf` 会让默认配置文件写成 `{}`。**这两个 bug 都是「跑」发现的，读代码读不出来。** 涉及数值换算、序列化、或任何「无头环境会不会炸」的判断时，写个临时类挂到项目真实 classpath 上跑一次，成本极低：
 ```powershell
-# 临时往 build.gradle 加个任务取 classpath，用完删掉并用 git diff 确认还原
+# 临时往 build.gradle 加个任务取 classpath，用完删掉
 tasks.register('afPrintCp') { doLast { println sourceSets.main.runtimeClasspath.asPath } }
-# 然后 javac -nowarn -proc:none -cp <classpath> -d out Check.java && java -cp out;<classpath> Check
+# 然后 javac -nowarn -cp <classpath> -d out Check.java && java -cp "out;<classpath>" Check
 ```
-用完记得删临时文件、还原 `build.gradle`，并用 `git status` / `git diff` 确认工作区干净。
+⚠️ **用完必须清干净，包括 `build.gradle` 里的临时任务**——本轮我的备份文件被中途一次 `Move-Item` 消耗掉，临时任务留在了文件里，最后靠 `git checkout -- build.gradle` 还原。**每轮结束前用 `git status --short` 逐行看，别只看自己记得改过的文件。**
 
-15. **`editor` 工具不能直接覆盖已存在的文件**（没有 `old_text` 会报错）。要整体重写一个文件就先 `Remove-Item` 再创建。
+14. **文件名里不能有 `:`**（Windows）。用户要的时间戳格式含冒号，实测创建失败。**任何要写进文件名的用户输入格式都先验一下**，别等运行时才炸。
 
-16. **文件名里不能有 `:`**（Windows）。用户要的时间戳格式含冒号，实测创建失败。**任何要写进文件名的用户输入格式都先验一下**，别等运行时才炸。
+15. **报告技术约束时先核实，别顺着需求答应**。用户要求「注入失败就 WARN」，我先去读了 `LootTableEvents.Modify` 的签名，发现返回 `void`、不存在失败状态，于是把方案改成「检测配置的表从未加载」并说明了原因。**上一轮我还犯过反例**：没核实就断言「别的 mod 的表往往不是 builtin」，实际 `LootTableSource.MOD` 的 `isBuiltin()` 是 true，判断完全错了。
 
-17. **报告技术约束时先核实，别顺着需求答应**。用户要求「注入失败就 WARN」，我先去读了 `LootTableEvents.Modify` 的签名，发现返回 `void`、不存在失败状态，于是把方案改成「检测配置的表从未加载」并说明了原因。**上一轮我还犯过反例**：没核实就断言「别的 mod 的表往往不是 builtin」，实际 `LootTableSource.MOD` 的 `isBuiltin()` 是 true，判断完全错了，下一轮读源码才纠正。
+16. **坐标 API 别按名字猜语义**（本轮同一个坑踩了两次）。`HudStatusBarHeightRegistry.getHeight(id)` 听起来像「高度」，实际返回**顶边 Y 坐标**且**求和不含自身**。我先减了一次 `BAR_HEIGHT`（条飘高一行），用户说「还是高」，我又减了 `OCCUPIED_HEIGHT`（还是高）。**正确做法是先读官方 javadoc 的用法示例**——它写的就是 `guiHeight() - getHeight(id)`，零额外偏移。两次都是我先动手改数字、后找证据。
 
-18. **坐标 API 别按名字猜语义**（第四次交接，同一个坑踩了两次）。`HudStatusBarHeightRegistry.getHeight(id)` 听起来像「高度」，实际返回的是**顶边 Y 坐标**，而且**求和时不含自身**。我先减了一次 `BAR_HEIGHT`（条飘高一行），用户说「还是高」，我又减了 `OCCUPIED_HEIGHT`（还是高）。**正确做法是先去读官方 javadoc 的用法示例**——它写的就是 `guiHeight() - getHeight(id)`，零额外偏移。两次都是我先动手改数字、后找证据。
+17. **枚举的「等级」和「名字」不是一回事**。用户说「4 级权限（管理员权限 GameMaster）」，我核实后发现 1.21.11 的 `GAMEMASTERS` 是 **2 级**、4 级叫 `OWNERS`。**报给用户让他选，而不是自己挑一个**——他选了 3 级 `ADMINS`。
 
-19. **1.21.11 的 `ARGB` 没有 `lerp`**（第四次交接，编译报错才发现）。我按印象写了 `ARGB.lerp`，实际不存在，改用逐通道 `Mth.lerpInt(float, int, int)`。同一轮还搞错了 `Util` 的包名（是 `net.minecraft.util.Util`，不是 `net.minecraft.Util`）。**颜色和工具类的 API 变动频繁，写之前用 MCP 核实。**
+18. **工具报「找不到」时，先判断是能力边界还是真不存在**。`analyze_mixin` 只认 Minecraft 类、**不认 Fabric API 的 `impl` 类**，注入 `HudStatusBarHeightRegistryImpl` 时它报 `target_not_found`，但目标其实存在。改用直接读 jar 字节码确认方法存在 + 编译通过来证明签名正确。
 
-20. **枚举的「等级」和「名字」不是一回事**（第四次交接）。用户说「4 级权限（管理员权限 GameMaster）」，我核实后发现 1.21.11 的 `GAMEMASTERS` 是 **2 级**、4 级叫 `OWNERS`。**报给用户让他选，而不是自己挑一个**——他选了 3 级 `ADMINS`。如果我按「GameMaster」写就会给 2 级，按「4 级」写就会给 `OWNERS`，两个都不是他想要的。
-
-21. **`analyze_mixin` 只认 Minecraft 类，不认 Fabric API 的 `impl` 类**（第四次交接实测）。注入 `HudStatusBarHeightRegistryImpl` 时它报 `target_not_found`，这**不是说注入目标不存在**。改用直接读 jar 字节码确认方法存在，加上编译通过来证明签名正确。**工具报找不到时，先判断是工具的能力边界还是真的不存在。**
-
-22. **改配置键名会静默破坏用户的本机配置**（第四次交接）。加字段永不坏旧文件，但改名会让整块回落默认。**改名时必须主动告知用户去改他的 `run/config/abyssfall.json`**，别让他的设置无声失效。详见「配置系统」一节的实测输出。
-
-23. **临时验证文件要清干净，包括 `build.gradle` 的临时任务**（第四次交接差点漏掉）。我往 `build.gradle` 追加了导出 classpath 的临时任务，用 `Copy-Item` 做了备份，但中途一次 `Move-Item` 把备份消耗掉了，导致临时任务留在文件里。最后是 `git checkout -- build.gradle` 还原的。**每轮结束前用 `git status --short` 逐行看，别只看自己记得改过的文件。**
+19. **改配置键名会静默破坏用户的本机配置**。加字段永不坏旧文件，但改名会让整块回落默认。**改名时必须主动告知用户去改他的 `run/config/abyssfall.json`**，别让他的设置无声失效。详见「配置系统」一节。
 
 
 ---
@@ -898,58 +739,25 @@ tasks.register('afPrintCp') { doLast { println sourceSets.main.runtimeClasspath.
 
 **用「开工前请做」里的命令现场核一遍 Git 状态，别信文档里的哈希和清单。**
 
-### 用户已在 runClient 实测通过的功能
+### 已实测通过的功能（用户在真实环境验证，别再列成待确认项去催他测）
 
-**前两次会话**：创造标签双色标题、tooltip 不再变蓝、深渊之花 EPIC 紫色、宝箱掉落、药水效果必定掉落、村民箱子不掉落、玫瑰可种深渊污泥、其他作物不可种、骨粉催熟出花且玫瑰被消耗、灵魂特效、三个成就正常触发。
+**San 系统全部通过**，包括 `/san` 8 条、持久化、死亡保留、权限分级、**以及客户端同步**（曾悬了两次交接的未验证项，第三次会话已关闭）。
 
-**第三次会话（用户明确回报「功能全部验证完毕，全部可用」）**：
-1. 理智计数器右键显示 San、3 秒淡出、重按续期（用户评价「第三条实现的很完美」，指三色标题 tooltip 不变蓝）
-2. 开发者物品栏三色标题、条件注册（`false` 时标签与物品都不存在）
-3. 配置文件生成、读取、各项生效
-4. **坏 JSON 备份+重写**，用户提供的日志证据：
-   ```
-   [Render thread/ERROR] (abyssfall) Could not understand
-   D:\...\run\config\abyssfall.json; it has been moved to
-   abyssfall.json.broken-2026-08-20_10-52-50 and replaced with default settings
-   ```
+**内容与交互**：创造标签双色/三色标题、tooltip 不变蓝、深渊之花 EPIC 紫色、宝箱掉落、药水效果必定掉落、村民箱子不掉落、玫瑰可种深渊污泥而其他作物不可、骨粉催熟出花且玫瑰被消耗、灵魂特效、三个成就正常触发。
 
-5. **客户端确实收到了同步的 San 值**（用户第三次会话结束时确认「已验证，完全没问题」）
+**配置系统**：文件生成/读取/各项生效、开发者物品栏条件注册（`false` 时标签与物品都不存在）、理智计数器 3 秒淡出与重按续期、**坏 JSON 备份+重写**（用户提供了日志证据）。
 
-坏文件测试留下的 `abyssfall.json.broken-...` 用户已手动删除，`run/config/` 现在只有 `abyssfall.json`。
+**第四次会话**：HUD 全部行为（100% 时无 HUD 且不占空间、颜色与条长随 San 变化、紧贴饱食度且饱食度不移位、约 1 秒淡出且结束时上方不跳、氧气条/物品名不压住、F1 一同隐藏、三处读数一致）、DEV 图标（第一版 V 平底被读作 DEU，改 5 列尖底后通过）、`dev_tools`/`dev_command` 拆分、`/san` 3 级权限。**测试协议系统是用户自己 build 后放进真实玩家环境测的**（非 runClient），所以 Swing 弹窗在 `preLaunch` 时机确实能正常显示。
 
-**第四次会话（用户逐项回报通过）**：
-1. **HUD 全部功能** —— 用户原话「已完全实现……所有待验证的东西全部验证完毕」：
-   - San 100% 时无 HUD、不占垂直空间；`/san set` 后立即出现
-   - 条长与颜色随 San 变化、文本 `San: xx.xx%`、与 `/san` 和理智计数器三者读数一致
-   - 位置紧贴饱食度上方、右边缘与饱食行对齐、饱食度未移位
-   - `/san restore` 回满后约 1 秒淡出、淡出结束上方元素不跳
-   - 氧气条/手持物品名不压住理智值条、F1 隐藏时一同消失
-2. **DEV 图标** —— 第一版 V 是平底被读作 DEU，改成 5 列单像素尖底后通过
-3. **测试协议系统** —— 用户原话「我刚刚自己 build 了之后放进了玩家环境下测试，一切正常」。**注意这是在真实玩家环境（非 runClient）测的**，所以 Swing 弹窗在 `preLaunch` 时机确实能正常显示。
-4. `dev_tools` / `dev_command` 改名与拆分、`/san` 3 级权限
+### 我用真实 classpath 实测过的行为（非推断）
 
-### 我第四次会话用真实 classpath 实测过的行为（非推断）
+**第三次会话（9 项）**：默认配置文件三块完整输出、往返一致、默认 18 张表、权重换算 5 个值精确、`p=1.0` 走 guaranteed、`p=0.0` 不注入池、粒子倍率（含 `0.05→1` 不归零）、音量倍率、残缺文件其余项回落默认、外部 mod 表 ID 可解析、越界值整块回落。
 
-- **配置**：默认写出含两项 developer + hud 块、`dev_inventory` 旧键整块回落、只给一个新键仍整块回落、两个键都给才生效、旧三块文件其余块不受影响且自动补 hud 块（20 项）
-- **测试协议**：无头环境下 `askClient()` **不抛异常**、正确降级为服务器行为并打出完整双语日志；密钥比较 8 个输入（`accept`/`ACCEPT`/`aCcEpt`/`Accept`/带空格 → 通过；`accepted`/`acept`/空 → 拒绝）
-- **DEV 图标**：`System.Drawing` 读回逐像素比对，16×16 只含 `0,0,0,0` 和 `255,0,0,0` 两种 ARGB 值
-- **jar 内容**：解包确认 `fabric.mod.json` 含 `preLaunch` 入口点、`agreement` 两个 class 在包内
+**第四次会话（20 项）**：配置（默认写出含两项 developer + hud 块、旧键与缺字段都整块回落、两键齐全才生效、旧文件其余块不受影响且自动补 hud 块）；测试协议（无头环境不抛异常、正确降级、密钥比较 8 个输入全对）；DEV 图标（逐像素比对只含两种 ARGB 值）；jar 内容（解包确认 `preLaunch` 入口点与 `agreement` 两个 class 在包内）。
 
-### 我本次用真实 classpath 实测过的行为（非推断）
+### CI 状态
 
-编译临时测试类挂项目 classpath 跑出来的，9 项全过：
-默认配置文件三块完整输出、往返一致、默认 18 张表、权重换算 5 个值精确、`p=1.0` 走 guaranteed、`p=0.0` 不注入池、粒子倍率（含 `0.05→1` 不归零）、音量倍率、残缺文件其余项回落默认、外部 mod 表 ID 可解析、越界值整块回落。
-
-### San 系统：已实测通过（第二次会话确认，本次未变动）
-
-`/san` 全部 8 条、持久化、死亡保留、权限分级都已实测。**不要再列成待确认项去催用户测。**
-
-**San 系统已全部实测通过，包括客户端同步。** 用户在第三次会话结束时明确回报「客户端是否真收到 San 同步值 —— 已验证，完全没问题」。**这条悬了两次交接的未验证项现在已经关闭，不要再把它列成待确认项。**
-
-### 第二次交接时的 CI 结论（仍然有效，本次未重跑）
-
-
-CI 首次运行**成功**，三个 jar 已附加到 Release `0.1-Dev`，mod jar 与 source jar 与本地产物字节级一致。**第四次会话没有重跑 CI**，但推送了 tag `v0.3-Dev`，workflow 应会自动构建——**下一个你开工时可以去 GitHub Actions 核实 v0.3-Dev 的运行结果，我没有等它跑完。**
+首次运行（0.1-Dev）**成功**，三个 jar 已附加到 Release，详见上面「GitHub Actions」一节的 SHA256 比对。**第四次会话推送了 tag `v0.3-Dev` 但没有等 CI 跑完** —— 下一个你可以去 GitHub Actions 核实它的运行结果。
 
 ---
 
@@ -957,29 +765,22 @@ CI 首次运行**成功**，三个 jar 已附加到 Release `0.1-Dev`，mod jar 
 
 **San 系统（项目主线）**
 - 事件无任何监听者，框架就绪但未接入任何玩法
-- 差异化渲染（San 低的玩家看到不同渲染）—— 用户明确说以后开发
 - 什么行为改变 San、什么行为改变上限 —— 全未设计
-- ~~无 HUD~~ **已有 HUD**（第四次交接完成，见「15. HUD 系统」）。用户第三次会话时说的「暂时别设置可视化的 HUD」已在第四次会话被他自己推翻。
+- 差异化渲染（San 低的玩家看到不同渲染）—— 用户明确说以后开发
 - 未来的 San 显示道具：**用户明确说「我没构思好，等我想出来之后会主动说」，不要主动追问、不要自行设计。** 大纲讨论过的四个待定点（与理智计数器并存、手持还是背包内、单向解锁还是双向切换、是否有耐久/时效）已从待办中划走。
 
 **内容**
-- 深渊污泥仍用原版泥土材质（用户说「暂时」）
-- `abyss_gardeners` 图标是向日葵占位、`abyssdirt` 是原版泥土（用户说「暂时替换」）
-- 理智计数器图标是原版时钟 `clock_00` 占位（**指针不会转**，因为原版时钟靠 `range_dispatch` 切 64 个模型才会转；要转就改那个 json）
+- 深渊污泥仍用原版泥土材质、`abyss_gardeners` 成就图标是向日葵、理智计数器图标是原版时钟 `clock_00`（**指针不会转**，原版时钟靠 `range_dispatch` 切 64 个模型才会转）——都是占位，用户说「暂时」
 - 深渊之花无实际功能（纯注册占位）
 - 「深渊探索者」效果无获取途径，只被战利品侧读取
 - 无配方、无 datagen、无自定义音效资源
-- ~~`abyssfall.client.mixins.json` 的 `client` 数组为空~~ **已有一个 client mixin**（`HudStatusBarHeightRegistryImplMixin`），`AbyssFallClient` 不再是空实现
 - DEV 图标物品 `abyss_dev_icon` **刻意不命名**（保持键值显示），这是用户要求，不要「补全」它的 lang key
 
-**配置系统（本次新建，已可用，可继续扩展）**
-- 只有 3 个块 7 个配置项。用户预期「以后可自定义配置会特别多」，架构已就绪，加块加项照「配置系统」一节的流程即可
+**配置系统（已可用，可继续扩展）**
+- 目前 4 个块 6 个配置项。用户预期「以后可自定义配置会特别多」，架构已就绪，加块加项照「配置系统」一节的流程即可
 - **不做热加载**是用户明确要求，别自作主张开
-- 上一轮讨论中被用户明确否决/搁置的候选项，别再提：
-  - 凋零玫瑰能种在深渊污泥上 —— **不进配置**，用户说是核心机制
-  - 骨粉催熟机制开关 —— **不进配置**，用户说是核心机制、不给别的 mod 让路（只有特效可调）
-  - `isBuiltin()` 保留拦截 —— 用户明确要求以后不要再提这个选项
-- 我曾建议但**用户尚未表态**的：San 相关阈值不该进配置（因为 San 上限是存档数据，改配置会让新老玩家规则不一致，还可能静默 clamp 玩家数据）。真要做之前先问。
+- 被用户明确否决/搁置的候选项，**别再提**：凋零玫瑰能种深渊污泥（核心机制，不进配置）、骨粉催熟机制开关（同上，只有特效可调）、`isBuiltin()` 保留拦截（用户明确要求以后不要再提）
+- 我曾建议但**用户尚未表态**的：San 相关阈值不该进配置（San 上限是存档数据，改配置会让新老玩家规则不一致，还可能静默 clamp 玩家数据）。真要做之前先问。
 - `ALL_LOADED` 是否在每次 `/reload` 都触发，**仍未实测**。若不触发，未命中表的 WARN 只会在首次加载时报告一次。
 
 
