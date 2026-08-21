@@ -500,6 +500,7 @@ tasks.register('afPrintCp') { doLast { println sourceSets.main.runtimeClasspath.
 
 ## 开工前请做
 
+0. **本文件通读完**，再按需查 `REFERENCE.md`（要动哪个已有功能就读它那一节，别通读）
 1. 读 `gradle.properties`、`fabric.mod.json`、`AbyssFall.java` 确认状态与本文档一致
 2. 读 `src/main/java/com/abyssfall/core/` 全部四个文件——这是项目地基
 2b. 读 `src/main/java/com/abyssfall/config/` 全部六个文件——这是第二块地基，以后加配置都走它
