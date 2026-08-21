@@ -47,9 +47,10 @@ import com.abyssfall.AbyssFall;
  * @param loot      which loot tables the flower appears in, and how often
  * @param visuals   how loud and how busy the mod's effects are
  * @param hud       when the San readout above the hotbar is shown
+ * @param san       under which circumstances the world may erode a player's San
  */
 public record AbyssFallConfigData(DeveloperSettings developer, LootSettings loot,
-		VisualSettings visuals, HudSettings hud) {
+		VisualSettings visuals, HudSettings hud, SanSettings san) {
 	/**
 	 * The configuration a fresh install gets, and the fallback whenever a file cannot be read.
 	 *
@@ -60,7 +61,7 @@ public record AbyssFallConfigData(DeveloperSettings developer, LootSettings loot
 	 */
 	public static final AbyssFallConfigData DEFAULT = new AbyssFallConfigData(
 			DeveloperSettings.DEFAULT, LootSettings.DEFAULT, VisualSettings.DEFAULT,
-			HudSettings.DEFAULT);
+			HudSettings.DEFAULT, SanSettings.DEFAULT);
 
 	/**
 	 * Every block is read leniently, so a configuration file containing only the sections a
@@ -91,34 +92,46 @@ public record AbyssFallConfigData(DeveloperSettings developer, LootSettings loot
 					.orElse((Consumer<String>) error -> AbyssFall.LOGGER.warn(
 							"No readable 'hud' config block ({}); using its defaults", error),
 							HudSettings.DEFAULT)
-					.forGetter(AbyssFallConfigData::hud)
+					.forGetter(AbyssFallConfigData::hud),
+			SanSettings.LENIENT_CODEC.fieldOf("san")
+					.orElse((Consumer<String>) error -> AbyssFall.LOGGER.warn(
+							"No readable 'san' config block ({}); using its defaults", error),
+							SanSettings.DEFAULT)
+					.forGetter(AbyssFallConfigData::san)
 	).apply(instance, AbyssFallConfigData::new));
 
 	/**
 	 * This configuration with a different developer block.
 	 */
 	public AbyssFallConfigData withDeveloper(DeveloperSettings value) {
-		return new AbyssFallConfigData(value, this.loot, this.visuals, this.hud);
+		return new AbyssFallConfigData(value, this.loot, this.visuals, this.hud, this.san);
 	}
 
 	/**
 	 * This configuration with a different loot block.
 	 */
 	public AbyssFallConfigData withLoot(LootSettings value) {
-		return new AbyssFallConfigData(this.developer, value, this.visuals, this.hud);
+		return new AbyssFallConfigData(this.developer, value, this.visuals, this.hud, this.san);
 	}
 
 	/**
 	 * This configuration with a different visuals block.
 	 */
 	public AbyssFallConfigData withVisuals(VisualSettings value) {
-		return new AbyssFallConfigData(this.developer, this.loot, value, this.hud);
+		return new AbyssFallConfigData(this.developer, this.loot, value, this.hud, this.san);
 	}
 
 	/**
 	 * This configuration with a different hud block.
 	 */
 	public AbyssFallConfigData withHud(HudSettings value) {
-		return new AbyssFallConfigData(this.developer, this.loot, this.visuals, value);
+		return new AbyssFallConfigData(this.developer, this.loot, this.visuals, value, this.san);
+	}
+
+	/**
+	 * This configuration with a different san block.
+	 */
+	public AbyssFallConfigData withSan(SanSettings value) {
+		return new AbyssFallConfigData(this.developer, this.loot, this.visuals, this.hud, value);
 	}
 }

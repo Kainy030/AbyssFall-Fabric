@@ -43,6 +43,17 @@ public final class AbyssFallItems {
 	public static final Item ABYSS_FLOWER = register("abyss_flower", Item::new,
 			new Item.Properties().rarity(Rarity.EPIC));
 
+	/**
+	 * Cognition Lens — switches the San readout between the icon row and the percentage bar.
+	 *
+	 * <p>Registered here rather than in {@code AbyssFallDevInventory} even though it was built from
+	 * the San Counter, because it is player-facing content: it reveals nothing the design wants
+	 * hidden, only changing how an already-visible reading is drawn. Stacks to one, since a second
+	 * copy would do nothing a first cannot.
+	 */
+	public static final Item SAN_LENS = register("san_lens", SanLensItem::new,
+			new Item.Properties().stacksTo(1));
+
 	private AbyssFallItems() {
 	}
 

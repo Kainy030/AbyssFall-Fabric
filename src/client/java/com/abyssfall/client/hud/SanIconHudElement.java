@@ -36,6 +36,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudStatusBarHeightRegistr
 import com.abyssfall.AbyssFall;
 import com.abyssfall.config.AbyssFallConfig;
 import com.abyssfall.core.AbyssFallCoreSystem;
+import com.abyssfall.core.SanHudModeState;
 import com.abyssfall.core.SanState;
 
 /**
@@ -470,17 +471,34 @@ public final class SanIconHudElement implements HudElement {
 	 *
 	 * <p>Fully opaque while the reading is low enough to warrant showing, then easing to nothing
 	 * over {@link #FADE_OUT_MILLIS} from the moment it stopped being.
+	 *
+	 * <p>A mode switch overrides that: for {@link SanHudModeState#REVEAL_MILLIS} the row is held
+	 * fully opaque whatever the reading is, and the fade is measured from the end of that window
+	 * rather than from whenever San last warranted showing. Without it, switching readouts at full
+	 * San would appear to do nothing — the very moment a player is looking is the moment the row is
+	 * normally hidden. Both readouts do this identically, so a switch reveals whichever one is being
+	 * switched to.
 	 */
 	private float alphaFor(SanState state, long now) {
 		if (AbyssFallConfig.hud().shouldShow(state.percent())) {
 			return 1.0F;
 		}
 
-		if (this.lastShownAt == 0L) {
+		// The later of the two: the last time San itself warranted showing, and the end of the
+		// post-switch reveal. Taking the later one is what lets a switch extend a fade that was
+		// already running instead of being ignored because the row had recently been visible.
+		long from = Math.max(this.lastShownAt, SanHudModeState.revealEndsAt());
+
+		if (from == 0L) {
 			return 0.0F;
 		}
 
-		long elapsed = now - this.lastShownAt;
+		if (now < from) {
+			// Inside the reveal window.
+			return 1.0F;
+		}
+
+		long elapsed = now - from;
 
 		if (elapsed >= FADE_OUT_MILLIS) {
 			return 0.0F;

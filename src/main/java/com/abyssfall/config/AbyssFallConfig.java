@@ -143,6 +143,25 @@ public final class AbyssFallConfig {
 	}
 
 	/**
+	 * The San settings: under which circumstances the world may erode a player's San.
+	 */
+	public static SanSettings san() {
+		return data.san();
+	}
+
+	/**
+	 * Whether Peaceful difficulty should shield a player from losing San.
+	 *
+	 * <p>A shortcut worth having for the same reason the two developer gates have one: it is
+	 * consulted from {@link com.abyssfall.core.AbyssFallCoreSystem#erode}, on a path that runs
+	 * every time the world tries to take San from anyone, and reads better there as a plain
+	 * condition than as a walk through {@link #get()}.
+	 */
+	public static boolean doesPeacefulPreventSanLoss() {
+		return data.san().peacefulPreventsLoss();
+	}
+
+	/**
 	 * Reads the configuration file, creating it with the defaults if it is not there.
 	 *
 	 * <p>Must be called before any conditional registration happens. Never throws: any problem

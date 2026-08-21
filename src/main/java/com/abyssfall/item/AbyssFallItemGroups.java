@@ -93,6 +93,7 @@ public final class AbyssFallItemGroups {
 		ItemGroupEvents.modifyEntriesEvent(ABYSSFALL_TAB_KEY)
 				.register(entries -> {
 					entries.accept(AbyssFallItems.ABYSS_FLOWER);
+					entries.accept(AbyssFallItems.SAN_LENS);
 					entries.accept(AbyssFallBlocks.ABYSS_DIRT);
 				});
 	}

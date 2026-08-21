@@ -36,6 +36,18 @@ public final class AbyssFallEffects {
 			new AbyssExplorerEffect()
 	);
 
+	public static final Holder<MobEffect> SAN_BREAKDOWN = Registry.registerForHolder(
+			BuiltInRegistries.MOB_EFFECT,
+			AbyssFall.id("san_breakdown"),
+			new SanBreakdownEffect()
+	);
+
+	public static final Holder<MobEffect> SAN_SPIRITED = Registry.registerForHolder(
+			BuiltInRegistries.MOB_EFFECT,
+			AbyssFall.id("san_spirited"),
+			new SanSpiritedEffect()
+	);
+
 	private AbyssFallEffects() {
 	}
 

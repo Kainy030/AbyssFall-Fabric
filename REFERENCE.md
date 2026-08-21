@@ -27,24 +27,31 @@ src/main/java/com/abyssfall/
 ├── config/DeveloperSettings.java
 ├── config/HudSettings.java             ← 第四次交接新增
 ├── config/LootSettings.java
+├── config/SanSettings.java             ← 第七次交接新增（和平模式不掉 San）
 ├── config/VisualSettings.java
 ├── core/AbyssFallCoreSystem.java       ← San 系统，见 HANDOFF 「核心系统：San 值」
 ├── core/AbyssFallSanCommand.java
 ├── core/SanChangedCallback.java
+├── core/SanHudMode.java                ← 第七次交接新增（两种读数的枚举）
+├── core/SanHudModeState.java           ← 第七次交接新增（客户端当前读数，见 15c）
 ├── core/SanState.java
 ├── effect/AbyssExplorerEffect.java
 ├── effect/AbyssFallEffects.java
+├── effect/SanBreakdownEffect.java      ← 第七次交接新增（精神崩溃）
+├── effect/SanSpiritedEffect.java       ← 第七次交接新增（精神饱满）
 ├── item/AbyssFallDevInventory.java     ← 开发者物品栏（条件注册）
 ├── item/AbyssFallItemGroups.java
 ├── item/AbyssFallItems.java
 ├── item/SanCounterItem.java            ← 理智计数器（debug 工具）
+├── item/SanLensItem.java               ← 第七次交接新增（认知窥镜）
 ├── loot/AbyssFallLootTables.java
 └── mixin/WitherRoseBlockMixin.java
 src/client/java/com/abyssfall/client/
 ├── AbyssFallClient.java                                ← 不再是空实现
 ├── hud/AbyssFallSanHud.java                            ← San HUD 注册
-├── hud/SanIconHudElement.java                          ← 图标行渲染（当前使用的 HUD）
-├── hud/SanBarHudElement.java                           ← 进度条渲染，**保留不注册**，留给以后的道具
+├── hud/SanHudDispatchElement.java                      ← 第七次交接新增，按模式转发（唯一注册的元素）
+├── hud/SanIconHudElement.java                          ← 图标行渲染
+├── hud/SanBarHudElement.java                           ← 进度条渲染，第七次交接起**已启用**
 └── mixin/HudStatusBarHeightRegistryImplMixin.java      ← 第二个 Mixin，见下
 ```
 
@@ -128,6 +135,34 @@ Mixin 逻辑刻意**只做加法**（只把 false 翻成 true，从不反向覆�
 
 **注意**：全项目**没有任何地方给玩家上这个效果**，只有战利品侧读取它。获取途径尚未设计。
 
+### 7b. 药水效果：精神崩溃 / 精神饱满（第七次交接新增）
+
+一对方向相反、数值相同的效果，是 San 系统第一次真正接上玩法。
+
+| | 精神崩溃 `abyssfall:san_breakdown` | 精神饱满 `abyssfall:san_spirited` |
+|---|---|---|
+| 类别 | `HARMFUL` | `BENEFICIAL` |
+| 颜色 | `0x6B4A73`（病态紫） | `0x7FD4C8`（冷青） |
+| 中文 / 英文 | 精神崩溃 / Mental Breakdown | 精神饱满 / Spirited |
+| 每周期 | **扣** San | **回** San |
+| 写入路径 | `AbyssFallCoreSystem.erode()` | `addCurrent()` |
+| 和平模式 | **被拦住**（用户实测确认） | **照常生效**（问过用户，明确要求不受限） |
+
+**共同参数**：周期 200 tick（10 秒）；五级 **1% / 2% / 4% / 8% / 12.5%**，`MAX_AMPLIFIER = 4` 封顶（超过按 V 级算，不会越界）。
+
+**扣/回的是「上限的百分比」不是「当前值的百分比」**（用户确认过的语义）。取当前值会指数衰减、永远到不了 0；取上限是线性，I 级刚好 100 个周期清空满 San。实测耗时：I=1000s、II=500s、III=250s、IV=130s、V=80s。
+
+**V 级故意打破倍增**（1→2→4→8 后不是 16 而是 12.5），用户定的。数值表是数组而非公式，因为公式无论如何都要特判这一级，还会藏住意图。
+
+**精神饱满不重写数值，直接调 `SanBreakdownEffect.drainFractionFor()`**。以后调一边，另一边自动跟着，不可能对不上。周期和封顶级也引用同一个常量。
+
+**「无粒子」的实现方式**：效果类**无权**声明自己不可见——粒子显不显示由施加者在 `MobEffectInstance` 上决定（`/effect` 默认 `true`）。但效果能决定产出**哪个**粒子，于是用三参构造传入一个 **alpha=0 的 `ColorParticleOption`**。依据：`SpellParticle.MobEffectProvider` 直接取粒子颜色的 alpha（1.21.11 mojmap 实读），alpha=0 即生成后完全透明。**零 Mixin**。副作用：粒子仍在被创建（每 4~15 tick 一个），只是看不见；开销可忽略，但严格说不是「不产生粒子」。
+
+**图标**：18×18，`make-breakdown-icon.ps1` / `make-spirited-icon.ps1` 生成，两张构成视觉对偶（绿骷髅+裂纹 ↔ 青色八向光芒+亮核）。**都是占位**，正式发布前要换成真美术资产。
+> ⚠️ 我当初为「不再分发 Mojang 美术资源」而自己画了占位图，**用户明确批评过这种做法**：开发阶段占位怎么省心怎么来，遇到这类顾虑先问，别自作主张。见 `HANDOFF.md` 角色约定。
+
+**已记录、未实现**：反精神崩溃**魔咒**。用户给的数值——I 减 0.5%、II 减 1.5%、III 减 3%、IV 减 6%、V 减 12%、**VI 级完全豁免**。为此 `drainFractionFor(int)` 特意开成 public，实现时直接读它、别重新推导。**用户说了「先记录，不要实现」。**
+
 
 ### 8. 战利品表注入
 `AbyssFallLootTables` 用 `LootTableEvents.MODIFY`（`net.fabricmc.fabric.api.loot.v3`），回调签名 `(key, tableBuilder, source, registries)`。
@@ -188,7 +223,11 @@ Mixin 逻辑刻意**只做加法**（只把 false 翻成 true，从不反向覆�
 - `abyssfall.mixins.json`（`package: com.abyssfall.mixin`，`compatibilityLevel: JAVA_21`）登记 `WitherRoseBlockMixin`；`abyssfall.client.mixins.json`（`package: com.abyssfall.client.mixin`）登记 `HudStatusBarHeightRegistryImplMixin`。两份都设了 `injectors.defaultRequire = 1` 和 `overwrites.requireAnnotations = true`——**前者意味着注入点找不到会直接崩，这是故意的**：宁可启动失败也不要静默失效。
 
 ### 11. 美术脚本（PowerShell + System.Drawing）
-`make-icon.ps1`（128×128 mod 图标）、`make-item-texture.ps1`（16×16 物品贴图）、`make-effect-icon.ps1`（18×18 效果图标）、`make-dev-icon.ps1`（16×16 DEV 字样）、`make-san-icon.ps1`（9×9 San HUD 图标 ×5，见 15d）。均用 `$PSScriptRoot` 相对定位，直接 `powershell -NoProfile -ExecutionPolicy Bypass -File .\xxx.ps1` 运行。
+`make-icon.ps1`（128×128 mod 图标）、`make-item-texture.ps1`（16×16 物品贴图）、`make-effect-icon.ps1`（18×18 效果图标）、`make-dev-icon.ps1`（16×16 DEV 字样）、`make-san-icon.ps1`（9×9 San HUD 图标 ×5，见 15d）、`make-breakdown-icon.ps1` / `make-spirited-icon.ps1`（18×18 精神崩溃 / 精神饱满，第七次交接新增，**均为占位**）。均用 `$PSScriptRoot` 相对定位。
+
+⚠️ **本机 PowerShell 执行策略禁止直接跑脚本**（第七次交接踩到）：必须 `powershell -ExecutionPolicy Bypass -File .\xxx.ps1`，省掉 `-ExecutionPolicy Bypass` 会报 `UnauthorizedAccess`。
+
+⚠️ **别再为「不分发 Mojang 美术资源」而自己画占位图**。用户明确要求：开发阶段占位怎么省心怎么来，有这类顾虑先问他。上面那两个 effect 图标脚本就是这么来的，用户批评过。
 
 **含中文注释的脚本必须存成带 BOM 的 UTF-8**（只有 `make-san-icon.ps1` 有中文）——无 BOM 时 PowerShell 按 GBK 解，乱码会吃掉换行导致语法错误。
 
@@ -217,6 +256,24 @@ en_us 的 `.dev` 值是 `" Dev Inventory"`（**有前导空格**），因为英�
 **「3 秒 + 淡出 + 重按续期」全部是原版行为，一行计时器都没写。** 依据（1.21.11 mojmap 源码实测）：`Gui.setOverlayMessage` 把 `overlayMessageTime` **无条件**设为 60 ticks（= 精确 3 秒，无条件赋值所以重按即重置）；alpha 算式 `(overlayMessageTime - partialTick) * 255 / 20` 上限 255，所以最后 20 ticks 线性淡出；渲染位置 `translate(guiWidth/2, guiHeight - 68)` 正是生命/饱食度上方。传输链是 `ServerPlayer.displayClientMessage(c, true)` → `ClientboundSystemChatPacket(overlay=true)` → 客户端 `ChatListener.handleSystemMessage` → `gui.setOverlayMessage`。
 
 **刻意只在服务端读值**（`player instanceof ServerPlayer`）：客户端那份 attachment 只是服务端推送的镜像，debug 工具必须报告权威值，否则它验证不了任何东西。返回 `InteractionResult.SUCCESS`（`SwingSource.CLIENT`）让挥手动画立刻播放，不等往返。
+
+### 13b. 认知窥镜 `abyssfall:san_lens`（第七次交接新增）
+
+**玩家向内容，不是 debug 工具。** 从理智计数器整体复制而来（用户原话：「整体复制理智计数器，然后改个功能」），但**注册在 `AbyssFallItems` / 默认创造栏**，而不是开发者栏——它不泄露任何设计上想藏的东西，只改变已可见读数的画法。`stacksTo(1)`，图标同样暂用原版 `minecraft:item/clock_00`（占位）。
+
+**作用**：右键在两种 San 读数间切换（图标行 ↔ 百分比条），并在快捷栏上方提示切到了哪个。切换机制见 15c。
+
+**与理智计数器的关键区别 —— 端相反**：
+
+| | 理智计数器 | 认知窥镜 |
+|---|---|---|
+| 判定 | `player instanceof ServerPlayer` | `level.isClientSide()` |
+| 在哪侧干活 | **服务端**。读的是服务端拥有的值，debug 工具不能信镜像 | **客户端**。改的是「哪种读数」这个纯屏幕状态，服务端不该有意见 |
+| 消息发送 | `ServerPlayer.displayClientMessage` 走系统聊天包 | 本地直接 `player.displayClientMessage`，客户端已经知道发生了什么 |
+
+**⚠️ 必须判 `isClientSide()` 而不是 `instanceof ServerPlayer`**：`use()` 两侧都跑，单人世界两端同进程，不判就会切两次、自己抵消。
+
+**lang 键**：`item.abyssfall.san_lens`、`.switched`（一个 `%s`）、`.mode.icons` / `.mode.percent`。模式名我定的是「**具象 / 量化**」（Figurative / Quantified），没用「图标/百分比」这种功能描述——契合三层可见性模型的语气：窥镜给的不是另一种界面，而是另一种认知方式。切换提示「视界已切换：量化」。
 
 ### 14. DEV 图标 `abyssfall:abyss_dev_icon`（第四次交接新增）
 
@@ -268,15 +325,49 @@ en_us 的 `.dev` 值是 `" Dev Inventory"`（**有前导空格**），因为英�
 
 **可见性与淡出逻辑一行未改**（沿用 15b 原有设计）：满 100% 不显示且不占垂直空间，低于 `show_below_percent` 常显，回满后约 1 秒淡出、高度随 alpha 同步收缩。淡出用 `Util.getMillis()`，抖动/行波/闪光用 `player.tickCount`——**后者刻意不用帧计数**，否则 200fps 下会抖得比原版快十倍且暂停不停。
 
-#### 15c. 进度条 HUD（`SanBarHudElement`）保留但不注册
+#### 15c. 两种读数与切换（第七次交接：进度条上线）
 
-紫色进度条 + `San: 90.00%` 文本那个类**完整保留着，一行逻辑没删，但没有注册到 HUD**。
+**图标行与进度条现在都会被画，由玩家用「认知窥镜」切换。** 15c 原本写的「`SanBarHudElement` 保留但不注册」已经作废——那个道具做出来了。
 
-**这不是死代码，别删、别和图标行合并。** 用户明确要求：「保留原来的那个进度条HUD的代码，以后写一个道具会显示细节，细节就是那个紫色进度条的代码」。它是**详细读数**，将来给一个道具用。类注释顶部有警示段。
+**注册的只有一个元素：`SanHudDispatchElement`**（client 包新增）。它持有两个实现，`render` 和 `occupiedHeight` 都按当前模式转发给其中一个。
 
-复用时要注意一处：它的 `render` 仍向 `HudStatusBarHeightRegistry` 按 `SAN_BAR_ID` 问 Y 坐标，而那个 ID 现在属于图标行。要画到状态栏区域以外，得直接给它坐标而不是让它去问。
+**为什么是一个分发元素而不是注册两个**（重要，别改）：
+- 两个 HUD 注册表在客户端启动完成后**冻结**，元素数量在玩家能按下窥镜之前就定死了
+- 注册两个 → 状态栏布局里就有两条图层，各自声明高度、各自要知道「对方在显示时我报 0」，多一处能对不上的地方
+- 更关键：**那个 Mixin 只认 `SAN_BAR_ID` 一个 id**，注册两个的话另一条会飘到别处，不再紧贴饱食度
+- 两个 delegate **常驻不重建**：各自持有动画状态（抖动/行波/闪光/淡出进度），重建会清空，来回切一次就看到冷启动跳变
 
-**元素 ID 仍是 `abyssfall:san_bar`**（没改成 `san_icons`）：Mixin 靠它查图层，改名等于同时改 Mixin，收益为零。它标识的是「本 mod 的 San 读数」，不是某种具体长相。
+**模式状态放在 `core/SanHudModeState`（main 源集）**，不是 client 包，因为物品是双端代码、够不到 client 源集。它是 `static` 单值：
+- **不做 attachment**：偏好哪种读数是「关于屏幕」的事，不是「关于角色」的事。做成 attachment 会同步、会进存档、会让服务端有意见，而同一世界两个玩家应该能各看各的
+- **不跨重启保留**：存配置会让每次切换都写盘，还会把显示开关拖进「明确不做热加载」的那个文件。要保留是另一个决定，别顺手做
+
+**切换后强制显示 `REVEAL_MILLIS`**（现为 **500ms**，用户定的；我给的 2000 → 1000 → 用户改成 500）。实现只有一行，在两个元素的 `alphaFor` 里：
+
+```java
+long from = Math.max(this.lastShownAt, SanHudModeState.revealEndsAt());
+```
+
+淡出起算点取「San 上次值得显示的时刻」与「reveal 窗口结束时刻」**较晚者**。所以 reveal 不是「显示完就消失」，而是**把淡出推迟**，之后照走原本 1 秒的淡出曲线（总可见 ≈1.5 秒）。用 `Math.max` 同时解决两个方向：淡出途中切换能重新显示（不被「刚显示过」吞掉）；reveal 期间 San 掉下去窗口自然延长（不被 reveal 结束时刻反而截短）。
+
+**两种模式都有 reveal**，不只 bar。满 San 下切到图标模式同样得让人看见，否则「按了没反应」。
+
+#### 15c-2. 进度条的视觉效果（第七次交接补齐）
+
+用户要求「照抄常规 HUD 的视觉效果」，已逐项对齐，参数与判定逻辑和 `SanIconHudElement` 逐字一致（阈值 0.3、周期 `halves*3+1`、`SHUDDER_TICKS=4`、闪光 2t×4 / 5t×1、首帧不反应、时钟倒流即清除）。三处**形态决定的**差异：
+
+| 效果 | 图标行 | 进度条 | 为什么不同 |
+|---|---|---|---|
+| 低 San 抖动 | 逐图标 roll 偏移，整排散开 | **整条一个偏移** | 分块 roll 会把 bar 撕开 |
+| 回 San 行波 | 逐格上抬 2px 扫过 10 格 | **整条上抬 2px，持续同样 20 tick** | 单个形状没有可供「扫过」的对象 |
+| 高亮闪烁 | 换第二套亮版贴图 | **RGB 往白色插值 45%** | 见下 |
+
+**⚠️ 高亮为什么这里能用 RGB，而图标行不能**（别把这两个「统一」了）：图标行走 `blitSprite`，tint 是**乘算**、只能变暗，且已传白色，无处可去 → 必须备亮版贴图（血泪教训 20）。进度条走 `context.fill()`，**颜色直接就是填充色** → 算个更亮的 RGB 即可，无需新美术资源。
+
+`HIGHLIGHT_STRENGTH = 0.45F` 而非 1.0：拉到纯白会丢掉紫色、看起来像 bar 出 bug，且所有 San 值都高亮成同一个白、失去区分。实测 `9B6BC9 → C8ADE1`、`7A1030 → B57B8D`。插值走**平直 sRGB**（和 `fillColor` 一致），不走线性光——线性光会让暗端提亮幅度不成比例，高亮强度就变成「取决于玩家有多少 San」了。
+
+**只提亮填充部分，边框和背景保持原色**（这一处我自己定的）：bar 的边框是深色轮廓、背景是暗紫底，一起提亮会糊成一片，反而看不出在闪。
+
+**元素 ID 仍是 `abyssfall:san_bar`**（没改成 `san_icons` 也没改成别的）：Mixin 靠它查图层，两种读数共用这一条图层，所以都紧贴饱食度上方。改名等于同时改 Mixin，收益为零。
 
 #### 15d. San 图标美术（`make-san-icon.ps1`）
 
@@ -321,7 +412,7 @@ en_us 的 `.dev` 值是 `" Dev Inventory"`（**有前导空格**），因为英�
 
 远端 `https://github.com/Kainy030/AbyssFall-Fabric.git`，分支 `main`，凭据已缓存（`credential.helper=manager`，push 无需交互），git 用户 Kainy / 1747110555@qq.com。
 
-tag：`0.1-Dev`、`v0.2-Dev`、`v0.3-Dev`、`v0.4-Dev`。**提交历史和哈希一律现场核实**（`git --no-pager log --oneline -5; git status --short; git --no-pager tag`），别信文档里写死的。
+tag：`0.1-Dev`、`v0.2-Dev`、`v0.3-Dev`、`v0.4-Dev`、`v0.4-Dev-Fix`、`v0.5-Dev`。**提交历史、哈希、tag 列表一律现场核实**（`git --no-pager log --oneline -5; git status --short; git --no-pager tag`），别信文档里写死的。
 
 ### tag 命名规则（重要）
 
@@ -333,7 +424,7 @@ tags:
 ```
 **别简化成只留一种**——旧 tag 还在，两种都要能构建。
 
-tag 名与 `gradle.properties` 的 `version` **不必一致**：`version=0.4-Dev`（jar 内的版本号，无 `v`），tag 是 `v0.4-Dev`。
+tag 名与 `gradle.properties` 的 `version` **不必一致**：`version=0.5-Dev`（jar 内的版本号，无 `v`），tag 是 `v0.5-Dev`。
 
 ### 三个发布产物
 
@@ -354,7 +445,7 @@ tag 名与 `gradle.properties` 的 `version` **不必一致**：`version=0.4-Dev
 
 **已验证的 CI 结果**（0.1-Dev 那次，用户回报 SHA256 比对）：`abyssfall.jar` 和 `abyssfall-source.jar` 字节级一致；`abyssfall-doc.jar` 不一致，因为 Javadoc HTML 内嵌时间戳/JDK 版本（内容等价，是推断，未逐字节 diff 证明）。
 
-**四次运行全部成功**（第六次交接用 `gh run list` 实测，推翻了前几次「没等 CI 跑完、无法查询」的记载）：`0.1-Dev` / `v0.2-Dev` / `v0.3-Dev` / `v0.4-Dev` 四个 tag 的 Release workflow 都是 `completed success`，耗时 1m25s ~ 1m49s。`v0.4-Dev` 的 Release 资产实测含 `abyssfall.jar` / `abyssfall-doc.jar` / `abyssfall-source.jar` 三个。**以后自己用 gh 查，别再留成未验证项**（用法见下面「gh CLI」一节）。
+**每次 tag push 的 Release workflow 至今全部 `completed success`**（1m25s ~ 1m49s，资产为 `abyssfall.jar` / `abyssfall-doc.jar` / `abyssfall-source.jar` 三个）。**以后自己用 `gh` 查，别再留成未验证项**（用法见下面「gh CLI」一节）。
 
 ⚠️ 一个命名不一致，别踩：`0.1-Dev` 那次的 **Release 标题是 `Fabric-v0.1-Dev`**，而 tag 是 `0.1-Dev`。后三次 Release 名与 tag 一致。查 Release 时按 tag 查不会出错，按名字查会。
 

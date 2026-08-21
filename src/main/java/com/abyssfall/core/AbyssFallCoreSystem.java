@@ -22,6 +22,7 @@ package com.abyssfall.core;
 import java.util.function.UnaryOperator;
 
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.player.Player;
 
 import net.fabricmc.fabric.api.attachment.v1.AttachmentRegistry;
@@ -30,6 +31,7 @@ import net.fabricmc.fabric.api.attachment.v1.AttachmentType;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 
 import com.abyssfall.AbyssFall;
+import com.abyssfall.config.AbyssFallConfig;
 
 /**
  * The San (sanity) system — the value the whole mod is built to move.
@@ -65,6 +67,13 @@ import com.abyssfall.AbyssFall;
  * <p>Read with {@link #get(Player)} — safe on either side, and safe before the value has ever
  * been written. Write with {@link #set}, {@link #modify}, or the {@code add*} helpers, all of
  * which require a {@link ServerPlayer} precisely because writes are a server concern.
+ *
+ * <p>One write is not like the others. {@link #erode} is the way the <em>world</em> takes San
+ * from a player, and it is subject to the rules in the {@code san} config block — presently just
+ * the one, that Peaceful difficulty shields a player from erosion. Every other mutator here is
+ * unconditional, because an operator or a piece of content stating outright what a player's San
+ * is should not be quietly overruled by the difficulty. Use {@code erode} for pressure the game
+ * applies on its own; use the rest for everything else.
  */
 public final class AbyssFallCoreSystem {
 	/**
@@ -188,10 +197,66 @@ public final class AbyssFallCoreSystem {
 	/**
 	 * Moves the player's San by {@code delta}. Positive restores, negative erodes.
 	 *
+	 * <p>Unconditional: this is the raw mutator, and it does not consult the difficulty. Anything
+	 * representing the <em>world</em> taking San from a player should call {@link #erode} instead.
+	 *
 	 * @return the resulting state
 	 */
 	public static SanState addCurrent(ServerPlayer player, float delta) {
 		return modify(player, state -> state.addCurrent(delta));
+	}
+
+	/**
+	 * Erodes the player's San by {@code amount}, unless the rules currently forbid it.
+	 *
+	 * <p>This is the entry point for every loss the <em>world</em> inflicts — the Abyss, the dark,
+	 * a horror seen, whatever eventually does the eroding. It is deliberately separate from
+	 * {@link #addCurrent}, which stays unconditional: an operator typing {@code /san set} is
+	 * stating what a player's San <em>is</em>, and having difficulty silently override that would
+	 * make the debug tooling lie. Only pressure the game applies on its own is subject to the
+	 * rules, so the distinction is between who is doing the writing, not between which numbers
+	 * are involved.
+	 *
+	 * <p>Presently the one rule is {@code san.peaceful_prevents_loss}: on Peaceful, with that
+	 * setting enabled, nothing here erodes anything. Peaceful already refills hunger and refuses
+	 * to spawn hostiles, so a player who chose it has said they do not want attritional pressure,
+	 * and San is exactly that. A caller that has a reason to bypass this can still reach
+	 * {@link #addCurrent} directly.
+	 *
+	 * <p>Blocked erosion fires no {@link SanChangedCallback} at all, rather than a no-op change:
+	 * nothing happened, and reporting a change that did not occur would mislead every listener
+	 * that only checks {@link SanChangedCallback.Change#isNoOp()} to filter clamping.
+	 *
+	 * @param amount how much San to take, as a positive quantity. Zero or negative is ignored —
+	 *               this method only ever subtracts, so a negative "erosion" would restore San
+	 *               through the one path that is supposed to be incapable of it
+	 * @return the player's state afterwards, which is simply their current state if the erosion
+	 *         was refused or the amount was not positive
+	 */
+	public static SanState erode(ServerPlayer player, float amount) {
+		if (!(amount > 0.0F)) {
+			// Written as a negated '>' so that NaN is refused too: NaN fails every comparison,
+			// and 'amount <= 0' would let it through to poison the stored value.
+			return get(player);
+		}
+
+		if (!canErode(player)) {
+			return get(player);
+		}
+
+		return addCurrent(player, -amount);
+	}
+
+	/**
+	 * Whether the world is currently permitted to take San from this player.
+	 *
+	 * <p>Exposed so that a caller can skip the work of computing an erosion it is about to be
+	 * denied, and so that anything wanting to explain itself to the player can tell the two
+	 * situations apart. {@link #erode} checks this itself; calling both is harmless.
+	 */
+	public static boolean canErode(ServerPlayer player) {
+		return !(AbyssFallConfig.doesPeacefulPreventSanLoss()
+				&& player.level().getDifficulty() == Difficulty.PEACEFUL);
 	}
 
 	/**

@@ -32,13 +32,15 @@ import com.abyssfall.AbyssFall;
  *
  * <h2>Which readout is registered</h2>
  *
- * <p>{@link SanIconHudElement} — the row of ten icons. It is the ambient display: legible at a
- * glance and in the visual language the status bar area already speaks.
+ * <p>{@link SanHudDispatchElement} — one element that draws whichever readout the player has
+ * selected with the Cognition Lens, defaulting to {@link SanIconHudElement}, the row of ten icons.
+ * That row is the ambient display: legible at a glance and in the visual language the status bar
+ * area already speaks.
  *
- * <p>{@link SanBarHudElement}, the violet bar with the percentage written across it, is
- * <em>deliberately not registered</em> and is not dead code. It is the detailed reading, kept for
- * an item that will show it on demand. Do not delete it, and do not "unify" the two: the point is
- * that the always-on display and the precise one differ in kind.
+ * <p>{@link SanBarHudElement}, the violet bar with the percentage written across it, is the
+ * detailed reading and is now reachable in game. Do not "unify" the two: the point is that the
+ * always-on display and the precise one differ in kind, and the lens is what lets a player choose
+ * between them. See {@code SanHudDispatchElement} for why only one element is registered.
  *
  * <h2>Why the position is registered rather than measured</h2>
  *
@@ -81,7 +83,7 @@ public final class AbyssFallSanHud {
 	}
 
 	public static void initialize() {
-		SanIconHudElement element = new SanIconHudElement();
+		SanHudDispatchElement element = new SanHudDispatchElement();
 
 		HudElementRegistry.attachElementAfter(VanillaHudElements.FOOD_BAR, SAN_BAR_ID, element);
 
@@ -91,7 +93,7 @@ public final class AbyssFallSanHud {
 		// the element that knows whether it is mid-fade.
 		HudStatusBarHeightRegistry.addRight(SAN_BAR_ID, player -> element.occupiedHeight());
 
-		AbyssFall.LOGGER.debug("San icon row registered above the hunger row");
+		AbyssFall.LOGGER.debug("San readout registered above the hunger row");
 	}
 }
 
