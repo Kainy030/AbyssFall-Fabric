@@ -443,7 +443,9 @@ tag 名与 `gradle.properties` 的 `version` **不必一致**：`version=0.5-Dev
 2. **直接用 `setup-java` 提供 JDK 21，不靠 Gradle toolchain** —— `gradle.properties` 里 `auto-download=false` 且硬编码了本机 JDK 路径，CI 上不存在。
 3. **`gradlew` 必须是 `100755`** —— Windows 建仓时它是 `100644`，Linux runner 上会 `Permission denied`。已用 `git update-index --chmod=+x gradlew` 修好。
 
-**已验证的 CI 结果**（0.1-Dev 那次，用户回报 SHA256 比对）：`abyssfall.jar` 和 `abyssfall-source.jar` 字节级一致；`abyssfall-doc.jar` 不一致，因为 Javadoc HTML 内嵌时间戳/JDK 版本（内容等价，是推断，未逐字节 diff 证明）。
+**已验证的 CI 结果**（`v0.5-Dev` 那次，SHA256 逐个比对）：`abyssfall.jar` 与 `abyssfall-source.jar` **与本地 clean 构建字节级一致**；`abyssfall-doc.jar` 不一致，因为 Javadoc HTML 内嵌时间戳/JDK 版本（内容等价，是推断，未逐字节 diff 证明）。
+
+⚠️ **比对 source jar 前必须先让工作区行尾归一化**（第七次交接踩到）。`.gitattributes` 是 `* text=auto eol=lf`，我用编辑器改过的文件在**工作区里仍是 CRLF**，而 git 提交时已转成 LF——于是 CI 检出 LF 构建，本地拿 CRLF 构建，source jar 必然不同。这不是仓库问题。要复现 CI 的哈希：`git rm --cached -r . ; git reset --hard`（重新按 LF 检出）后再 `gradlew clean releaseJars`。**别看到哈希不一样就以为构建坏了。**
 
 **每次 tag push 的 Release workflow 至今全部 `completed success`**（1m25s ~ 1m49s，资产为 `abyssfall.jar` / `abyssfall-doc.jar` / `abyssfall-source.jar` 三个）。**以后自己用 `gh` 查，别再留成未验证项**（用法见下面「gh CLI」一节）。
 
