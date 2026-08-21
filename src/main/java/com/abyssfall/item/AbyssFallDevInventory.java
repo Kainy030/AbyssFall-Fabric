@@ -43,7 +43,7 @@ import com.abyssfall.config.AbyssFallConfig;
 /**
  * The developer creative tab and the tooling that lives in it.
  *
- * <p>Everything here is registered only when {@code developer.dev_inventory} is enabled in the
+ * <p>Everything here is registered only when {@code developer.dev_tools} is enabled in the
  * config — which it is not by default — and that is why none of it is held in a
  * {@code static final} field the way the mod's ordinary content is. A static field would be
  * initialised — and therefore registered — the moment the class was touched, leaving no room for
@@ -86,6 +86,8 @@ public final class AbyssFallDevInventory {
 	 */
 	private static final TextColor BLOOD_RED = TextColor.fromRgb(0xB01030);
 
+	private static Item devIcon;
+
 	private static Item sanCounter;
 
 	private static CreativeModeTab devTab;
@@ -99,22 +101,30 @@ public final class AbyssFallDevInventory {
 	 * <p>Reads {@link AbyssFallConfig}, so the configuration must already be loaded.
 	 */
 	public static void initialize() {
-		if (!AbyssFallConfig.isDevInventoryEnabled()) {
+		if (!AbyssFallConfig.isDevToolsEnabled()) {
 			AbyssFall.LOGGER.info(
-					"Developer inventory disabled; its tab and items are not registered");
+					"Developer tools disabled; the developer tab and its items are not registered");
 			return;
 		}
+
+		// Exists solely to be the tab's icon: no behaviour, no name, and deliberately not
+		// added to the tab's contents below. Using a purpose-made item rather than borrowing
+		// one of the tools means the icon never changes just because the tooling does.
+		devIcon = register("abyss_dev_icon", Item::new, new Item.Properties());
 
 		sanCounter = register("san_counter", SanCounterItem::new,
 				new Item.Properties().stacksTo(1));
 
 		devTab = FabricItemGroup.builder()
 				.title(buildTitle())
-				.icon(() -> new ItemStack(sanCounter))
+				.icon(() -> new ItemStack(devIcon))
 				.build();
 
 		Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, DEV_TAB_KEY, devTab);
 
+		// Only the San Counter is offered. The icon item is registered but withheld on
+		// purpose: it is scenery for the tab, not something anyone should be able to take
+		// out of it.
 		ItemGroupEvents.modifyEntriesEvent(DEV_TAB_KEY)
 				.register(entries -> entries.accept(sanCounter));
 
@@ -127,6 +137,15 @@ public final class AbyssFallDevInventory {
 	 */
 	public static boolean isRegistered() {
 		return devTab != null;
+	}
+
+	/**
+	 * The tab icon item, or {@code null} if the developer inventory is disabled.
+	 *
+	 * <p>Nullable for the same reason as {@link #getSanCounter()}.
+	 */
+	public static Item getDevIcon() {
+		return devIcon;
 	}
 
 	/**
