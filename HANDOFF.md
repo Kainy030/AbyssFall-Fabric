@@ -67,7 +67,7 @@
 | Fabric API | 0.141.6+1.21.11 |
 | Gradle | 9.7.0（`gradle/wrapper/gradle-wrapper.properties`，已核实） |
 | modid / 包名 | `abyssfall` / `com.abyssfall` |
-| 版本 | 0.3-Dev（`gradle.properties` 的 `version`） |
+| 版本 | 0.4-Dev（`gradle.properties` 的 `version`） |
 | 许可 | GPL-3.0-or-later（所有 .java 带 GPL 版权头，新文件必须照抄） |
 | JDK | 本机 Gradle 跑 JDK 25，编译 toolchain JDK 21 + `release = 21` |
 | 源集 | `splitEnvironmentSourceSets()`：`src/main` + `src/client` |
@@ -381,8 +381,9 @@ src/main/java/com/abyssfall/
 └── mixin/WitherRoseBlockMixin.java
 src/client/java/com/abyssfall/client/
 ├── AbyssFallClient.java                                ← 不再是空实现
-├── hud/AbyssFallSanHud.java                            ← San HUD 注册，第四次交接新增
-├── hud/SanBarHudElement.java                           ← San HUD 渲染，第四次交接新增
+├── hud/AbyssFallSanHud.java                            ← San HUD 注册
+├── hud/SanIconHudElement.java                          ← 图标行渲染（当前使用的 HUD）
+├── hud/SanBarHudElement.java                           ← 进度条渲染，**保留不注册**，留给以后的道具
 └── mixin/HudStatusBarHeightRegistryImplMixin.java      ← 第二个 Mixin，见下
 ```
 
@@ -519,13 +520,18 @@ Mixin 逻辑刻意**只做加法**（只把 false 翻成 true，从不反向覆�
 ### 10. 资源与元数据
 - `fabric.mod.json`：含 `icon`、`license: GPL-3.0-or-later`、`fabric-api: >=0.141.6`
 - `assets/abyssfall/icon.png`（128×128，桃花，由 `make-icon.ps1` 生成）
+- `assets/abyssfall/textures/gui/sprites/hud/san_{empty,full,half,full_blinking,half_blinking}.png`（9×9，由 `make-san-icon.ps1` 生成）。**放进这个目录就自动进 GUI 图集**，无需注册代码
 - lang：`en_us.json` + `zh_cn.json`（**无 BOM 的 UTF-8**）
 - `data/abyssfall/loot_table/blocks/abyss_dirt.json`（方块掉落自身）
 - `data/minecraft/tags/block/mineable/shovel.json`
 - `abyssfall.mixins.json`（`package: com.abyssfall.mixin`，`compatibilityLevel: JAVA_21`）登记 `WitherRoseBlockMixin`；`abyssfall.client.mixins.json`（`package: com.abyssfall.client.mixin`）登记 `HudStatusBarHeightRegistryImplMixin`。两份都设了 `injectors.defaultRequire = 1` 和 `overwrites.requireAnnotations = true`——**前者意味着注入点找不到会直接崩，这是故意的**：宁可启动失败也不要静默失效。
 
 ### 11. 美术脚本（PowerShell + System.Drawing）
-`make-icon.ps1`（128×128 mod 图标）、`make-item-texture.ps1`（16×16 物品贴图）、`make-effect-icon.ps1`（18×18 效果图标）。均用 `$PSScriptRoot` 相对定位，直接 `powershell -NoProfile -ExecutionPolicy Bypass -File .\xxx.ps1` 运行。
+`make-icon.ps1`（128×128 mod 图标）、`make-item-texture.ps1`（16×16 物品贴图）、`make-effect-icon.ps1`（18×18 效果图标）、`make-dev-icon.ps1`（16×16 DEV 字样）、`make-san-icon.ps1`（9×9 San HUD 图标 ×5，见 15d）。均用 `$PSScriptRoot` 相对定位，直接 `powershell -NoProfile -ExecutionPolicy Bypass -File .\xxx.ps1` 运行。
+
+**含中文注释的脚本必须存成带 BOM 的 UTF-8**（只有 `make-san-icon.ps1` 有中文）——无 BOM 时 PowerShell 按 GBK 解，乱码会吃掉换行导致语法错误。
+
+**9×9 / 16×16 这类小尺寸一律逐像素 `SetPixel`，不要用矢量+降采样**：任何抗锯齿都会把 1px 笔画糊成灰。大尺寸（icon.png、效果图标）才用超采样+双三次缩小。
 
 ### 12. 开发者物品栏 `abyssfall:abyssfall_dev_inventory`（第三次交接时新增）
 
@@ -576,22 +582,54 @@ en_us 的 `.dev` 值是 `" Dev Inventory"`（**有前导空格**），因为英�
 
 ⚠️ **这是对 Fabric API `impl` 包的注入，不是公共 API**，仅在 MC 1.21.11 / fabric-rendering-v1 16.2.10 验证过。升级时必须重新核实三点（类头也写了）：`init()` 的签名与调用时机、`ROOT_ELEMENTS` 的类型与访问性、`RootLayer.layers()` 是否仍是 `ArrayList`。
 
-#### 15b. 渲染逻辑（SanBarHudElement）
+#### 15b. 渲染逻辑（SanIconHudElement，第五次交接改成图标式）
 
-81px 宽 × 10px 高，右对齐到饱食行右边缘（`guiWidth/2 + 91`）。颜色 `0x9B6BC9`（紫，高 San）→ `0x7A1030`（血红，低 San）线性插值，文本 `San: 90.00%` 居中。
+**十个 9×9 图标排成一行，和原版饱食度并列**，右对齐到饱食行右边缘（`guiWidth/2 + 91`）。参数全部照 `Gui.renderFood` 实测：10 格、`blitSprite(..., 9, 9)`、步距 8、`ROW_WIDTH = 81`、先画 empty 再叠 full/half。
 
-**可见性**：满 100% 时不显示**且不占垂直空间**；低于阈值（`show_below_percent`）时常显；回满后约 1 秒淡出，**高度随 alpha 同步收缩**（`max(1, round(10 * alpha))`）——否则结束瞬间上方元素会跳 10 像素。淡出期间条本身位置不动（`getHeight` 不含自身），所以是「条原地变淡、上方平稳回落」。淡出用 `Util.getMillis()` 真实时间，不受 `/tick freeze` 影响。
+**San 连续 → 20 个半格的量化只存在于这个类里**，core 一无所知，`SanState` 仍是连续值。且**任何大于 0 的 San 至少亮半格**（`max(1, round(ratio*20))`），不能把「快没了」画成「没了」。
 
-**数据来源**：`AbyssFallCoreSystem.get(player)`，即同步来的服务端权威值，与理智计数器同源。
+**三种动效，全部实测过时序**：
 
-#### 15c. 未来：图标式 HUD（可行性已验证，尚未实现）
+| 触发 | 效果 | 参数 |
+|---|---|---|
+| San ≤ 20% | 持续抖动，越低越快 | 逐图标 `y += random.nextInt(3)-1`，周期 `halves*3+1`，到 0 时每 tick |
+| San 下降 | 全排抖一下 | `SHUDDER_TICKS = 4` |
+| San 上升 | 从左到右行波 + 慢闪 1 次 | 每格上抬 2px、2 tick/格；闪 5 tick/相 × 1 |
+| San 回满 | 快闪 4 次（**取代**上面的慢闪） | 2 tick/相 × 4 |
 
-用户设想换成「和原版饱食度类似的 HUD，脑子图标」。已验证的证据：
+抖动与行波都是照抄 vanilla：抖动来自 `Gui.renderFood`（`tickCount % (foodLevel*3+1)`），行波来自 `Gui.renderHearts`（再生效果把心的 Y 减 2，**只位移不改色**）。回满快闪没有 vanilla 对应物，是补的——回满恰好是这一排即将淡出的时刻，不给信号的话「恢复了」和「HUD 被关了」看起来一样。
 
-- **贴图零代码注册**：`DirectoryLister` 走 `ResourceManager.listResources` 遍历所有命名空间，`FileToIdConverter.fileToId` 用 `withPath` 保留命名空间。所以把图放进 `assets/abyssfall/textures/gui/sprites/hud/brain_full.png` 就自动进 GUI 图集、得到 `abyssfall:hud/brain_full`，**无需注册代码/Mixin/datagen**，与 vanilla 的 `hud/food_full` 平等。附带好处：玩家可用资源包替换。
-- **排布抄 `Gui.renderFood`**：10 个图标从右往左排、间距 8、三套贴图（empty/half/full）、20 点刻度。San 映射就是 `round(percent / 5)`。
-- **位置系统一行不用改**：`OCCUPIED_HEIGHT = 10` 正是 vanilla 一行状态栏高度，只需重写 `render` 内容。
-- **vanilla 现成范式**：饥饿效果换整套贴图（`Gui:919-921`）、饱和度为 0 时 `y += random.nextInt(3) - 1` 抖动（**与 San 主题契合度极高**）、受伤时 `healthBlinkTime` 闪烁。
+**回满不叠加普通闪而是取代它**：把玩家补满是一个事件，该给一个信号。慢闪进行中收到能补满的恢复会被立刻打断换成快闪，不排队。
+
+**变化检测用轮询同步值（`lastSeen` 字段），没用 `SanChangedCallback`**：那个事件在服务端触发，而动效的正确时机是**客户端看到数值变化的那一刻**（attachment 同步到达时）。用事件在多人/延迟下会和画面不同步。首帧只记录不反应，所以登录时 San 不满不会误触发。
+
+**⚠️ 闪光必须用第二套贴图，不能靠代码提亮**（第五次交接踩过，详见血泪教训 17）：`blitSprite` 的 tint 是**乘算**的，只能变暗；且这里传的 `ARGB.white(alpha)` 其 RGB 本身就是 `0xFFFFFF`。vanilla 也是这么做的——心有 `hud/heart/full_blinking`，同一张图把 `FF1313` 提成 `FFA1A1`。
+
+**可见性与淡出逻辑一行未改**（沿用 15b 原有设计）：满 100% 不显示且不占垂直空间，低于 `show_below_percent` 常显，回满后约 1 秒淡出、高度随 alpha 同步收缩。淡出用 `Util.getMillis()`，抖动/行波/闪光用 `player.tickCount`——**后者刻意不用帧计数**，否则 200fps 下会抖得比原版快十倍且暂停不停。
+
+#### 15c. 进度条 HUD（`SanBarHudElement`）保留但不注册
+
+紫色进度条 + `San: 90.00%` 文本那个类**完整保留着，一行逻辑没删，但没有注册到 HUD**。
+
+**这不是死代码，别删、别和图标行合并。** 用户明确要求：「保留原来的那个进度条HUD的代码，以后写一个道具会显示细节，细节就是那个紫色进度条的代码」。它是**详细读数**，将来给一个道具用。类注释顶部有警示段。
+
+复用时要注意一处：它的 `render` 仍向 `HudStatusBarHeightRegistry` 按 `SAN_BAR_ID` 问 Y 坐标，而那个 ID 现在属于图标行。要画到状态栏区域以外，得直接给它坐标而不是让它去问。
+
+**元素 ID 仍是 `abyssfall:san_bar`**（没改成 `san_icons`）：Mixin 靠它查图层，改名等于同时改 Mixin，收益为零。它标识的是「本 mod 的 San 读数」，不是某种具体长相。
+
+#### 15d. San 图标美术（`make-san-icon.ps1`）
+
+五张 9×9：`san_empty` / `san_full` / `san_half` / `san_full_blinking` / `san_half_blinking`。放在 `assets/abyssfall/textures/gui/sprites/hud/`，**零注册代码**（`DirectoryLister` 自动收进 GUI 图集，玩家也能用资源包替换）。
+
+图案是**用户亲手定稿的**（我出了 A~E 五个方向 + B 的多轮改法，用户逐像素指了改法）。主体是一坨正在失去形状、甩出一滴的东西；**滴落那一点故意和主体断开**——连着主体的 1px 细流会被读成一根针。
+
+脚本设计成给用户改的：开头就是 9 行字符画 `$pattern` + 三张写死的十六进制调色板，改完直接跑，还会生成一张带行列坐标和棋盘格背景的放大预览图（`build/san-icon-preview.png`）。
+
+**⚠️ 文件必须存成带 BOM 的 UTF-8**。无 BOM 时 PowerShell 按 GBK 解中文注释，乱码会吃掉换行直接语法错误。
+
+**⚠️ 半格方向：保留左半、右半透明。**「从右往左掏空」，和一条从左往右缩短的进度条一致。证据是原版**心**的逐像素比对（`heart/full` 第 2 行 x=1..7 有料，`heart/half` 是 x=1..4）。**千万别拿 `food_half.png` 反推**——鸡腿图案倾斜不对称，它的半格看着像「变瘦」而不是「切一半」，我第一版就是这么读反的，用户实测才发现（详见血泪教训 17）。
+
+配色：主体 `9B6BC9`（沿用项目 San 紫）、高光 `C4A2E3`、暗部 `6E4A96`、滴落 `4A2E68`；亮版主体 `E4CDF4`；空槽只有纯黑轮廓 + `282828` 内部，这两个值是从原版 `food_empty.png` 逐像素读出来的。**轮廓在亮版里不提亮**——原版 `full_blinking` 的深边也只提了一点，全提会让图标失去形状。
 
 ### 16. 测试协议系统（第四次交接新增）
 
@@ -622,7 +660,7 @@ en_us 的 `.dev` 值是 `" Dev Inventory"`（**有前导空格**），因为英�
 
 远端 `https://github.com/Kainy030/AbyssFall-Fabric.git`，分支 `main`，凭据已缓存（`credential.helper=manager`，push 无需交互），git 用户 Kainy / 1747110555@qq.com。
 
-tag：`0.1-Dev`、`v0.2-Dev`、`v0.3-Dev`。**提交历史和哈希一律现场核实**（`git --no-pager log --oneline -5; git status --short; git --no-pager tag`），别信文档里写死的。
+tag：`0.1-Dev`、`v0.2-Dev`、`v0.3-Dev`、`v0.4-Dev`。**提交历史和哈希一律现场核实**（`git --no-pager log --oneline -5; git status --short; git --no-pager tag`），别信文档里写死的。
 
 ### tag 命名规则（重要）
 
@@ -634,7 +672,7 @@ tags:
 ```
 **别简化成只留一种**——旧 tag 还在，两种都要能构建。
 
-tag 名与 `gradle.properties` 的 `version` **不必一致**：`version=0.3-Dev`（jar 内的版本号，无 `v`），tag 是 `v0.3-Dev`。
+tag 名与 `gradle.properties` 的 `version` **不必一致**：`version=0.4-Dev`（jar 内的版本号，无 `v`），tag 是 `v0.4-Dev`。
 
 ### 三个发布产物
 
@@ -726,15 +764,21 @@ tasks.register('afPrintCp') { doLast { println sourceSets.main.runtimeClasspath.
 
 19. **改配置键名会静默破坏用户的本机配置**。加字段永不坏旧文件，但改名会让整块回落默认。**改名时必须主动告知用户去改他的 `run/config/abyssfall.json`**，别让他的设置无声失效。详见「配置系统」一节。
 
+20. **「我的函数返回了预期值」不等于「这个值有实际效果」**（第五次交接，最惨的一次）。我给闪光写了个 `brighten()` 把 tint 往白插值，还跑了 8 条断言全绿、宣布「已验证」。用户实测后问「你确定真有闪光吗」——**一点效果都没有**。原因：`blitSprite` 的 tint 是**乘算**的（只能变暗），而 `ARGB.white(alpha)` 的 RGB 本身就是 `0xFFFFFF`，从 255 插到 255 恒等于没动。**我测的是自己那个错函数的算术，完全没碰渲染语义。** 涉及渲染管线（乘算/加算、tint 能做什么、alpha 怎么合成）时，必须去读目标 API 的实际实现，光测自己的输入输出等于没测。vanilla 的做法是**另做一张亮贴图**（`heart/full_blinking`）。
+
+21. **对称的参照物才能验证方向，不对称的会骗你**（同上一轮，用户原话「这TM半格san值左右部分是TM反的」）。我从 `food_half.png` 反推半格图的裁切方向，得出「保留右半」，写进了脚本还注明「实测得来」。实际反了。**鸡腿图案是倾斜不对称的**，它的半格看着像「变瘦」而不是「切掉一半」，所以从它身上读不出方向。改查**心**（`heart/full` vs `heart/half`）立刻清楚：保留左半。**选证据时要挑那个能让结论唯一的样本，而不是手边第一个样本。**
+
+22. **别在用户没说的地方替他做决定，但要把冲突说出来**。用户要求「和原版恢复生命值的效果一模一样」并称之为「高亮脉冲」。我核实后发现原版 `Gui.renderHearts` 只把心**上抬 2 像素**、**亮度一点没改**——「从左到右的行波」对得上，「高亮」对不上。我的处理是照「一模一样」做上抬、另外加了提亮并**明确标注这是我加的、给出关闭方式**。用户随后说「抬亮去掉吧」。**如果我默默按自己的理解二选一，就会要么丢掉他要的效果、要么塞进他没要的东西。**
+
 
 ---
 
-## 当前状态（第四次交接时）
+## 当前状态（第五次交接时）
 
 - 编译：**已验证**，本次会话多次 `gradlew build --offline` 全部 `BUILD SUCCESSFUL`，`remapJar` 实际执行
-- Git 工作区：本次会话结束时**已全部提交并推送**，打了 tag `v0.3-Dev`
-- 版本：`gradle.properties` 的 `version=0.3-Dev`
-- tag：`0.1-Dev`、`v0.2-Dev`、`v0.3-Dev`
+- Git 工作区：本次会话结束时**已全部提交并推送**，打了 tag `v0.4-Dev`
+- 版本：`gradle.properties` 的 `version=0.4-Dev`
+- tag：`0.1-Dev`、`v0.2-Dev`、`v0.3-Dev`、`v0.4-Dev`
 - 产物：`build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`（需 `releaseJars` 生成）
 
 **用「开工前请做」里的命令现场核一遍 Git 状态，别信文档里的哈希和清单。**
@@ -749,15 +793,29 @@ tasks.register('afPrintCp') { doLast { println sourceSets.main.runtimeClasspath.
 
 **第四次会话**：HUD 全部行为（100% 时无 HUD 且不占空间、颜色与条长随 San 变化、紧贴饱食度且饱食度不移位、约 1 秒淡出且结束时上方不跳、氧气条/物品名不压住、F1 一同隐藏、三处读数一致）、DEV 图标（第一版 V 平底被读作 DEU，改 5 列尖底后通过）、`dev_tools`/`dev_command` 拆分、`/san` 3 级权限。**测试协议系统是用户自己 build 后放进真实玩家环境测的**（非 runClient），所以 Swing 弹窗在 `preLaunch` 时机确实能正常显示。
 
+⚠️ 上面那批 HUD 结论测的是**进度条**版本。第五次会话换成图标行后，**位置/淡出/占位那部分机制一行未改所以仍然成立**，但「颜色与条长随 San 变化」「三处读数一致」这两条已不适用于 HUD（图标行不显示数字）。
+
+**第五次会话**：图标式 HUD 上线（用户原话「完美，全修好了」）。他实测发现并让我修掉了**两个真 bug**——半格左右反了、回满闪光完全无效（见血泪教训 20、21）。抖动、下降抖一下、上升行波均实测正常。
+
+### 第五次会话结束时的待确认项（用户尚未回复实测结果）
+
+改完最后一轮闪光节奏后**用户没有再报告观感**，下面几项**未验证**，别当成已通过：
+
+- 回满快闪 4 次（2 tick/相）节奏是否合适
+- 普通恢复慢闪 1 次（5 tick/相）是否看得清
+- **连续小额恢复会不会一直闪、显得吵** —— 这是我主动提出的隐患：每次数值变动都会重启慢闪，若 San 每 tick 涨一点，闪光会被不断重启从而**一直停在亮相**。真出现就加个最小间隔。四个常量在一起（`FULL_FLASH_BLINK_TICKS` / `FULL_FLASH_BLINKS` / `GAIN_FLASH_BLINK_TICKS` / `GAIN_FLASH_BLINKS`）。
+
 ### 我用真实 classpath 实测过的行为（非推断）
 
 **第三次会话（9 项）**：默认配置文件三块完整输出、往返一致、默认 18 张表、权重换算 5 个值精确、`p=1.0` 走 guaranteed、`p=0.0` 不注入池、粒子倍率（含 `0.05→1` 不归零）、音量倍率、残缺文件其余项回落默认、外部 mod 表 ID 可解析、越界值整块回落。
 
 **第四次会话（20 项）**：配置（默认写出含两项 developer + hud 块、旧键与缺字段都整块回落、两键齐全才生效、旧文件其余块不受影响且自动补 hud 块）；测试协议（无头环境不抛异常、正确降级、密钥比较 8 个输入全对）；DEV 图标（逐像素比对只含两种 ARGB 值）；jar 内容（解包确认 `preLaunch` 入口点与 `agreement` 两个 class 在包内）。
 
+**第五次会话（HUD 动效时序，约 60 条断言）**：半格/满格映射（满 20 半格、0 亮 0、任何非零至少亮半格、55% = 5 满格 + 第 5 格半格）；抖动周期（>20% 不抖、=20% 周期 13、=0 每 tick、**逐百分点确认周期随 San 下降单调不增**）；行波（扫描序列实测 `0 0 1 1 … 9 9` 确认从左到右、每格恰好 2 tick、进行中再恢复从左重启、**换世界 tickCount 归零时正确取消**）；闪光（回满**精确 4 次**、普通恢复**精确 1 次**、回满比普通快、慢闪被回满打断并重启、掉 San 不闪、无变化不闪、缩上限撞到读数算损失、单纯提上限不闪、时钟倒流取消）。**这类纯算术验证成本极低且能抓到读代码抓不到的东西，但注意血泪教训 20：它证明不了渲染效果。**
+
 ### CI 状态
 
-首次运行（0.1-Dev）**成功**，三个 jar 已附加到 Release，详见上面「GitHub Actions」一节的 SHA256 比对。**第四次会话推送了 tag `v0.3-Dev` 但没有等 CI 跑完** —— 下一个你可以去 GitHub Actions 核实它的运行结果。
+首次运行（0.1-Dev）**成功**，三个 jar 已附加到 Release，详见上面「GitHub Actions」一节的 SHA256 比对。**第四、五次会话推送 tag 后都没有等 CI 跑完** —— 本机没装 `gh` CLI，我无法查询 Actions 状态。下一个你若要核实，得先 `winget install --id GitHub.cli`，或者请用户去 Actions 页面看。
 
 ---
 
@@ -768,6 +826,7 @@ tasks.register('afPrintCp') { doLast { println sourceSets.main.runtimeClasspath.
 - 什么行为改变 San、什么行为改变上限 —— 全未设计
 - 差异化渲染（San 低的玩家看到不同渲染）—— 用户明确说以后开发
 - 未来的 San 显示道具：**用户明确说「我没构思好，等我想出来之后会主动说」，不要主动追问、不要自行设计。** 大纲讨论过的四个待定点（与理智计数器并存、手持还是背包内、单向解锁还是双向切换、是否有耐久/时效）已从待办中划走。
+  - **但第五次会话有一条明确指示**：那个道具的「详细读数」界面**就用保留着的 `SanBarHudElement`**（紫色进度条 + 百分比）。用户原话：「以后写一个道具会显示细节，细节就是那个紫色进度条的代码」。所以道具的**显示部分已经写好了**，缺的是道具本身。
 
 **内容**
 - 深渊污泥仍用原版泥土材质、`abyss_gardeners` 成就图标是向日葵、理智计数器图标是原版时钟 `clock_00`（**指针不会转**，原版时钟靠 `range_dispatch` 切 64 个模型才会转）——都是占位，用户说「暂时」
@@ -802,7 +861,8 @@ git --no-pager log --oneline -5; git status --short; git --no-pager tag
 ```powershell
 $p="$env:USERPROFILE\.gradle\caches\modules-2\files-2.1\net.fabricmc.fabric-api\fabric-api\0.141.6+1.21.11"
 $f=(Get-ChildItem -Recurse -Filter *.pom $p).FullName
-[xml]$x=Get-Content $f; $x.project.dependencies.dependency | ForEach-Object { "$($_.artifactId) $($_.version)" }
+[xml]
+$x=Get-Content $f; $x.project.dependencies.dependency | ForEach-Object { "$($_.artifactId) $($_.version)" }
 ```
 这比官方文档更贴近项目实际依赖（文档对应 0.141.1，项目是 0.141.6）。
 
