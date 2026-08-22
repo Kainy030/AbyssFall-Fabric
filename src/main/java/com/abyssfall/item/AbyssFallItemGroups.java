@@ -29,8 +29,8 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.ItemStack;
 
-import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
-import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
+import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
+import net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTab;
 
 import com.abyssfall.AbyssFall;
 import com.abyssfall.block.AbyssFallBlocks;
@@ -60,7 +60,7 @@ public final class AbyssFallItemGroups {
 	public static final ResourceKey<CreativeModeTab> ABYSSFALL_TAB_KEY =
 			ResourceKey.create(Registries.CREATIVE_MODE_TAB, AbyssFall.id("abyssfall"));
 
-	public static final CreativeModeTab ABYSSFALL_TAB = FabricItemGroup.builder()
+	public static final CreativeModeTab ABYSSFALL_TAB = FabricCreativeModeTab.builder()
 			.title(buildTitle())
 			.icon(() -> new ItemStack(AbyssFallItems.ABYSS_FLOWER))
 			.build();
@@ -90,7 +90,7 @@ public final class AbyssFallItemGroups {
 	public static void initialize() {
 		Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, ABYSSFALL_TAB_KEY, ABYSSFALL_TAB);
 
-		ItemGroupEvents.modifyEntriesEvent(ABYSSFALL_TAB_KEY)
+		CreativeModeTabEvents.modifyOutputEvent(ABYSSFALL_TAB_KEY)
 				.register(entries -> {
 					entries.accept(AbyssFallItems.ABYSS_FLOWER);
 					entries.accept(AbyssFallItems.SAN_LENS);

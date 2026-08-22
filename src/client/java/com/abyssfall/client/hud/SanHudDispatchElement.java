@@ -20,7 +20,7 @@
 package com.abyssfall.client.hud;
 
 import net.minecraft.client.DeltaTracker;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 
@@ -53,11 +53,11 @@ public final class SanHudDispatchElement implements HudElement {
 	private final SanBarHudElement bar = new SanBarHudElement();
 
 	@Override
-	public void render(GuiGraphics context, DeltaTracker tickCounter) {
+	public void extractRenderState(GuiGraphicsExtractor context, DeltaTracker tickCounter) {
 		if (SanHudModeState.get() == SanHudMode.PERCENT) {
-			this.bar.render(context, tickCounter);
+			this.bar.extractRenderState(context, tickCounter);
 		} else {
-			this.icons.render(context, tickCounter);
+			this.icons.extractRenderState(context, tickCounter);
 		}
 	}
 

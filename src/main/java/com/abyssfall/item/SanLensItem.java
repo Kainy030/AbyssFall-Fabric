@@ -69,10 +69,10 @@ public class SanLensItem extends Item {
 		if (level.isClientSide()) {
 			SanHudMode mode = SanHudModeState.toggle();
 
-			// The 'true' makes this an overlay message above the hotbar rather than a chat line,
-			// and brings vanilla's three second lifetime and fade with it. Sent locally rather
-			// than through the server, since the client already knows what happened.
-			player.displayClientMessage(describe(mode), true);
+			// sendOverlayMessage puts this above the hotbar rather than in chat, and brings
+			// vanilla's three second lifetime and fade with it. Sent locally rather than
+			// through the server, since the client already knows what happened.
+			player.sendOverlayMessage(describe(mode));
 		}
 
 		// SUCCESS on both sides so the hand animation plays immediately.

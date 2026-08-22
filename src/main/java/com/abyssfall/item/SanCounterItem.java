@@ -51,9 +51,9 @@ import com.abyssfall.core.SanState;
  * <h2>Why there is no timer here</h2>
  *
  * <p>The three second display and its fade are vanilla behaviour, not something this class
- * arranges. {@code ServerPlayer.displayClientMessage(component, true)} sends a system chat
- * packet flagged as an overlay, which the client hands to {@code Gui.setOverlayMessage}; that
- * sets its countdown to 60 ticks and the renderer fades the text out over the final 20 of
+ * arranges. {@code ServerPlayer.sendOverlayMessage(component)} sends a system chat packet
+ * flagged as an overlay, which the client hands to {@code Hud.setOverlayMessage}; that sets
+ * its countdown to 60 ticks and the renderer fades the text out over the final 20 of
  * them. Pressing again simply resets the countdown, so repeated use extends the display
  * rather than stacking anything up.
  */
@@ -73,9 +73,9 @@ public class SanCounterItem extends Item {
 		if (player instanceof ServerPlayer serverPlayer) {
 			SanState state = AbyssFallCoreSystem.get(serverPlayer);
 
-			// The 'true' is what makes this an overlay message rather than a chat line, and
-			// with it comes the three second lifetime and the fade.
-			serverPlayer.displayClientMessage(describe(state), true);
+			// sendOverlayMessage is what makes this an overlay message rather than a chat
+			// line, and with it comes the three second lifetime and the fade.
+			serverPlayer.sendOverlayMessage(describe(state));
 		}
 
 		// Reported as a client-side swing so the hand animation plays the moment the button

@@ -34,8 +34,8 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
-import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
-import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
+import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
+import net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTab;
 
 import com.abyssfall.AbyssFall;
 import com.abyssfall.config.AbyssFallConfig;
@@ -115,7 +115,7 @@ public final class AbyssFallDevInventory {
 		sanCounter = register("san_counter", SanCounterItem::new,
 				new Item.Properties().stacksTo(1));
 
-		devTab = FabricItemGroup.builder()
+		devTab = FabricCreativeModeTab.builder()
 				.title(buildTitle())
 				.icon(() -> new ItemStack(devIcon))
 				.build();
@@ -125,7 +125,7 @@ public final class AbyssFallDevInventory {
 		// Only the San Counter is offered. The icon item is registered but withheld on
 		// purpose: it is scenery for the tab, not something anyone should be able to take
 		// out of it.
-		ItemGroupEvents.modifyEntriesEvent(DEV_TAB_KEY)
+		CreativeModeTabEvents.modifyOutputEvent(DEV_TAB_KEY)
 				.register(entries -> entries.accept(sanCounter));
 
 		AbyssFall.LOGGER.info("Developer inventory registered");

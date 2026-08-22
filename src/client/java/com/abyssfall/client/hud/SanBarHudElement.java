@@ -24,7 +24,7 @@ import java.util.Locale;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.util.ARGB;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -242,7 +242,7 @@ public final class SanBarHudElement implements HudElement {
 	private long lastShownAt;
 
 	@Override
-	public void render(GuiGraphics context, DeltaTracker tickCounter) {
+	public void extractRenderState(GuiGraphicsExtractor context, DeltaTracker tickCounter) {
 		Minecraft minecraft = Minecraft.getInstance();
 		Player player = minecraft.player;
 
@@ -433,7 +433,7 @@ public final class SanBarHudElement implements HudElement {
 	 * <p>The blink lightens the fill towards white rather than swapping artwork, which is the only
 	 * part of this that differs in kind from the icon row. See {@link #HIGHLIGHT_STRENGTH}.
 	 */
-	private void draw(GuiGraphics context, Font font, SanState state, int left, int top,
+	private void draw(GuiGraphicsExtractor context, Font font, SanState state, int left, int top,
 			String reading, float alpha, int tickCount) {
 		int period = jitterPeriod(state);
 		boolean shuddering = tickCount < this.shudderUntilTick;
@@ -484,7 +484,7 @@ public final class SanBarHudElement implements HudElement {
 		int textX = left + BAR_WIDTH / 2 - font.width(reading) / 2;
 		int textY = top + Math.max(0, (BAR_HEIGHT - font.lineHeight) / 2);
 
-		context.drawString(font, reading, textX, textY, ARGB.multiplyAlpha(TEXT_COLOR, alpha));
+		context.text(font, reading, textX, textY, ARGB.multiplyAlpha(TEXT_COLOR, alpha));
 	}
 
 	/**

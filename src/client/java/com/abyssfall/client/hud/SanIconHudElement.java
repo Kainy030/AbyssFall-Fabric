@@ -21,7 +21,7 @@ package com.abyssfall.client.hud;
 
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.ARGB;
@@ -327,7 +327,7 @@ public final class SanIconHudElement implements HudElement {
 	private static final int GAIN_FLASH_BLINKS = 1;
 
 	@Override
-	public void render(GuiGraphics context, DeltaTracker tickCounter) {
+	public void extractRenderState(GuiGraphicsExtractor context, DeltaTracker tickCounter) {
 		Player player = Minecraft.getInstance().player;
 
 		if (player == null) {
@@ -551,7 +551,7 @@ public final class SanIconHudElement implements HudElement {
 	 *   <li><strong>reaching full San</strong> blinks the same sprites four times, faster.</li>
 	 * </ul>
 	 */
-	private void draw(GuiGraphics context, SanState state, int left, int top, float alpha,
+	private void draw(GuiGraphicsExtractor context, SanState state, int left, int top, float alpha,
 			int tickCount) {
 		int halves = halvesFor(state);
 		int period = jitterPeriod(state);

@@ -43,8 +43,8 @@ import com.abyssfall.client.hud.AbyssFallSanHud;
  *
  * <p>{@link HudStatusBarHeightRegistryImpl}, {@link HudElementRegistryImpl} and
  * {@link HudLayer} all live in {@code impl} packages and carry no compatibility promise. This
- * class has been verified against <strong>Minecraft 1.21.11 with fabric-rendering-v1
- * 16.2.10+0290ad933e</strong> and nothing else. <strong>Any Minecraft or Fabric API upgrade must
+ * class has been verified against <strong>Minecraft 26.2 with fabric-rendering-v1
+ * 25.3.2+515ac5339e</strong> and nothing else. <strong>Any Minecraft or Fabric API upgrade must
  * re-verify it</strong>: a rename of {@code init}, a change to {@code ROOT_ELEMENTS}, or a
  * {@code layers()} list that is no longer mutable would each break it. The mixin config sets
  * {@code injectors.defaultRequire = 1}, so a missing target fails the launch loudly instead of
