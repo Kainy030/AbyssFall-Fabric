@@ -1,4 +1,4 @@
-F{
+{
 	"required": true,
 	"package": "com.abyssfall.client.mixin",
 	"compatibilityLevel": "JAVA_25",
