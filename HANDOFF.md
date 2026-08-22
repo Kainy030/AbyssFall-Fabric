@@ -1,661 +1,430 @@
-# AbyssFall 项目交接提示词
+# AbyssFall 交接（必读，通读完再动手）
 
-> 把下面全部内容作为新对话的第一条消息发出即可。
+> **本文件属于你**，上一个你留给你的，收尾时更新留给下一个你。与事实不符即主动修正。
 >
-> **这个文件属于你**。它是上一个你留给你的，你也应该在本次工作结束时更新它留给下一个你。
-> 用户会明确要求你更新，但即使他不说，发现文档与事实不符时也应该主动修正。
->
-> **两个文件，分工明确**：
->
-> | 文件 | 装什么 | 怎么读 |
+> | 文件 | 内容 | 读法 |
 > |---|---|---|
-> | **`HANDOFF.md`**（本文件） | 角色约定、两块地基（San / 配置）、血泪教训、当前状态、下一步 | **通读**。这些是「不知道就会做错事」的内容 |
-> | **`REFERENCE.md`** | 已实现功能逐个的实现细节与设计依据、Git/发布流程、CI、gh 用法 | **按需查**。要动某个已有功能之前，先读它那一节 |
+> | **`HANDOFF.md`** | 约定、两块地基（San/配置）、教训、状态、下一步 | **通读** |
+> | **`REFERENCE.md`** | 各功能实现要点与禁忌、Git/CI/发布 | **按需查**，动某功能前读它那节 |
 >
-> 拆开的理由：前者每次开工都必须看完，后者是「动到才查」的手册。合在一起会让必读部分被淹没。
-> **加新内容时按这个界线放**：约定/原则/教训/状态 → `HANDOFF.md`；某个功能怎么实现的 → `REFERENCE.md`。
+> **🔴 本文件的写法约定（重要，决定了你该怎么读它）**
 >
-> **维护这两份文件的规矩**：
-> - 写进来的每一条都要能说清是「已验证 / 未验证 / 推断 / 未知」，别人的验证结果要写明是转述。
-> - 会过时的东西（commit 哈希、构建结果、依赖子模块版本）要么标注获取方法让下一个你现场重查，要么就别写死。
-> - 修文档前先把要改的地方在项目里核一遍，**不要凭读文档时的印象判断文档写错了**——上一次就有人把「用户要求少用 Mixin」误读成「代码里的钩子都该消灭」。
-> - 保持总体意思不变。这两份文件的价值在于连续性，不是在于漂亮。
-> - **只写「下一个你会因为不知道而做错事」的内容。** 更新时优先合并同类项、删掉已被推翻的旧状态和纯过程叙述（精确行号、逐条实测清单），不要为了显得详尽而堆砌。
-> - **血泪教训的编号不要重排**（含那个空着的 8 号），有多处交叉引用。
+> 用户原话：「项目中所有看起来'不够优雅'的代码全部都是你或者你曾经经过验证后不得不这么做的妥协之法，**不要瞎鸡巴乱改**。」
+>
+> 因此这两份文档**刻意不再保留「当年为什么这么做」的举例论证与复现过程**——那些验证都已经做过了。留下的是**结论、禁忌、数值、API 事实**。看到标注「勿改 / 别统一 / 刻意如此」的地方，就当作已验证的既成事实执行；**真要推翻它，先自己重做验证并报告，不要凭直觉改**。
+>
+> **维护规矩**：①每条标清「已验证/未验证/推断/未知」，转述要写明；②易过时的（哈希、构建结果、子模块版本）写获取方法别写死；③改文档前先在项目里核一遍，别凭印象判断文档错了；④只写「不知道会做错事」的，不写过程叙事；⑤**教训编号不重排**（含空的 8 号）；⑥同一件事只在一处讲透，别处引用；⑦约定/原则/教训/状态→本文件，某功能怎么实现→`REFERENCE.md`。
 
----
+## 1. 角色与协作
 
-## 你的角色与协作方式
+**用户（Kainy）给设计与需求，你让它运作起来**，实现自由度很高。
 
-你接手一个 Minecraft 26.2 Fabric 模组项目「AbyssFall」。用户（Kainy）与你的分工已经磨合成形，请严格延续：
+**已授权自主项**（不必问，改完告知）：视觉/听觉细节（配色看不清直接换）、翻译（有语法错直接改，**必须避免机翻感与僵硬表达**）、注释/javadoc/命名/内部结构、**全部 GitHub 操作**、**开发环境问题**。
 
-**用户负责**：提供设计思路、大方向、功能需求。
-**你负责**：让想法运作起来。具体实现自由度很高。
+**验证约定**（为省 token）：
+- **不要自己跑 `runClient`**——他跑得更快。你需要确认什么就列成待测项交给他。
+- 大改动才 `gradlew build`；小改动只做代码验证（读文件 + MCP 核实 API），**不构建**。
+- 回复简洁，**但结论必须分清「已验证/未验证/推断/未知」**。宁可说「我没验证」也不要含糊。
+- **不要每写完一个功能就更新这两份文档**，只在他要求或一轮收尾时统一更新。
 
-**用户明确授予你的自主权**（不必询问，改完告知即可）：
-- 颜色、粒子、音效等视觉/听觉细节。若某配色看不清或效果不好，直接换掉。
-- 语言文件翻译。若用户的翻译有语法错误直接改正；同时必须避免机翻感和僵硬表达。
-- 代码注释、javadoc、命名、内部结构。
-- **GitHub 相关操作全部交给你**（用户原话：「以后 github 构建都由你来」）。
-- **开发环境相关问题全权处理**（原话：「环境类的升级问题全权交给你负责」）。
-
-**验证强度约定**（用户明确要求，为省 token）：
-- 用户自己跑 `runClient`，他跑得更快且能拿到更多信息。**不要自己跑 runClient**。
-- 你需要 runClient 确认什么，就明确列出待确认项让用户去测。
-- 大改动才跑 `gradlew build`；小改动只做代码验证（读文件确认改动正确 + MCP 核实 API），**不构建**。
-- 回复尽量简洁，省 token。**但结论必须分清「已验证 / 未验证 / 推断 / 未知」**——用户重视这个，宁可说「我没验证」也不要含糊过去。
-- **不要每写完一个功能就更新 `HANDOFF.md` / `REFERENCE.md`**（用户明确要求，为省 token）。只在用户要求时、或一轮工作收尾时统一更新。写代码期间发现文档失实，记着，别立刻去改。
-
-**用户背景**：以前写游戏外挂，遇到问题的第一直觉是「不用 API，用注入解决」。他已认可你的判断顺序并要求延续：
-
-> **自有数据结构 → Fabric API/事件 → Mixin**
-
-只有前两者做不到时才注入，且注入前必须用 MCP 核实目标版本的精确签名。选择注入时要说明为什么必须注入。
-
-用户对这条原则的原话（照抄以免走形）：
+**判断顺序：自有数据结构 → Fabric API/事件 → Mixin。** 他的原话（照抄以免走形）：
 
 > 「原则是尽量不使用 mixin，因为我以前是写外挂的，我的思考方式就是遇事不决用钩子，所以需要你来最大程度地不用 mixin，用 Fabric API 事件。但凡是有例外，有时候不得不用钩子的时候就要放心大胆地用钩子，**你在代码中看到的钩子就是不得不用的情况**。」
 
-所以：**项目里现存的每一处 Mixin 和事件钩子都已经过评估、是不得不用的**（目前只有一个 Mixin：`client/mixin/HudStatusBarHeightRegistryImplMixin`。26.2 迁移时删掉了 `WitherRoseBlockMixin`——不是因为它多余，而是 vanilla 那处硬编码变成了可扩展的 tag，见 `REFERENCE.md` 第 4 节）。不要把它当成待清理的技术债，也不要试图用 API 重写它——那条路上一个你已经走过了。反过来，写新功能时该优先找 API 事件，找不到再注入，并说明理由。
+⇒ 目前仅一个 Mixin：`client/mixin/HudStatusBarHeightRegistryImplMixin`。**不要当技术债清理、不要试图用 API 重写。** 写新功能时优先找 API 事件，找不到再注入并说明理由。
 
-**用户的提问风格**：他会问「这两个功能有什么区别，我测感觉差不多」这类问题。这通常不是抱怨，而是真的想搞清语义边界——直接回答区别、并说明什么情况下才看得出差异。他也会说「简单回复即可」，这时就别长篇大论。
+**其他相处方式**：
+- 他问「这两个功能有什么区别」是真想搞清语义边界 → 直接答区别 + 什么情况下才看得出差异。说「简单回复即可」时别长篇大论。
+- **「本轮只做理论验证，不要写代码」** → 只出方案、只收集证据，不改文件。该问的一次问清。
+- **冲突取舍**：「保留自己的权益的同时尊重他人，而不是牺牲自己的权益去尊重他人」。**不要提「为礼貌而放弃功能」的方案**（他说过这类选项以后不要再提）；可以提「照做 + 记日志让冲突可见」。
+- **架构变动先报告**：「改代码最好别改项目架构，如果需要更改也要告知我」。
+- **语言**：中文（zh-CN）。
 
-**他也会用「本轮只做理论验证，不要写代码」来划定范围**。遇到这句就老老实实只出方案、只收集证据，不要顺手改文件。方案里该问的问题一次问清，他会逐条回答甚至编号回应。
-
-**关于设计取舍的立场**：涉及与其他 mod / 数据包冲突时，用户的原则是「**保留自己的权益的同时尊重他人，而不是牺牲自己的权益去尊重他人**」。所以不要提「为了礼貌而放弃功能」的方案——他明确说过这类选项以后不要再提。可以提「照做 + 记日志让冲突可见」这种两全方案。
-
-**架构变动要先报告**：用户原话「改代码最好别改项目架构，如果需要更改也要告知我」。发现必须重构或必须动架构时，停下来说明，别自己做完再解释。
-
-**语言**：中文（zh-CN）回复。
-
----
-
-## 项目基本信息（已验证）
+## 2. 项目基本信息（已验证）
 
 | 项 | 值 |
 |---|---|
-| 路径 | `D:/MC26.2-AbyssFall-Fabric` |
-| Minecraft | **26.2** |
-| **映射** | **无**。26.1 起 Minecraft 不再混淆，Fabric 也停止维护第三方映射 |
-| Fabric Loader | 0.19.3 |
-| Loom | 1.17.19（插件 id 是 **`net.fabricmc.fabric-loom`**，非重映射版） |
-| Fabric API | 0.158.0+26.2 |
-| Gradle | 9.7.0（`gradle/wrapper/gradle-wrapper.properties`，已核实） |
-| modid / 包名 | `abyssfall` / `com.abyssfall` |
-| 版本 | 1.1-Dev（`gradle.properties` 的 `version`） |
-| 许可 | GPL-3.0-or-later（所有 .java 带 GPL 版权头，新文件必须照抄） |
-| JDK | **25**（26.2 的官方运行时是 `java-runtime-epsilon`）。toolchain 与 `release` 都是 25 |
+| 路径 / modid / 包名 | `D:/MC26.2-AbyssFall-Fabric` / `abyssfall` / `com.abyssfall` |
+| Minecraft | **26.2**；**无映射**（26.1 起不再混淆，Fabric 停止维护第三方映射） |
+| Loader / Loom / Fabric API | 0.19.3 / 1.17.19（插件 id **`net.fabricmc.fabric-loom`**）/ 0.158.0+26.2 |
+| Gradle / JDK | 9.7.0 / **25**（`java-runtime-epsilon`），toolchain 与 `release` 都是 25 |
+| 版本 / 许可 | `1.1-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**） |
 | 源集 | `splitEnvironmentSourceSets()`：`src/main` + `src/client` |
-| **Git** | 远端 `https://github.com/Kainy030/AbyssFall-Fabric.git`，开发分支 `main` |
+| Git | `https://github.com/Kainy030/AbyssFall-Fabric.git`，分支 `main` |
 
-**类名仍是 Mojang 名**（`net.minecraft.world.item.Item`、`net.minecraft.resources.Identifier`），因为那本来就是官方名字——只是现在它直接来自游戏本体，不再经过映射层。**不要写 Yarn 名。**
+**类名是 Mojang 名**（`net.minecraft.world.item.Item`、`net.minecraft.resources.Identifier`）。**不要写 Yarn 名。**
 
-**常用命令**：
 ```powershell
 cd D:/MC26.2-AbyssFall-Fabric
 .\gradlew.bat build --console=plain
-.\gradlew.bat compileJava --console=plain --rerun-tasks   # 强制重编译，能暴露警告
-.\gradlew.bat releaseJars --console=plain                 # 产出三个发布 jar
+.\gradlew.bat compileJava --console=plain --rerun-tasks   # 强制重编译，暴露警告
+.\gradlew.bat releaseJars --console=plain                 # 三个发布 jar
 ```
-⚠️ **别加 `--offline`**：26.2 的 MC 依赖库（guava / authlib / datafixerupper 等）要联网拉取，离线会失败在依赖解析而不是代码上，白排查一轮。
+⚠️ **别加 `--offline`**（26.2 的 MC 依赖库要联网拉，离线会失败在依赖解析上）。⚠️ 工具 30 秒上限，`build` 常被截断 → `Start-Process -RedirectStandardOutput` 后台跑再分次读日志。
 
-注意：工具有 **30 秒硬上限**，`build` 常被截断。可靠做法是 `Start-Process ... -RedirectStandardOutput` 后台跑再分次读日志。`Start-Sleep` 超过 30 秒会直接失败，别用。
-
-`build.gradle` 里还留着 `runProductionClient` / `runProductionServer` 两个任务（`net.fabricmc.loom.task.prod.*`，配套 `productionRuntimeMods` 依赖）。**用户明确说过这两个任务现在已无意义**，不要用它们做验证、也不要向用户推荐。留着不删是因为删它们属于与当前需求无关的改动。
-
-**远端还有一个 `1.21.11` 分支**，保存迁移前的最终状态，**已停止维护、刻意冻结**。那边的两份文档描述的是旧版本，遇到「当初为什么这么做」可以回查，但**不要**按它的版本号、API 名或构建方式写代码。
+`runProductionClient` / `runProductionServer`：**用户明确说已无意义**，别用也别推荐；留着不删是避免无关改动。远端 **`1.21.11` 分支已冻结**，可回查但**不要**按它写代码。
 
 ---
 
 
-## 核心系统：San 值（这是项目的地基，优先理解这一节）
+## 3. 地基一：San 值系统
 
-**用户对项目的定位**：「这个系统贯穿始终，决定了咱们这个项目玩法的基础，咱们这个项目是随着 san 进行推进的，这是一个很重要的变量。」
+用户定位：「这个系统贯穿始终，决定了咱们这个项目玩法的基础，咱们这个项目是随着 san 进行推进的，这是一个很重要的变量。」
 
-### 设计理念（用户明确修正过，别改回去）
+### 3.1 🔴 San 是连续参数，不是状态机
 
-San 是**连续参数**，不是离散状态机。
-
-第一版做过 `SanStage` 枚举（STABLE / FRAYED / SHATTERED），**用户明确否决**：
+用户原话：
 
 > 「不要做成传统的线性分段状态……我希望 0%～100% 的整个百分比区间都可以拥有不同的行为规则……例如 San ≥ 80% 时保持正常，一旦从 80% 以下开始下降，即使只下降 0.1%，也可以触发一次对应的状态变化……所以 San 百分比应该被视为一个连续参数。」
 
-`SanStage.java` 已删除。**不要再引入任何档位枚举或阈值常量到 core 里。**
+**禁忌：不要往 core 引入任何档位枚举或阈值常量**（初版的 `SanStage` 已被他否决并删除）。阈值属于消费方，core 不表态。
 
-阈值属于消费方：每个功能自己决定是平滑缩放还是有自己的线，core 不表态。
+### 3.2 结构与 API
 
-### 文件与职责
+`core/`：`AbyssFallCoreSystem`（门面：attachment 注册 + 全部读写 + 事件派发）、`SanState`（不可变 record，自带 Codec/StreamCodec）、`SanChangedCallback`、`SanHudMode` + `SanHudModeState`（只是显示偏好，见 `REFERENCE.md` 15c）、`AbyssFallSanCommand`。
 
-```
-src/main/java/com/abyssfall/core/
-├── AbyssFallCoreSystem.java   系统门面：attachment 注册 + 全部读写 API + 事件派发
-├── SanState.java              不可变 record (current, max)，自带 Codec / StreamCodec
-├── SanChangedCallback.java    变化事件，携带 previous→current
-├── SanHudMode.java            两种读数的枚举
-├── SanHudModeState.java       客户端当前读数（见 `REFERENCE.md` 15c）
-└── AbyssFallSanCommand.java   /san 调试命令
-```
+- **读**（两端安全，收 `Player`）：`get` `getCurrent` `getMax` `getRatio` `getPercent`
+- **写**（只收 `ServerPlayer`）：`set` `modify` `addCurrent` `setCurrent` `addMax` `setMax` `restore` `reset`
+- **规则化写**：`erode(player, amount)` + `canErode(player)` ← **世界侵蚀 San 必须走这里**（见 4.5）
+- `SanState`：`ratio()` `percent()` `isFull()` `isEmpty()` `withCurrent/addCurrent/withMax/addMax` `full(max)` `INITIAL`；常量 `DEFAULT_MAX=100` `MIN_MAX=1` `MAX_MAX=10000`
+- `Change`：`currentDelta()` `maxDelta()` `ratioDelta()` `isNoOp()` `crossedDown(t)` `crossedUp(t)`——阈值由调用方传入：
 
-### 技术实现（零 Mixin，一个 API 事件钩子）
-
-**attachment 注册名**：`abyssfall:core_system_san`（用户指定的名字，是存档 key，**改名会孤立所有存档**）
-
-用 **Fabric Data Attachment API**，builder 配了四项：
-
-| 配置 | 作用 |
-|---|---|
-| `initializer(() -> SanState.INITIAL)` | 首次询问时给 100.00F/100.00F，不必自己造默认值 |
-| `persistent(SanState.CODEC)` | 存档持久化 |
-| `copyOnDeath()` | 死亡重生保留（语义判断：San 是经历的记录，重生不该洗白） |
-| `syncWith(STREAM_CODEC, targetOnly())` | 只同步给本人（未来渲染是第一人称的） |
-
-**为什么不用 Mixin**（用户已认可）：这四件事 API 原生就做了。注入 `Player` 加字段要自己写存读钩子、重生拷贝钩子、同步包，还会和其他 mod 撞车。**没有注入的理由。**
-
-**为什么 current 和 max 合成一个 record**：两者互相约束（`0 ≤ current ≤ max`），分开存会出现瞬时非法状态，且要发两个同步包。invariant 在 canonical constructor 里强制，连反序列化和网络解包都过这一关。
-
-**还有一个 JOIN 钩子，别当成多余的删掉**：`initialize()` 里注册了 `ServerPlayerEvents.JOIN`，回调里做一次 `player.getAttachedOrCreate(SAN)` 并打 debug 日志。原因是 `initializer` 只保证「被问到时有值」，纯读（`getAttachedOrElse`）不会把值真正写进 attachment，于是全新玩家可能压根没有存储的 attachment、也就不触发同步推送。JOIN 时主动创建一次即可落盘并推给客户端。**这是 API 事件而非 Mixin，符合原则。**
-
-**为什么事件从 `set()` 派发而不用 attachment 自带的 `onAttachedSet`**：后者是**按 target 实例**的（`default <A> Event<OnAttachedSet<A>> onAttachedSet(...)`），必须先拿到每个玩家实例才能订阅，无法全局监听。而所有写入本来就汇聚在 `set()`。
-
-**`set()` 里回读了两次**，别「优化」掉：
 ```java
-SanState previous = get(player);
-player.setAttached(SAN, state);
-SanState stored = get(player);   // 回读：传入值可能被 clamp
-```
-事件必须携带**真实存储值**，否则监听方会基于一个从未存在过的值做判断。
-
-### API 一览
-
-**读（5 个，两端安全，收 `Player`）**：`get` `getCurrent` `getMax` `getRatio` `getPercent`
-**写（8 个，只收 `ServerPlayer`）**：`set` `modify` `addCurrent` `setCurrent` `addMax` `setMax` `restore` `reset`
-**规则化写（只收 `ServerPlayer`）**：`erode(player, amount)` + 判定用的 `canErode(player)`。世界侵蚀 San 必须走这里，见「配置系统」的「`san` 块」一节。
-
-`SanState`：`ratio()` `percent()` `isFull()` `isEmpty()` `withCurrent` `addCurrent` `withMax` `addMax` `full(max)` `INITIAL`
-常量：`DEFAULT_MAX=100` `MIN_MAX=1` `MAX_MAX=10000`
-
-`SanChangedCallback.Change`：`currentDelta()` `maxDelta()` `ratioDelta()` `isNoOp()` `crossedDown(t)` `crossedUp(t)`
-
-`crossedDown/Up` 的阈值是**参数**，由调用方传入——这正是「连续参数」理念的落地方式：
-```java
-// 「跌破 80% 的那一瞬间，只触发一次」
-if (change.crossedDown(0.80F)) { ... }
-
-// 「随 San 连续变化」——无阈值
-float intensity = f(change.current().ratio());
+if (change.crossedDown(0.80F)) { ... }           // 跌破 80% 那一瞬，只触发一次
+float intensity = f(change.current().ratio());   // 随 San 连续变化，无阈值
 ```
 
-### 两个语义决策（用户可能会问，也可能想改）
+### 3.3 实现事实与禁忌（零 Mixin，一个 API 事件钩子）
 
-1. **提高上限不白送 San**：`withMax` 提高时 current 不动（有了成长空间，但没变更清醒）。降低上限到 current 以下才会把 current 一起拖下来。
-2. **`restore` vs `reset`**：`restore` = current 回满到**当前上限**；`reset` = current 和上限**一起**回默认 100。上限没动过时两者结果相同——用户问过这个。
+**attachment 注册名 `abyssfall:core_system_san`**（用户指定，是存档 key，**改名会孤立所有存档**）。Fabric Data Attachment API，builder 四项：`initializer(() -> SanState.INITIAL)`、`persistent(CODEC)`、`copyOnDeath()`（San 是经历的记录，重生不洗白）、`syncWith(STREAM_CODEC, targetOnly())`（只同步本人）。
 
-### /san 命令（8 条）
+**四处勿改的写法**（已验证的妥协，别「优化」）：
+1. **current 与 max 合成一个 record**，invariant 在 canonical constructor 强制。
+2. **`ServerPlayerEvents.JOIN` 钩子不是多余的**：回调做一次 `getAttachedOrCreate(SAN)`，否则全新玩家可能没有存储的 attachment、不触发同步推送。**这是 API 事件不是 Mixin。**
+3. **事件从 `set()` 派发，不用 `onAttachedSet`**：后者按 target 实例订阅（`default <A> Event<OnAttachedSet<A>> onAttachedSet(...)`），无法全局监听。
+4. **`set()` 里回读两次**（`previous` → `setAttached` → `stored`）：传入值可能被 clamp，事件必须携带真实存储值。
 
-**两道门**：整棵树都要 `dev_command=true` 才注册，且所有分支（含无参数的 `/san`）都要 3 级权限 `LEVEL_ADMINS`。
+### 3.4 两个语义决策（他可能会问，也可能想改）
 
-八条分支：`/san`（看自己）、`query <玩家>`、`set <玩家> <值>`、`add <玩家> <增量>`、`max set`、`max add`、`restore <玩家>`、`reset <玩家>`。
+1. **提高上限不白送 San**：`withMax` 提高时 current 不动；降低到 current 以下才会把 current 拖下来。
+2. **`restore`** = current 回满到当前上限；**`reset`** = current 与上限一起回默认 100。上限没动过时两者结果相同。
 
-`.requires()` **只写在根节点一处**——Brigadier 对 `requires` 失败的节点不会向下遍历，所以根节点一次检查等价于全树检查。**别「补全」成每分支一遍。**
+### 3.5 `/san` 命令（8 条）
 
-**无参数 `/san` 从「无权限」改成 3 级，是设计意图变化而非收紧安全**。旧注释的理由是「你自己的值你当然有权知道」；现在的设计是玩家只应通过游戏内手段得知百分比、永不得知底层 float（见「三层信息可见性模型」），所以打印 float 的指令是 debug 设施而非权利。这个转变已写进 `AbyssFallSanCommand` 的 javadoc，不要当成旧注释删掉。
+**两道门**：整棵树要 `dev_command=true` 才注册，且全部分支要 3 级 `LEVEL_ADMINS`。分支：`/san`、`query` `set` `add` `max set` `max add` `restore` `reset`。输出 `<名字>: San 100.00 / 100.00 (100.00%)`（刻意用英文调试格式、无 lang key，两位小数为看清 0.1% 级变化）。
 
-输出格式：`<名字>: San 100.00 / 100.00 (100.00%)`。刻意用英文调试格式（`Component.literal`），因为这是工具而非内容，所以没有 lang key。两位小数是为了能看清 0.1% 级变化。
+- `.requires()` **只写在根节点一处**（Brigadier 对失败节点不向下遍历）。**别「补全」成每分支一遍。**
+- **无参数 `/san` 也要 3 级**：玩家只应通过游戏内手段得知百分比、永不得知底层 float（见 3.7），打印 float 的指令是 debug 设施而非权利。已写进 javadoc，别当旧注释删掉。
+- 权限 API：`Commands.hasPermission(Commands.LEVEL_ADMINS)` 返回 `PermissionProviderCheck<T>`（`net.minecraft.server.permissions`，`record ... implements Predicate<T>`），可直接传 `.requires()`。
+- ⚠️ **`PermissionLevel` 枚举**（MCP 实测）：`ALL`0 / `MODERATORS`1 / **`GAMEMASTERS`2** / `ADMINS`3 / **`OWNERS`4**。**`GAMEMASTERS` 不是 4 级。**
+- ⚠️ 26.2 内部重构过：`LEVEL_ADMINS` 现在是 `new PermissionCheck.Require(Permissions.COMMANDS_ADMIN)`。编译通过、用户实测 `/san` 可用，但**是否与旧「3 级」严格等价，未验证**。
 
-**权限 API**：`Commands.hasPermission(Commands.LEVEL_ADMINS)` 返回 `PermissionProviderCheck<T>`（`net.minecraft.server.permissions`，`record ... implements Predicate<T>`），可直接传给 `.requires()`。
+### 3.6 当前状态：只有框架，零世界规则
 
-⚠️ **术语坑（MCP 实测确认）**：`PermissionLevel` 枚举是 `ALL`=0 / `MODERATORS`=1 / **`GAMEMASTERS`=2**（`/effect` `/give` 用这级）/ `ADMINS`=3 / **`OWNERS`=4**（`/stop` `/ban`）。**`GAMEMASTERS` 不是 4 级。** 以后遇到「给 N 级权限」的要求，先核实枚举再动手。
+`SanChangedCallback` **没有任何监听者**——预期如此（「我们现在要的是框架」）。San 已经会自己动了（两个药水效果每 10 秒扣/回，`REFERENCE.md` 7b，`erode()` 有了第一个调用方），但**什么情况下给玩家上这个 debuff 完全没设计**，目前只能 `/effect` 手动给。真正的侵蚀来源（黑暗、深渊、目击恐怖等）还没有。
 
-⚠️ **26.2 内部重构过这套权限**：`Commands.LEVEL_ADMINS` 现在是 `new PermissionCheck.Require(Permissions.COMMANDS_ADMIN)`。项目写法源码级兼容、编译通过、用户实测 `/san` 可用，但**这个命名权限节点是否与旧的「3 级」严格等价，未验证**。
+### 3.7 🔴 三层信息可见性模型
 
-### San 系统当前状态
-
-**San 系统只有框架，零具体世界规则。** 事件目前**没有任何监听者**——这是预期的。用户说：「我们现在要的是框架」。
-
-**San 已经会自己动了**：`SanBreakdownEffect` / `SanSpiritedEffect` 这一对药水效果每 10 秒扣/回 San（见 `REFERENCE.md` 7b），`erode()` 有了第一个调用方。但这仍不是「世界规则」——**什么情况下给玩家上这个 debuff 依然完全没有设计**，目前只能靠 `/effect` 手动给。真正的侵蚀来源（黑暗、深渊、目击恐怖等）还没有。
-
-未来的差异化渲染（San 低的玩家看到不同的方块/物品渲染）由用户后续提出时再做。
-
-### 🔴 三层信息可见性模型（架构级设计意图）
-
-用户的设计意图（原话带三个感叹号）：
+用户原话（带三个感叹号）：
 
 > **但是玩家永远不可以知道 San 值的真实 Folt 值，只可以知道百分比，这是故意的游戏设计！！**
 
-他随后澄清了**强度边界**（重要，别按最严格的读）：
+**强度边界**（重要，别按最严格的读）：
 
 > 玩家不可知真实 Folt 数值并不是针对那种逆向的人，而是玩家在游戏过程中不知道，**是游戏性行为，而不是技术行为**……所以这部分无需改动代码。
 
-| 层 | 途径 | 玩家看到什么 | 门禁 |
+| 层 | 途径 | 看到 | 门禁 |
 |---|---|---|---|
-| **调试层** | `/san`、理智计数器 | 精确 float | `dev_command` / `dev_tools` + 3 级权限 |
-| **游戏内进阶层** | 认知窥镜 | 百分比（`San: 90.00%`） | 目前无门禁，创造栏可取；将来若要加制作配方再说 |
-| **游戏内基础层** | HUD 默认态 | 脑子图标（约 5% 粒度） | 无 |
+| 调试 | `/san`、理智计数器 | 精确 float | `dev_command`/`dev_tools` + 3 级 |
+| 游戏内进阶 | 认知窥镜 | 百分比 | 无门禁，创造栏可取 |
+| 游戏内基础 | HUD 默认态 | 图标（约 5% 粒度） | 无 |
 
-**核心原则：内部连续、外部模糊。** 系统内部（事件、渲染强度、行为规则）读真实 ratio，保持「0.1% 变化也有意义」；玩家**感知**是粗糙的，而「能知道多精确」本身是玩法内容。这也解答了一个曾经的张力：图标式 HUD 看不出 5% 以内的变化，看似与「连续参数」矛盾——但那正是设计意图。
+**核心原则：内部连续、外部模糊。** 内部读真实 ratio；玩家感知是粗糙的，而「能知道多精确」本身是玩法内容。所以图标 HUD 看不出 5% 以内变化**是设计意图，不是与「连续参数」矛盾**。
 
-**已知且被接受的「泄漏」，不要去修**：`SanState.STREAM_CODEC` 确实把 `current` 和 `max` 两个 float 同步给客户端。**用户明确说不改**——为此重构会让 `AbyssFallCoreSystem.get(Player)` 在两端返回不同可信度的数据，语义分裂。抓包和逆向也能拿到 float，项目是 GPL 开源，这不在设计目标内。
+**已知且被接受的「泄漏」，不要修**：`STREAM_CODEC` 把两个 float 同步给客户端。**用户明确说不改。**
 
-**要守住的只有一件事：所有游戏内官方界面只显示百分比。** 新增任何 San 显示途径时，问一句它属于哪一层。
+**只需守住一件事：所有游戏内官方界面只显示百分比。** 新增任何 San 显示途径时，先问它属于哪一层。
 
 ---
 
 
-## 配置系统（仅次于 San 的第二块地基）
+## 4. 地基二：配置系统
 
-用户的定位：「我预感咱们项目以后的可自定义配置会特别多，别欠技术债，趁现在没什么代码的时候赶紧重构」。
+用户定位：「我预感咱们项目以后的可自定义配置会特别多，别欠技术债，趁现在没什么代码的时候赶紧重构」。**为「配置项会长到很多」设计的，加配置沿用它，别另起炉灶。**
 
-**所以这套系统是为「配置项会长到很多」设计的，不是为当前这几项设计的。加配置时请沿用它，不要另起炉灶。**
+### 4.1 格式与结构
 
-### 文件位置与格式
+`config/abyssfall.json`。**是 JSON 不是 properties**（结构化配置需要数组；代价是不能写注释，已接受。旧 `.properties` 实现已删，别复活）。
 
-`config/abyssfall.json`。**是 JSON，不是 properties**——第一版曾用 `.properties`，同一次会话内就被用户要求换成主流 mod 的 JSON 格式。决定性理由是**结构化配置**：`target_tables` 天生是数组，`.properties` 只能靠逗号分隔字符串自己解析。代价是不能写注释，接受了。**旧实现已删除，别复活它。**
+`config/` 七个文件：`AbyssFallConfig`（静态门面 `load()`/`save()`/`get()` + 便捷访问器）、`AbyssFallConfigData`（根 record）、`DeveloperSettings` / `HudSettings` / `LootSettings` / `SanSettings` / `VisualSettings`。每块是 `record` + 三件套 `DEFAULT` / `CODEC` / `LENIENT_CODEC`。
 
-### 分块结构（加配置就是加块）
+- **加一项**：块的 record 加字段 + `CODEC` 加一行 `fieldOf` + `DEFAULT` 给值。
+- **加一块**：照抄任一现有块，然后在 `AbyssFallConfigData` 加字段 + `fieldOf(...).orElse(...)`。
 
-```
-config/
-├── AbyssFallConfig.java       静态门面：load() / save() / get() + 便捷访问器
-├── AbyssFallConfigData.java   根 record，持有各块
-├── DeveloperSettings.java     developer 块
-├── HudSettings.java           hud 块
-├── LootSettings.java          loot 块
-├── SanSettings.java           san 块
-└── VisualSettings.java        visuals 块
-```
+### 4.2 🔴 读写用不同 Codec（勿「优化」成一个）
 
-每个块都是 `record` + 三件套：`DEFAULT`、`CODEC`、`LENIENT_CODEC`。
-
-**加一个配置项**：往对应块的 record 加字段、`CODEC` 里加一行 `fieldOf`、`DEFAULT` 给值。完事。
-**加一整块**：照抄任一现有块写 record，然后在 `AbyssFallConfigData` 加一个字段 + 一段 `fieldOf(...).orElse(...)`。
-
-### 关键设计：读写用不同的 Codec（勿「优化」成一个）
-
-| | 用什么 | 为什么 |
+| | 用什么 | 结果 |
 |---|---|---|
-| **写** | `CODEC`（`fieldOf`） | 总是输出全部字段，生成的文件列出每一项，玩家看得见有什么可配 |
-| **读** | `LENIENT_CODEC`（`CODEC.orElse(...)`） | 缺字段/整块坏掉 → 回落该块默认，**不废掉整个文件** |
+| 写 | `CODEC`（`fieldOf`） | 总是输出全部字段，玩家看得见有什么可配 |
+| 读 | `LENIENT_CODEC`（`CODEC.orElse`） | 缺字段/整块坏 → 回落该块默认，**不废掉整个文件** |
 
-**这不是过度设计，是实测踩出来的**：第一版两边都用 `optionalFieldOf`，跑测试发现默认配置文件被写成 `{}`——因为 `optionalFieldOf` 在值等于默认值时**编码时会省略该字段**。玩家打开文件是个空对象，根本不知道能配什么。
+**不要两边都用 `optionalFieldOf`**：它在值等于默认值时编码会省略该字段，会让默认配置文件被写成 `{}`。
 
-副作用：加字段永不破坏旧文件（旧文件缺新字段 → 回落默认），**所以不需要任何迁移代码**。
+**副作用是好的**：加字段永不破坏旧文件 ⇒ **不需要任何迁移代码**。
 
-⚠️ **但改名会破坏旧文件**（实测确认）。`dev_inventory` → `dev_tools` 那次，旧键不再被任何 `fieldOf` 认领、新键又缺失，于是 `LENIENT_CODEC` 让**整块**回落默认——用户原本设为 `true` 的开关静默变回 `false`。实测：`{"dev_inventory":true}` 和 `{"dev_tools":true}`（缺另一个字段）都会回落成全 `false`，只有两个键都给才生效。
+⚠️ **但改键名会破坏旧文件**：旧键无人认领、新键缺失 → **整块**回落默认，用户的设置静默失效。⇒ ①**改键名前必须告知用户手改本机 `run/config/abyssfall.json`**（教训 19）；②**块是原子单元**（一块里任何字段缺失/不合法则整块回落，这是 `CODEC.orElse(DEFAULT)` 的固有行为不是 bug）。
 
-**两条结论**：
-1. **改配置键名前必须告知用户手动改本机文件**，否则设置静默失效。
-2. **块是原子单元**：一块里任何字段缺失或不合法，整块回落。这是 `CODEC.orElse(DEFAULT)` 的固有行为，不是 bug。想让字段各自独立容错就得把 `LENIENT_CODEC` 改成逐字段 `optionalFieldOf`，但那样读写两个 Codec 的字段集会不一致——动之前先重读上面的理由。
+⚠️ `Codec.orElse`/`MapCodec.orElse` 有两个重载，**直接传 lambda 编译不过（引用不明确）**，必须显式 `(Consumer<String>)` 强转。**代码里那些 cast 是必需的。**
 
-`Codec.orElse` / `MapCodec.orElse` 有 `Consumer<String>` 和 `UnaryOperator<String>` 两个重载，**直接传 lambda 会编译不过（引用不明确）**，必须显式 `(Consumer<String>)` 强转。代码里那些 cast 是必需的。
-
-### 三种失败的区别（很重要，别合并处理）
+### 4.3 三种失败必须区别处理（别合并）
 
 | 情形 | 行为 | 日志 |
 |---|---|---|
 | 文件不存在 | 写一份默认 | INFO |
-| **JSON 语法坏了** | **备份原文件 + 写一份默认** | ERROR |
-| 语法对但某个值不合法 | 该块回落默认，**其余字段照常生效，不动文件** | WARN |
+| **JSON 语法坏** | **备份原文件 + 写默认** | ERROR |
+| 语法对但值不合法 | 该块回落默认，**其余照常生效，不动文件** | WARN |
 
-第三种**刻意不重写文件**：玩家可能配了几十项只错一个，重写会把对的全冲掉。第二种才重写，因为整个文件无法解析、没有任何东西可救。
+第三种**刻意不重写文件**。`read()` 返回 `null` 表示第二种、返回对象表示第一/三种——这个 null 语义写在 javadoc，别改成 Optional 顺手改掉含义。
 
-`read()` 返回 `null` 表示「第二种」，返回对象表示「第一或第三种」——这个 null 语义写在 javadoc 里，别改成 Optional 顺手改掉含义。
+**备份名** `abyssfall.json.broken-yyyy-MM-dd_HH-mm-ss`，同秒撞名追加 `-2`/`-3`。**分隔符必须是 `-` 和 `_`，不能用 `:`**（Windows 拒绝含 `:` 的文件名，rename 会失败导致坏文件既没备份也没替换）。这条路径用户已实测可用。
 
-### 坏文件备份
+### 4.4 不做热加载（用户明确要求）
 
-`abyssfall.json.broken-yyyy-MM-dd_HH-mm-ss`，同秒撞名追加 `-2`/`-3`（备份被备份覆盖就失去意义）。
+只在 `onInitialize()` 读一次，改完必须重启。**这是需求决定不是技术限制**（`LootTableEvents.MODIFY` 本身每次数据包重载都会触发，想开热加载只需在回调里实时读配置）。**别自作主张开。**
 
-**分隔符必须是 `-` 和 `_`，不能用 `:`**。用户最初要的格式是 `broken-yyyy:MM:dd:HH:mm:ss`，我实测 Windows 拒绝含 `:` 的文件名（`不支持给定路径的格式`），报给用户后改成了现在这个。**若后人想「改回冒号更好看」——不行，rename 会直接失败，导致坏文件既没备份也没替换。**
-
-用户已实测这条路径可用，回报的日志：
-```
-[Render thread/ERROR] (abyssfall) Could not understand ...\run\config\abyssfall.json;
-it has been moved to abyssfall.json.broken-2026-08-20_10-52-50 and replaced with default settings
-```
-
-### 不做热加载（用户明确要求）
-
-配置只在 `onInitialize()` 读一次，改完必须重启。
-
-**但要知道这是需求决定，不是技术限制**：`LootTableEvents.MODIFY` 本身每次数据包重载都会触发（读 fabric-loot-api-v3 源码确认，它 mixin 到 `ReloadableServerRegistries.reload`，在 `map.replaceAll` 里逐表调用）。想开热加载只需在回调里实时读配置，几行的事。注释里也写了这一点。
-
-### 当前全部配置项（默认值 = 改动前的行为，逐值实测对齐）
+### 4.5 当前 5 块 8 项（默认值 = 改动前的行为，逐值实测对齐）
 
 ```json
-{
-  "developer": {
-    "dev_tools": false,
-    "dev_command": false
-  },
-  "loot": {
-    "flower_chance": 0.05,
-    "target_tables": [ "...18 个 minecraft:chests/..." ]
-  },
-  "visuals": {
-    "bloom_particle_scale": 1.0,
-    "bloom_sound_volume": 1.0
-  },
-  "hud": {
-    "show_below_percent": 100.0
-  },
-  "san": {
-    "peaceful_prevents_loss": true
-  }
-}
+{ "developer": { "dev_tools": false, "dev_command": false },
+  "loot":      { "flower_chance": 0.05, "target_tables": [ "...18 个 minecraft:chests/..." ] },
+  "visuals":   { "bloom_particle_scale": 1.0, "bloom_sound_volume": 1.0 },
+  "hud":       { "show_below_percent": 100.0 },
+  "san":       { "peaceful_prevents_loss": true } }
 ```
 
-`developer` 两项的含义（从原 `dev_inventory` 一项拆开）：
+- **`dev_tools`** 管开发者物品栏标签 + 里面的物品是否**注册**；**`dev_command`** 管 `/san` 是否**注册**。拆成两项是因为「创造世界用 debug 物品」和「服务器开指令」是两个不同的决定。两项默认 `false`。
+- **`hud.show_below_percent`**：百分比**低于**此值时显示。默认 `100.0` = 满值不显示、掉一点就显示。范围 `[0,100]`，**`0` 等于彻底关闭 HUD**（已写进 javadoc，不是漏洞）。
+- ⚠️ 用户要求「所有默认值除开发者模式外全部按项目当前状态写」。**改默认值 = 改游戏行为。**
 
-| 键 | 管什么 | 备注 |
-|---|---|---|
-| `dev_tools` | 开发者物品栏标签 + 里面的物品（理智计数器、DEV 图标）是否**注册** | 原名 `dev_inventory` |
-| `dev_command` | `/san` 是否**注册** | |
+**🔴 `san` 块装「规则」不装阈值**：`peaceful_prevents_loss`（默认 `true`）= 和平难度不掉理智。**别往里塞 `low_san_percent` 之类的东西。**
 
-**拆开的理由**：想在创造测试世界里用 debug 物品、和想在服务器上开指令，是两个不同的决定，应当能各自单独授予。两项默认都是 `false`——发布版本不该把这些交给玩家。
+规则**只在 `erode()` 生效**，`addCurrent`/`setCurrent`/`/san` 全不受影响。**这个分界按「谁在写」而非「写多少」划**：管理员敲 `/san set` 是在陈述事实，被难度悄悄改掉会让调试工具说谎。**以后写侵蚀机制一律走 `erode()`，不要 `addCurrent(负数)`**，否则这开关被绕过。
 
-`hud.show_below_percent`：San 百分比**低于**此值时显示 HUD，达到或超过则淡出。默认 `100.0` = 满值时不显示、掉一点就显示。它就是代码里比较用的同一个值，范围 `[0, 100]`。**`0` 等于彻底关闭 HUD**（没有读数低于 0），这是把语义读通后的自然结果，已写进 javadoc，不是漏洞。
+`erode()` 三处勿改：①被拒时**不发事件**（而非发 no-op）；②守卫写 `!(amount > 0.0F)` 而**非** `amount <= 0`（这样 NaN 也被拒），别「简化」；③`canErode()` 单独公开供提前跳过。难度取自 `player.level().getDifficulty()`（26.2 已核实）。**零 Mixin。**
 
-用户要求「所有默认值除开发者模式外全部按项目当前状态写」，已做到：`0.05` 对应原 `1:19` 权重、`1.0` 倍率对应原粒子数 12/8/20/6 与音量 0.7/0.5。**改默认值就等于改游戏行为，动之前想清楚。**
+**`flower_chance` 是概率不是权重**（用户要求「表达为玩家理解的概率，而不是暴露内部 LootPool 权重」）。换算在 `LootSettings.emptyWeight(int)`：`EMPTY = max(1, round((1-p)/p * flowerWeight))`，`FLOWER_WEIGHT` 恒为 1。**两个边界特判必须保留**：`p >= 1.0` → `isGuaranteed()` → **不加空条目**（否则实际只有 50%）；`p <= 0.0` → `injectsBaselinePool()` 为 false → **整个基础池不注入**。实测：0.05→19、0.01→99、0.1→9、0.25→3、0.5→1。
 
-### `san` 块：玩法规则，不是阈值
-
-`san.peaceful_prevents_loss`（布尔，默认 `true`）：和平难度下不掉理智。
-
-**这一块的定位要守住**：它装的是「**世界在什么情况下有权侵蚀 San**」这类规则，**不装阈值**。San 阈值不进配置这条原则（见「未完成/可能的下一步」）依然有效——所以别因为有了 `san` 块就往里塞 `low_san_percent` 之类的东西。
-
-规则**只在 `AbyssFallCoreSystem.erode(ServerPlayer, float)` 生效**，`addCurrent` / `setCurrent` / `/san` 全部不受影响。这个分界是**按「谁在写」而不是「写多少」划的**：管理员敲 `/san set` 是在陈述玩家的 San 是多少，被难度悄悄改掉会让调试工具说谎；只有游戏自己施加的压力才受规则约束。**以后写侵蚀机制（黑暗、深渊、目击恐怖等）一律走 `erode()`，不要直接 `addCurrent(负数)`**，否则这个开关就被绕过了。
-
-`erode()` 的三个细节：
-- 被拒绝时**不发 `SanChangedCallback`**（而不是发一个 no-op）。什么都没发生，报告一个没发生的变化会误导所有只用 `isNoOp()` 过滤 clamp 的监听者。
-- 金额守卫写成 `!(amount > 0.0F)` 而**不是** `amount <= 0`，这样 NaN 也会被拒（NaN 的所有比较都为 false）。别「简化」它。
-- `canErode(ServerPlayer)` 单独公开，供调用方提前跳过一次注定被拒的计算。
-
-难度取自 `player.level().getDifficulty()`（`LevelAccessor` 的 default 方法，委托 `getLevelData().getDifficulty()`，26.2 已用 MCP 核实仍是这个形态）。**零 Mixin**。
-
-### `flower_chance`：概率而非权重（用户明确要求）
-
-「建议表达为玩家理解的概率，而不是暴露内部 LootPool 权重」。
-
-换算在 `LootSettings.emptyWeight(int)`：`EMPTY = max(1, round((1-p)/p * flowerWeight))`，`FLOWER_WEIGHT` 恒为 1。
-
-**两个边界必须特判，别删**：
-- `p >= 1.0` → `isGuaranteed()` → **不加空条目**。否则公式算出 0、被 `max(1,..)` 兜成 1，结果只有 50%——设成 100% 却掉一半，这是实测跑出来的 bug。
-- `p <= 0.0` → `injectsBaselinePool()` 为 false → **整个基础池不注入**，而不是加一个永不中奖的池。
-
-实测换算精度：0.05→19(5.000%)、0.01→99、0.1→9、0.25→3、0.5→1，全部精确还原。
-
-### `visuals`：倍率而非开关（用户明确要求）
-
-「声音大小和粒子效果都可以自定义大小多少，而不是一刀切开或者关」。
-
-两项各自独立、范围 `0.0~2.0`（`Codec.floatRange`）。`0.0` 仍可完全关闭，所以倍率是开关的超集。
-
-- `scaleParticles(int)`：**非零倍率保证至少 1 个粒子**。否则 `0.05` 倍会让 SMOKE(6) 算成 0 而静默消失，看起来像 bug。
-- `scaleVolume(float)`：**只乘音量，不动音调**。0.6/1.4 的一低一高是「付出→到来」的设计意图，不是可调参数。
+**`visuals` 是倍率不是开关**（用户要求「声音大小和粒子效果都可以自定义大小多少，而不是一刀切开或者关」）。两项独立、范围 `0.0~2.0`。`scaleParticles(int)` **非零倍率保证至少 1 个粒子**；`scaleVolume(float)` **只乘音量不动音调**（0.6/1.4 的一低一高是设计意图，不是可调参数）。
 
 ---
 
----
 
-## 血泪教训（务必避免重犯）
+## 5. 血泪教训
 
-1. **路径必须用真实 vanilla jar 验证**，不能只信官方参考仓库。方块 tag 的正确路径是 `data/minecraft/tags/block/dirt.json`（带 registry 子目录），而 fabric-docs 参考里有个无 `block/` 的旧格式遗留文件会误导人。26.2 不再有 remapped jar，改查 `minecraft-dev` MCP 缓存的原版 jar：
+> **编号刻意不重排**（含空的 8 号），多处交叉引用。加新教训往后接。**这里只留结论。**
+
+**A · 证据与验证**
+
+1. **路径必须用真实 vanilla jar 验证**，别只信官方参考仓库（fabric-docs 里有无 `block/` 的旧格式遗留文件会误导人）。26.2 无 remapped jar，查 MCP 缓存的原版 jar：
 ```powershell
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $z=[System.IO.Compression.ZipFile]::OpenRead('D:\MCDxAIminecraft-dev-mcp\cache\jars\minecraft_client.26.2.jar')
-$z.Entries | Select-Object -ExpandProperty FullName | Where-Object { $_ -match 'tags/block/.*dirt' }
-$z.Dispose()
+$z.Entries | Select-Object -ExpandProperty FullName | Where-Object { $_ -match 'tags/block/.*dirt' }; $z.Dispose()
 ```
-**26.2 的数据目录仍是单数**：`advancement/`、`loot_table/`、`tags/block/`（已用上述方法实测，与 1.21.11 相同）。
+**26.2 数据目录仍是单数**（`advancement/` `loot_table/` `tags/block/`，已实测）。
 
-2. **不要凭记忆断言 vanilla 行为**。我曾断言「加 dirt tag 后锄头能耕地」，实际 `HoeItem.TILLABLES` 是硬编码 Map，根本不查 tag。被用户要求查证后才发现是错的。**能验证就验证，不能验证就说不知道。**
+2. **不要凭记忆断言 vanilla 行为**（例：`HoeItem.TILLABLES` 是硬编码 Map、不查 tag）。**能验证就验证，不能验证就说不知道。**
 
-3. **advancement 背景只有 5 个**：`husbandry` / `end` / `nether` / `stone` / `adventure`。我曾编了个不存在的 `soul_sandstone`。
+10. **别凭记忆写版本号/API 名**（GitHub Actions 与 MC 的颜色/工具类 API 变动都很频繁）。写之前用 MCP 或查 `releases/latest` 核实。
+
+13. 🔴 **不要凭公式自证，跑一遍**。做法（成本极低，用户很认这种证据）：临时往 `build.gradle` 加任务取 classpath → `javac -nowarn -proc:none` 编译测试类 → 跑 → 删干净。
+```powershell
+tasks.register('afPrintCp') { doLast { println sourceSets.main.runtimeClasspath.asPath } }
+```
+碰 `MobEffect`/注册表要先 `SharedConstants.tryDetectVersion(); Bootstrap.bootStrap();`（bootstrap 会**冻结注册表**，之后碰不了 `AbyssFallEffects`）。⚠️ **用完必须清干净，包括 `build.gradle` 里的临时任务**。**每轮结束前 `git status --short` 逐行看。**
+
+15. **报告技术约束时先核实，别顺着需求答应**（也别没核实就下反向断言）。
+
+18. **工具报「找不到」时先判断是能力边界还是真不存在**：`analyze_mixin` **不认 Fabric API 的 `impl` 类**，那个 Mixin 只能靠 `javap` 读字节码 + 编译通过来证明。
+
+20. 🔴 **「我的函数返回了预期值」≠「这个值有实际效果」**。`blitSprite` 的 tint 是**乘算**（只能变暗），代码提亮做不出闪光，必须**另做一张亮贴图**。涉及渲染管线（乘算/加算、tint 能做什么、alpha 怎么合成）必须去读目标 API 的实际实现，光测自己的输入输出等于没测。
+
+21. **选证据要挑能让结论唯一的样本**：判断半格贴图裁切方向要看**心**（对称）而不是鸡腿（倾斜不对称，会读反）。
+
+25. **`Util.getMillis()` 不是墙钟**（基于 `nanoTime()`），不能和 `System.currentTimeMillis()` 相减。**写验证代码时时钟来源也要对齐。**
+
+26. 🔴 **`gradlew build` 成功不代表游戏能启动**：资源文件原样拷贝、**Gradle 不校验 JSON 语法**，一个多余字符能让 build 通过而 Loader 崩在 bootstrap。**改完任何 json/mixins 配置后验首字节**（应是 `7B` 即 `{`，非 `EF BB BF`）：
+```powershell
+$b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('X2') }) -join ' '
+```
+⚠️ `blockstates/*.json` 用 `ConvertFrom-Json` 会**误报**（空字符串作属性名是合法 blockstate 写法），别据此改文件；**含中文的 `.ps1` 必须存成带 BOM 的 UTF-8**。
+
+**B · 与用户协作**
+
+6. **不要过度设计。** 先想最简方案。
+
+7. **先问清设计理念再写抽象**。**他说「引入一个概念」时，先确认它是离散的还是连续的。**
+
+12. **别把文档里的「原则」当成「待办」**。看到文档与代码「像是」冲突时，先读代码注释里的理由——多数时候上一个你已经解释过了。
+
+17. **枚举的「等级」和「名字」不是一回事**。有歧义时**报给他让他选，而不是自己挑一个**。
+
+22. **别在他没说的地方替他做决定，但要把冲突说出来**。若自己加了他没要求的东西，**必须明确标注是你加的并给出关闭方式**。
+
+23. 🔴 **涉及玩法数值语义的歧义必须事前问**（他明确训过：「我是设计师，你是执行层」、「下不为例」）。**判断标准：如果两种做法会让玩家体验到不同的数值，就问。**
+
+24. **别把外部顾虑（法律/洁癖/最佳实践）带进开发阶段的占位工作**（原话「你他妈有病吧」）。**占位图怎么省心怎么来，有这类顾虑先问他。**
+
+**C · 工具与环境**
+
+3. **advancement 背景只有 5 个**：`husbandry`/`end`/`nether`/`stone`/`adventure`。
 
 4. **`ServerPlayer` 没有 `getServer()`**，用 `player.level().getServer()`。
 
-5. **PowerShell 控制台显示中文乱码是编码显示问题**，不代表文件坏了。用 `[System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes(path))` 验证真实内容。
-
-6. **不要过度设计**。用户曾指出「你做的有点复杂了」——当时我为一个成就造了多余的 root 节点和代码授予层，而实际上两条件 AND 就够了。先想最简方案。
-
-7. **先问清设计理念，再动手写抽象**。San 系统第一版我自作主张加了 `SanStage` 三档枚举，用户随后明确要求改成连续参数，整个枚举白写。**用户说「引入一个概念」时，先确认它是离散的还是连续的。**
-
-9. **工具的硬限制**（都实际撞过）：`editor` 单次 6000 字符上限，写长文件要分段；`editor` 不能无 `old_text` 覆盖已存在文件，要整体重写就先 `Remove-Item`；`run_commands` 30 秒硬上限，`Start-Sleep 45` 直接失败、长构建可能被截断（重跑看 `UP-TO-DATE` 判断上次是否已成功）；`Select-String` **没有** `-Recurse`，要递归搜得先 `Get-ChildItem -Recurse -File src -Include *.java` 再管道；PowerShell **不支持 heredoc**，多行 commit message 要先写进临时文件再 `git commit -F`。
-
-10. **别凭记忆写版本号**。我第一版写 `upload-artifact@v4`，查证后实际最新是 v7。GitHub Actions 生态迭代快，写之前去 `releases/latest` 查。同理适用于 Minecraft API：本轮我按印象写 `ARGB.lerp`（1.21.11 **不存在**，改用逐通道 `Mth.lerpInt`）、又搞错 `Util` 的包名（是 `net.minecraft.util.Util`）。**颜色和工具类的 API 变动频繁，写之前用 MCP 核实。**
-
-11. **删 tag 重建时先确认远端删成功了再建本地**。我这次远端删除失败（网络）但本地已删，导致中间状态不一致，多花了几轮才理清。
-
-12. **别把文档里的「原则」当成「待办」**。曾经读到 HANDOFF 写「零 Mixin」、又在代码里看到 `ServerPlayerEvents.JOIN` 钩子，就当成矛盾去报给用户。用户澄清：他的原则是「最大程度不用 Mixin、优先用 Fabric API 事件」，而**代码里存在的钩子都是不得不用的、已经评估过的**。教训：看到文档与代码「像是」冲突时，先读代码注释里的理由，多数时候上一个你已经解释过了。
-
-13. **不要凭公式自证，跑一遍**。`flower_chance` 的权重换算我推导完觉得没问题，实际编译跑起来才发现 `p=1.0` 会算出 50% 而不是 100%；同一轮还发现 `optionalFieldOf` 会让默认配置文件写成 `{}`。**这两个 bug 都是「跑」发现的，读代码读不出来。** 涉及数值换算、序列化、或任何「无头环境会不会炸」的判断时，写个临时类挂到项目真实 classpath 上跑一次，成本极低：
+5. **PowerShell 显示中文乱码是编码显示问题**（lang 文件是无 BOM UTF-8，控制台按 GBK 解），不代表文件坏了：
 ```powershell
-# 临时往 build.gradle 加个任务取 classpath，用完删掉
-tasks.register('afPrintCp') { doLast { println sourceSets.main.runtimeClasspath.asPath } }
-# 然后 javac -nowarn -cp <classpath> -d out Check.java && java -cp "out;<classpath>" Check
+[System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes('src/main/resources/assets/abyssfall/lang/zh_cn.json'))
 ```
-⚠️ **用完必须清干净，包括 `build.gradle` 里的临时任务**——本轮我的备份文件被中途一次 `Move-Item` 消耗掉，临时任务留在了文件里，最后靠 `git checkout -- build.gradle` 还原。**每轮结束前用 `git status --short` 逐行看，别只看自己记得改过的文件。**
 
-14. **文件名里不能有 `:`**（Windows）。用户要的时间戳格式含冒号，实测创建失败。**任何要写进文件名的用户输入格式都先验一下**，别等运行时才炸。
+9. **工具硬限制**：`editor` 单次 **6000 字符**、超了静默截断；`editor` 不能无 `old_text` 覆盖已存在文件（整体重写先 `Remove-Item`）；`run_commands` **30 秒**上限（`Start-Sleep 45` 直接失败，长构建会被截断，重跑看 `UP-TO-DATE` 判断上次是否成功）；`Select-String` **没有** `-Recurse`；PowerShell **不支持 heredoc**（多行 commit message 先写临时文件再 `git commit -F`）；`read_files` 读长文件会截断、其分页可能持续返回 `[outdated]` ⇒ **改用 PowerShell 按行区间 dump**，别反复重试。
 
-15. **报告技术约束时先核实，别顺着需求答应**。用户要求「注入失败就 WARN」，我先去读了 `LootTableEvents.Modify` 的签名，发现返回 `void`、不存在失败状态，于是把方案改成「检测配置的表从未加载」并说明了原因。**上一轮我还犯过反例**：没核实就断言「别的 mod 的表往往不是 builtin」，实际 `LootTableSource.MOD` 的 `isBuiltin()` 是 true，判断完全错了。
+11. **删 tag 重建时先确认远端删成功了再建本地。**
 
-16. **坐标 API 别按名字猜语义**（本轮同一个坑踩了两次）。`HudStatusBarHeightRegistry.getHeight(id)` 听起来像「高度」，实际返回**顶边 Y 坐标**且**求和不含自身**。我先减了一次 `BAR_HEIGHT`（条飘高一行），用户说「还是高」，我又减了 `OCCUPIED_HEIGHT`（还是高）。**正确做法是先读官方 javadoc 的用法示例**——它写的就是 `guiHeight() - getHeight(id)`，零额外偏移。两次都是我先动手改数字、后找证据。
+14. **文件名里不能有 `:`**（Windows）。**任何要写进文件名的用户输入格式都先验一下。**
 
-17. **枚举的「等级」和「名字」不是一回事**。用户说「4 级权限（管理员权限 GameMaster）」，我核实后发现 `GAMEMASTERS` 是 **2 级**、4 级叫 `OWNERS`。**报给用户让他选，而不是自己挑一个**——他选了 3 级 `ADMINS`。
+16. **坐标 API 别按名字猜语义**：`getHeight(id)` 返回**顶边 Y**且**求和不含自身**，正确写法 `guiHeight - getHeight(id)`、零额外偏移。**先读官方 javadoc 的用法示例，别先改数字。**
 
-⚠️ 注意：**血泪教训里没有第 8 条**。不是漏了，是历次精简时那条被合并进了别处，编号刻意没重排——因为项目里多处注释和文档按编号交叉引用，重排会让所有引用一起失效。**以后加新教训就往后接，别去填 8 这个空位、也别重排。**
+19. **改配置键名会静默破坏用户的本机配置** → 必须主动告知他去改。详见 4.2。
 
-18. **工具报「找不到」时，先判断是能力边界还是真不存在**。`analyze_mixin` 只认 Minecraft 类、**不认 Fabric API 的 `impl` 类**，注入 `HudStatusBarHeightRegistryImpl` 时它报 `target_not_found`，但目标其实存在。改用直接读 jar 字节码确认方法存在 + 编译通过来证明签名正确。
-
-19. **改配置键名会静默破坏用户的本机配置**。加字段永不坏旧文件，但改名会让整块回落默认。**改名时必须主动告知用户去改他的 `run/config/abyssfall.json`**，别让他的设置无声失效。详见「配置系统」一节。
-
-20. **「我的函数返回了预期值」不等于「这个值有实际效果」**（最惨的一次）。我给闪光写了个 `brighten()` 把 tint 往白插值，还跑了 8 条断言全绿、宣布「已验证」。用户实测后问「你确定真有闪光吗」——**一点效果都没有**。原因：`blitSprite` 的 tint 是**乘算**的（只能变暗），而 `ARGB.white(alpha)` 的 RGB 本身就是 `0xFFFFFF`，从 255 插到 255 恒等于没动。**我测的是自己那个错函数的算术，完全没碰渲染语义。** 涉及渲染管线（乘算/加算、tint 能做什么、alpha 怎么合成）时，必须去读目标 API 的实际实现，光测自己的输入输出等于没测。vanilla 的做法是**另做一张亮贴图**（`heart/full_blinking`）。
-
-21. **对称的参照物才能验证方向，不对称的会骗你**（用户原话「这TM半格san值左右部分是TM反的」）。我从 `food_half.png` 反推半格图的裁切方向，得出「保留右半」，写进了脚本还注明「实测得来」。实际反了。**鸡腿图案是倾斜不对称的**，它的半格看着像「变瘦」而不是「切掉一半」，所以从它身上读不出方向。改查**心**（`heart/full` vs `heart/half`）立刻清楚：保留左半。**选证据时要挑那个能让结论唯一的样本，而不是手边第一个样本。**
-
-22. **别在用户没说的地方替他做决定，但要把冲突说出来**。用户要求「和原版恢复生命值的效果一模一样」并称之为「高亮脉冲」。我核实后发现原版渲染心的代码只把心**上抬 2 像素**、**亮度一点没改**——「从左到右的行波」对得上，「高亮」对不上。我的处理是照「一模一样」做上抬、另外加了提亮并**明确标注这是我加的、给出关闭方式**。用户随后说「抬亮去掉吧」。**如果我默默按自己的理解二选一，就会要么丢掉他要的效果、要么塞进他没要的东西。**
-
-23. **涉及游戏数值语义的歧义，必须问，不能自己选一个做完再解释**（用户明确训过）。做精神崩溃时「降低玩家 1% 的 san 值」有两种读法——上限的 1%，还是当前值的 1%。我自己选了「上限」，做完才在总结里说明。**用户认可了这个选择，但明确说「下次通过 cline 问我，而不是自己给这个事情做了，我是设计师，你是执行层」、「下不为例」。** 教训 22 的「说出冲突」是**做完再标注**，这条比它更严：**关系到玩法数值的歧义要事前问**。判断标准：如果两种做法会让玩家体验到不同的数值，就问。
-
-24. **别把外部顾虑（法律/洁癖/最佳实践）带进开发阶段的占位工作**（用户原话「你他妈有病吧」）。要求是「图标暂时用原版中毒图标替代」。我担心把 Mojang 的 `poison.png` 拷进 GPL 项目算再分发，于是写了个 PowerShell 脚本自己画了一张。**用户明确批评：占位图最终都会换成自己的美术资产，开发阶段怎么省心怎么来，遇到这类问题要问他。** 这类「我觉得有风险所以绕一下」的自作主张，成本由用户承担（多出一个要维护的脚本），收益是零。**先问。**
-
-25. **`Util.getMillis()` 不是墙钟，不能和 `System.currentTimeMillis()` 相减**。它是基于 `System.nanoTime()` 的单调时钟，纪元完全无关。我在验证 HUD reveal 窗口长度时混用了两者，得到 `-1787144507646` 这种荒谬值，白排查一轮。生产代码全程只用 `Util.getMillis()` 所以没受影响，但**写验证代码时时钟来源也要对齐**。
-
-26. 🔴 **`gradlew build` 成功不代表游戏能启动**（26.2 迁移时踩到，最该记住的一条）。我用 editor 改 `abyssfall.client.mixins.json` 时，在文件开头留下了一个多余的 `F` 字符。**资源文件是原样拷贝的，Gradle 不校验 JSON 语法**，所以 build 一路 `BUILD SUCCESSFUL`，而 Loader 在 bootstrap 阶段直接崩：`Expected BEGIN_OBJECT but was STRING at line 1 column 1`。**改完任何 json / mixins 配置后，用 `ConvertFrom-Json` 或读首字节确认一遍**：
-```powershell
-$b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('X2') }) -join ' '   # 应是 7B（'{'），非 EF BB BF（BOM）也非别的
-```
-⚠️ 顺带两条同源经验：`blockstates/*.json` 用 `ConvertFrom-Json` 会**误报**（空字符串 `""` 作属性名是 blockstate 合法写法，但 PowerShell 不接受），别据此改文件；**含中文的 `.ps1` 必须存成带 BOM 的 UTF-8**，否则 PowerShell 按 GBK 读、直接语法错误。
-
-27. **改长文档时别用大块 `editor` 覆写**（同上一轮）。我试图整体重写 HANDOFF，中途把 604 行截成 109 行，靠备份才救回来。**正确做法**：先 `Copy-Item` 备份，然后**逐处小范围 `old_text`/`new_text` 替换**，每次改完看 diff 输出确认。`editor` 单次 6000 字符上限不是建议而是硬限制，超了会静默截断。
-
-
----
----
-
-## 26.2 迁移（本次做的事，已完成并实测通过）
-
-项目原本在 Minecraft 1.21.11。**26.1 起 Minecraft 不再混淆**，Fabric 随之停止维护第三方映射，于是构建方式和部分 API 都换了形状。迁移已完成，`build` / `releaseJars` 均成功，用户复测确认功能正常。
-
-**构建层的五处形态变化**（不是版本号变化）：
-
-| 项 | 1.21.11 | 26.2 |
-|---|---|---|
-| 插件 id | `net.fabricmc.fabric-loom-remap` | **`net.fabricmc.fabric-loom`** |
-| `mappings` 声明 | `loom.officialMojangMappings()` | **整行删除**（无混淆，无可映射） |
-| mod 依赖配置 | `modImplementation` | **`implementation`**（无需重映射） |
-| 发布任务依赖 | `remapJar` / `remapSourcesJar` | **`jar` / `sourcesJar`**（前两者根本不存在了） |
-| Java | 21 | **25**（`java-runtime-epsilon`） |
-
-后两条是**实测报错发现的**，不是查文档查到的。副作用是好的：「`jar` 是 dev-mapped、跑不了」这个老坑随之消失。
-
-**代码层**：项目 68 个 `net.minecraft.*` import 里只有 3 个要改，全部是搬家或改名：
-
-| 旧 | 新 |
-|---|---|
-| `advancements.criterion.EntityPredicate` | `advancements.predicates.entity.EntityPredicate` |
-| `advancements.criterion.MobEffectsPredicate` | `advancements.predicates.MobEffectsPredicate` |
-| `client.gui.GuiGraphics` | `client.gui.GuiGraphicsExtractor` |
-
-另有三处 API 变动（都是改名，逻辑一行未动）：
-
-1. **HUD 元素接口**：`render(GuiGraphics, DeltaTracker)` → **`extractRenderState(GuiGraphicsExtractor, DeltaTracker)`**。`blitSprite` / `fill` / `pose` / `guiWidth` / `guiHeight` 全部保留同签名；`drawString(...)` → **`text(...)`**，参数序相同、5 参重载的 `dropShadow` 默认值两版都是 `true`，**所以文字观感无变化**。`guiWidth()/2+91` 与 `foodLevel*3+1` 在 26.2 vanilla 里逐字未变，**动效常量与判定全部原样保留**。
-2. **创造标签**：模块 `fabric-item-group-api-v1` → **`fabric-creative-tab-api-v1`**，`FabricItemGroup.builder()` → `FabricCreativeModeTab.builder()`，`ItemGroupEvents.modifyEntriesEvent` → `CreativeModeTabEvents.modifyOutputEvent`。回调收到的 `FabricCreativeModeTabOutput` 实现 `CreativeModeTab.Output`，**`entries.accept(...)` 一字未改**。
-3. **覆盖层消息**：`displayClientMessage(c, true)` 被**移除**，替代品 `sendOverlayMessage(c)`。链路与旧版完全相同：`sendOverlayMessage` → `ChatListener.handleOverlay` → `Hud.setOverlayMessage(msg, false)` → 无条件 `overlayMessageTime = 60`。**所以「3 秒 + 淡出 + 重按续期全由 vanilla 提供、项目不写计时器」这个设计依据依然成立。**
-
-**🔴 Mixin 从 2 个减到 1 个**：`WitherRoseBlockMixin` 已删除。26.2 的 `WitherRoseBlock.mayPlaceOn` 改成了 `state.is(BlockTags.SUPPORTS_WITHER_ROSE)`——当初逼我们注入的那三个硬编码方块判断消失了。改用数据文件 `data/minecraft/tags/block/supports_wither_rose.json` 追加 `abyssfall:abyss_dirt`。**这个替代严格更优**：当初拒绝 `BlockTags.DIRT` 是因为它会连带开放所有植物，而新 tag 是凋零玫瑰专用的（全仓库仅 3 处引用），**零副作用**；`"replace": false` 让 vanilla 与其他 mod 的条目都保留，仍然只做加法。
-
-**其他**：`Gui` 类改名为 `Hud`（访问路径 `minecraft.gui.hud`）；权限系统内部重构（见 `/san` 一节的警告）；数据目录路径**未变**（仍是单数 `advancement/` `loot_table/` `tags/block/`，用 26.2 真 jar 实测过）。
+27. **改长文档时别用大块 `editor` 覆写**：`Copy-Item` 备份 → 分段写（每段 ≤6000 字符，`insert_line` 追加）→ 每段后核行数 → 收尾核字节与首字节。
 
 ---
 
 
+## 6. 26.2 迁移（已完成，用户复测通过）
 
-## 当前状态
+**构建层五处形态变化**（不是版本号变化）：插件 id `fabric-loom-remap` → **`fabric-loom`**；`loom.officialMojangMappings()` → **整行删除**；`modImplementation` → **`implementation`**；发布任务依赖 `remapJar`/`remapSourcesJar` → **`jar`/`sourcesJar`**（前两者已不存在）；Java 21 → **25**。副作用是好的：**「`jar` 是 dev-mapped、跑不了」这个老坑随之消失**。
 
-- 编译：**已验证**，`gradlew build` 与 `releaseJars` 都 `BUILD SUCCESSFUL`
-- 版本：`gradle.properties` 的 `version=1.1-Dev`
-- 产物：`build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`（需 `releaseJars` 生成）。**26.2 没有 `remapJar` 这一步**，`jar` 产出的就是能直接运行的那个
+**代码层**：68 个 `net.minecraft.*` import 只有 3 个要改：`advancements.criterion.EntityPredicate` → `advancements.predicates.entity.EntityPredicate`；`advancements.criterion.MobEffectsPredicate` → `advancements.predicates.MobEffectsPredicate`；`client.gui.GuiGraphics` → `client.gui.GuiGraphicsExtractor`。
 
-**Git 状态、tag 列表、CI 结果一律现场核实**，别信文档里写死的（命令见「开工前请做」，`gh` 用法见 `REFERENCE.md`）。tag 到 `v1.1-Dev` 为止；`v1.1-Dev` 是迁移到 26.2 的第一个版本，之前的 `0.1-Dev` ~ `v0.5-Dev` 都是 1.21.11 时期的。
+**三处 API 改名（逻辑一行未动）**：
+1. **HUD 元素接口** → **`extractRenderState(GuiGraphicsExtractor, DeltaTracker)`**。`blitSprite`/`fill`/`pose`/`guiWidth`/`guiHeight` 全同签名；`drawString(...)` → **`text(...)`**（参数序相同、`dropShadow` 默认 `true`，**文字观感无变化**）。`guiWidth()/2+91` 与 `foodLevel*3+1` 在 26.2 逐字未变 ⇒ **动效常量与判定全部原样保留**。
+2. **创造标签** → **`fabric-creative-tab-api-v1`**；`FabricCreativeModeTab.builder()`；`CreativeModeTabEvents.modifyOutputEvent`。`FabricCreativeModeTabOutput` 实现 `CreativeModeTab.Output` ⇒ **`accept(...)` 一字未改**。
+3. **覆盖层消息** `displayClientMessage(c, true)` 已**移除** → **`sendOverlayMessage(c)`**，落点完全相同（无条件 `overlayMessageTime = 60`）⇒ **「3 秒 + 淡出 + 重按续期全由 vanilla 提供、项目不写计时器」依然成立**。
 
-### 已实测通过的功能（用户在真实环境验证，别再列成待确认项去催他测）
-
-**1.21.11 时期已全部通过，26.2 迁移后用户复测确认「全部事项表面看起来没任何问题」。**
-
-**San 系统**：`/san` 8 条、持久化、死亡保留、3 级权限、客户端同步。
-
-**内容与交互**：创造标签双色/三色标题、tooltip 不变蓝、深渊之花 EPIC 紫、宝箱掉落与概率、药水效果必定掉落、村民箱子不掉落、玫瑰可种深渊污泥而其他作物不可、骨粉催熟出花且玫瑰被消耗、灵魂特效、三个成就正常触发。
-
-**配置系统**：生成/读取/各项生效、开发者内容条件注册（`false` 时标签与物品都不存在）、理智计数器 3 秒淡出与重按续期、坏 JSON 备份+重写。
-
-**HUD（两种读数都已通过）**：100% 时不显示且不占空间、紧贴饱食度且饱食度不移位、约 1 秒淡出且结束时上方不跳、氧气条/物品名不被压、F1 一同隐藏；图标行的半格映射、抖动、下降抖一下、上升行波、回满闪光；进度条的颜色与长度随 San 变化、RGB 高亮闪烁、整条抖动与抬升；认知窥镜双向切换与 500ms reveal。
-
-**药水效果**：精神崩溃五级掉 San、精神饱满五级回 San、同级并存净变化为 0、**和平模式拦住精神崩溃但不拦精神饱满**、`/san add` 在和平模式仍生效（`erode` 与 `addCurrent` 的分界得到验证）。
-
-**测试协议系统**：用户 build 后放进真实玩家环境测的（非 runClient），Swing 弹窗在 `preLaunch` 时机确实能显示。
-
-### 唯一仍未验证的观感项
-
-**连续小额恢复会不会一直闪、显得吵。** 每次数值变动都重启慢闪，若 San 每 tick 涨一点，闪光会被不断重启从而一直停在亮相。真出现就加个最小间隔；四个常量在一起（`FULL_FLASH_BLINK_TICKS` / `FULL_FLASH_BLINKS` / `GAIN_FLASH_BLINK_TICKS` / `GAIN_FLASH_BLINKS`），两个 HUD 元素各有一套。
-
-### 我用真实 classpath 实测过的行为（非推断）
-
-**这条路成本极低、用户很认这种证据，遇到算术/数据/时序问题就用。** 做法：临时 init script 导出 `sourceSets.client.runtimeClasspath`（或 `main`）→ `javac -proc:none` 编译一个测试类 → 跑 → **删掉临时文件（含 build.gradle 里的临时任务）**。碰 `MobEffect` / 注册表要先 `SharedConstants.tryDetectVersion(); Bootstrap.bootStrap();`（但 bootstrap 会**冻结注册表**，之后就碰不了 `AbyssFallEffects` 了）。
-
-累计约 210 项，覆盖：配置往返与各类残缺回落、战利品权重换算与 `p=1.0`/`p=0.0` 特判、测试协议密钥比较与无头降级、DEV 图标逐像素、jar 内容解包、HUD 全部动效时序（半格映射/抖动周期/行波顺序/闪光次数/时钟倒流取消）、两个药水效果的数值表与镜像对称、认知窥镜切换与语言键完整性、进度条高亮的 RGB 计算、reveal 时间轴、**以及 HUD 层序归位的 9 种注册顺序场景（26.2 迁移时新增，见 `REFERENCE.md` 15a）**。
-
-**注意血泪教训 20：这类验证证明不了渲染效果。**
-
-**它抓到过读代码抓不到的真 bug**：`p=1.0` 只出 50%、默认配置写成 `{}`。
+**Mixin 从 2 减到 1**：26.2 的 `WitherRoseBlock.mayPlaceOn` 变成 `state.is(BlockTags.SUPPORTS_WITHER_ROSE)`，改用数据文件（`REFERENCE.md` 4）。**其他**：`Gui` → `Hud`（`minecraft.gui.hud`）；权限系统内部重构（见 3.5）；数据目录路径**未变**。
 
 ---
 
-## 未完成 / 可能的下一步
+## 7. 当前状态
 
-**San 系统（项目主线）**
-- `SanChangedCallback` 仍无任何监听者。框架就绪，等玩法来用
-- **什么情况下侵蚀 San —— 这是最大的空白。** 药水效果已经能扣 San 了，但没有任何东西会给玩家上那个 debuff。黑暗、深渊、目击恐怖等真正的侵蚀来源全未设计
-- **扣 San 一律走 `AbyssFallCoreSystem.erode()`**，别直接 `addCurrent(负数)`，否则绕过 `san.peaceful_prevents_loss`
-- 差异化渲染（San 低的玩家看到不同渲染）—— 用户明确说以后开发
-- San 显示道具**已实现**（认知窥镜），四个待定点用户已定：双向切换、手持右键、无耐久时效、与理智计数器并存
+- **编译已验证**：`build` 与 `releaseJars` 都 `BUILD SUCCESSFUL`。产物 `build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`
+- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.1-Dev`（26.2 首版；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）
+
+### 7.1 已实测通过（用户在真实环境验证，**别再列成待确认项去催他测**）
+
+1.21.11 时期全部通过，26.2 迁移后他复测确认「全部事项表面看起来没任何问题」：
+
+- **San**：`/san` 8 条、持久化、死亡保留、3 级权限、客户端同步
+- **内容**：双色/三色标题、tooltip 不变蓝、EPIC 紫、宝箱掉落与概率、药水效果必定掉落、村民箱子不掉落、玫瑰可种深渊污泥而其他作物不可、骨粉催熟出花且玫瑰被消耗、灵魂特效、三个成就
+- **配置**：生成/读取/各项生效、开发者内容条件注册（`false` 时标签与物品都不存在）、计数器 3 秒淡出与重按续期、坏 JSON 备份+重写
+- **HUD 两种读数**：满值不显示且不占空间、紧贴饱食度且饱食度不移位、约 1 秒淡出且结束时上方不跳、氧气条/物品名不被压、F1 一同隐藏；图标行半格映射/抖动/下降抖一下/上升行波/回满闪光；进度条颜色长度随 San 变化、RGB 高亮、整条抖动抬升；窥镜双向切换与 500ms reveal
+- **药水**：两效果五级数值、同级并存净变化为 0、**和平模式拦精神崩溃但不拦精神饱满**、`/san add` 在和平仍生效
+- **测试协议**：真实玩家环境（非 runClient）测过，Swing 弹窗在 `preLaunch` 确实能显示
+
+### 7.2 唯一仍未验证的观感项
+
+**连续小额恢复会不会一直闪、显得吵。** 每次数值变动都重启慢闪，若 San 每 tick 涨一点会一直停在亮相。真出现就加最小间隔；四个常量在一起（`FULL_FLASH_BLINK_TICKS`/`FULL_FLASH_BLINKS`/`GAIN_FLASH_BLINK_TICKS`/`GAIN_FLASH_BLINKS`），两个 HUD 元素各一套。
+
+### 7.3 已用真实 classpath 实测过约 210 项
+
+覆盖：配置往返与残缺回落、战利品权重换算与两个边界特判、测试协议密钥与无头降级、DEV 图标逐像素、jar 解包、HUD 全部动效时序、两个药水效果数值表与镜像对称、窥镜切换与语言键完整性、进度条高亮 RGB、reveal 时间轴、**HUD 层序归位的 9 种注册顺序场景**（`REFERENCE.md` 15a）。**注意教训 20：这类验证证明不了渲染效果。**
+
+---
+
+## 8. 未完成 / 下一步
+
+**San（主线）**
+- 事件仍无监听者。框架就绪，等玩法来用
+- 🔴 **什么情况下侵蚀 San —— 最大的空白。** 药水效果已能扣 San，但没有任何东西会给玩家上那个 debuff。黑暗、深渊、目击恐怖等真正的侵蚀来源全未设计
+- 差异化渲染（San 低看到不同渲染）—— 用户明确说以后开发
+- 显示道具已实现（认知窥镜），四个待定点已定：双向切换、手持右键、无耐久时效、与理智计数器并存
 
 **内容**
-- **所有图标都是占位**，正式发布前统一换成自己的美术资产：深渊污泥用原版泥土材质、`abyss_gardeners` 成就图标是向日葵、理智计数器与认知窥镜都用原版时钟 `clock_00`（**指针不会转**，原版靠 `range_dispatch` 切 64 个模型才会转）、精神崩溃/精神饱满是脚本生成的图
-- 深渊之花无实际功能（纯注册占位）
-- 三个药水效果都**无获取途径**：「深渊探索者」只被战利品侧读取，精神崩溃/精神饱满只能 `/effect` 手动给
+- **所有图标都是占位**，发布前统一换自己的美术：深渊污泥用原版泥土材质、`abyss_gardeners` 图标是向日葵、计数器与窥镜都用原版 `clock_00`（**指针不会转**，原版靠 `range_dispatch` 切 64 个模型才转）、两个精神效果是脚本生成的图
+- 深渊之花无实际功能；三个药水效果**无获取途径**（「深渊探索者」只被战利品侧读取，另两个只能 `/effect`）
 - **反精神崩溃魔咒：用户已给完整数值，明确说「先记录，不要实现」**（数值见 `REFERENCE.md` 7b 末尾）
 - 无配方、无 datagen、无自定义音效资源
-- DEV 图标物品 `abyss_dev_icon` **刻意不命名**（保持键值显示），这是用户要求，不要「补全」它的 lang key
+- `abyss_dev_icon` **刻意不命名**（保持键值显示），别「补全」它的 lang key
 
-**配置系统（已可用，可继续扩展）**
-- 目前 **5 个块、8 个配置项**（`developer` 2 + `loot` 2 + `visuals` 2 + `hud` 1 + `san` 1）。用户预期「以后可自定义配置会特别多」，架构已就绪
-- **不做热加载**是用户明确要求，别自作主张开
-- 被用户明确否决/搁置的，**别再提**：凋零玫瑰能种深渊污泥（核心机制，不进配置）、骨粉催熟机制开关（只有特效可调）、`isBuiltin()` 保留拦截
-- **San 阈值不该进配置**（我建议、用户尚未表态）：San 上限是存档数据，改配置会让新老玩家规则不一致，还可能静默 clamp 玩家数据。真要做之前先问。注意 `san` 块装的是「**规则**」不是阈值，别因为有了这个块就往里塞 `low_san_percent`
-- `ALL_LOADED` 是否每次 `/reload` 都触发，**仍未实测**。若不触发，未命中表的 WARN 只在首次加载报一次
+**配置**
+- 架构已就绪，用户预期「以后可自定义配置会特别多」
+- **不做热加载**是明确要求
+- **被否决/搁置的别再提**：凋零玫瑰能种深渊污泥（核心机制，不进配置）、骨粉催熟机制开关（只有特效可调）、`isBuiltin()` 保留拦截
+- **San 阈值不该进配置**（我建议、他未表态）：上限是存档数据，改配置会让新老玩家规则不一致、还可能静默 clamp 玩家数据。真要做先问
+- `ALL_LOADED` 是否每次 `/reload` 都触发，**仍未实测**
 
 ---
 
-## 开工前请做
 
-0. **本文件通读完**，再按需查 `REFERENCE.md`（要动哪个已有功能就读它那一节，别通读）
+## 9. 开工前请做
+
+0. 通读本文件，再按需查 `REFERENCE.md`（动哪个功能读哪节，别通读）
 1. 读 `gradle.properties`、`fabric.mod.json`、`AbyssFall.java` 确认状态与本文档一致
-2. 读 `src/main/java/com/abyssfall/core/` 全部六个文件——这是项目地基（`SanHudMode` / `SanHudModeState` 只是显示偏好，不属于 San 数据本身）
-2b. 读 `src/main/java/com/abyssfall/config/` 全部七个文件——这是第二块地基，以后加配置都走它
-2c. 现场核实 Git 状态，别信文档里的清单：
-```powershell
-git --no-pager log --oneline -5; git status --short; git --no-pager tag
-```
-3. 用 `Fabric-Knowledge` MCP 查 26.2 官方参考。**实测**：`get_fabric_context(minecraft_version="26.2")` 返回 `status = exact`，命中 `reference/latest`。⚠️ 但传 `fabric_api_version="0.158.0+26.2"` 会得到 `version_match_only` —— 因为**上游 fabric-docs 自己把 `reference/latest` 钉在 Fabric API `0.155.2+26.2`**（它的 `build.gradle` 里写死的），而项目用 0.158.0。**已实测这个差异不影响开发**：把 0.155.2 与 0.158.0 的三个相关子模块 jar 逐类 `javap` 比对，12 个类签名全部相同、类集合零增删。**别去手改 MCP 索引里的版本号**——那会伪造 provenance。
-   ⚠️ `reference/latest` 现在正好就是 26.2，所以它**这一次**是有效证据；但它是滚动别名（26.3 快照已存在），**每次都要用显式版本号复核**。
-4. 用 `minecraft-dev` MCP（`mapping: "mojmap"`, `version: "26.2"`）核实所有类/方法/字段签名，**不要凭记忆**。26.2 已反编译并建好全文索引（7055 文件），`search_indexed` 很快。⚠️ **26.2 不再混淆**，所以 `find_mapping` 对它会直接报错——这是正常的，改用 `get_minecraft_source` / `search_minecraft_code`。反编译缓存在 `D:\MCDxAIminecraft-dev-mcp\cache\decompiled\26.2\mojmap`，原版 jar 在 `...\cache\jars\minecraft_client.26.2.jar`，**离线直接读文件比调 MCP 更快**。
-5. 涉及 Mixin 时用 `analyze_mixin` 校验。⚠️ 但它**不认 Fabric API 的 `impl` 类**（血泪教训 18），项目唯一那个 Mixin 只能靠 `javap` 读 jar 字节码 + 编译通过来证明。
-6. **查 Fabric API 实际行为时，直接读 Gradle 缓存里的 jar 最可靠**：
+2. 读 `core/` 六个 + `config/` 七个文件（两块地基）
+3. 现场核实 Git：`git --no-pager log --oneline -5; git status --short; git --no-pager tag`
+
+**MCP 用法（都实测过）**：
+- **`Fabric-Knowledge`**：`get_fabric_context(minecraft_version="26.2")` → `status = exact`。⚠️ 传 `fabric_api_version="0.158.0+26.2"` 会得到 `version_match_only`（上游把 `reference/latest` 钉在 `0.155.2+26.2`，项目用 0.158.0）。**已实测这差异不影响开发**（两版相关子模块 12 个类签名全同、类集合零增删）。**别去手改 MCP 索引里的版本号**，那会伪造 provenance。⚠️ `reference/latest` 是滚动别名（26.3 快照已存在），**每次都要用显式版本号复核**。
+- **`minecraft-dev`**（`mapping:"mojmap"`, `version:"26.2"`）核实所有签名，**不要凭记忆**。已反编译并建好索引（7055 文件），`search_indexed` 很快。⚠️ **26.2 不再混淆 ⇒ `find_mapping` 会直接报错，这是正常的**，改用 `get_minecraft_source`/`search_minecraft_code`。缓存在 `D:\MCDxAIminecraft-dev-mcp\cache\decompiled\26.2\mojmap`、jar 在 `...\cache\jars\minecraft_client.26.2.jar`，**离线直接读文件比调 MCP 更快**。
+- Mixin 用 `analyze_mixin` 校验，但注意教训 18。
+
+**查 Fabric API 实际行为：直接读 Gradle 缓存的 jar**（没有 sources jar 时 `javap` 是唯一可靠办法）：
 ```powershell
 $p="$env:USERPROFILE\.gradle\caches\modules-2\files-2.1\net.fabricmc.fabric-api"
-Get-ChildItem $p -Directory | ForEach-Object { $_.Name }            # 有哪些子模块
-Get-ChildItem (Join-Path $p 'fabric-rendering-v1') -Directory        # 缓存了哪些版本
+Get-ChildItem $p -Directory | ForEach-Object { $_.Name }
+& 'C:\Program Files\Java\jdk-25.0.2\bin\javap.exe' -p -cp <jar> 'net.fabricmc.fabric.impl.client.rendering.hud.HudStatusBarHeightRegistryImpl'
 ```
-⚠️ 缓存里同时躺着 1.21.11 时期的旧版本（如 `fabric-rendering-v1 16.2.10`），**别读错版本**。
-拿签名用 `javap`（**没有 sources jar 时唯一可靠的办法**）：
-```powershell
-$jv='C:\Program Files\Java\jdk-25.0.2\bin\javap.exe'
-& $jv -p -cp <jar路径> 'net.fabricmc.fabric.impl.client.rendering.hud.HudStatusBarHeightRegistryImpl'
-```
+⚠️ **缓存里同时躺着 1.21.11 时期的旧版本**（如 `fabric-rendering-v1 16.2.10`），别读错。Fabric Loader 的 sources jar（查 `preLaunch` 时机、`Knot.init()`、`EnvType`）在 `...\net.fabricmc\fabric-loader`，**本机有多个版本，项目用 0.19.3**。
 
-项目实际用到的五个子模块版本（**已验证**，用 `gradlew dependencies --configuration compileClasspath` 查出）：
+**项目实际用到的六个子模块**（已验证，`gradlew dependencies --configuration compileClasspath`）：
 
-| 子模块 | 版本 | 项目里用它做什么 |
+| 子模块 | 版本 | 用途 |
 |---|---|---|
 | `fabric-data-attachment-api-v1` | `2.2.18+515ac5339e` | San attachment |
 | `fabric-entity-events-v1` | `5.0.5+06488ac19e` | `ServerPlayerEvents.JOIN` |
 | `fabric-events-interaction-v0` | `5.2.7+515ac5339e` | `ItemEvents.USE_ON` 骨粉催熟 |
 | `fabric-loot-api-v3` | `3.0.17+06488ac19e` | `LootTableEvents.MODIFY` |
-| `fabric-rendering-v1` | `25.3.2+515ac5339e` | HUD 元素注册 + 状态栏高度注册 + 那个 client Mixin 的注入目标 |
-| `fabric-creative-tab-api-v1` | `5.0.14+d871b99e9e` | 两个创造标签（26.2 从 `fabric-item-group-api-v1` 改名而来） |
+| `fabric-rendering-v1` | `25.3.2+515ac5339e` | HUD 元素/高度注册 + **那个 Mixin 的注入目标** |
+| `fabric-creative-tab-api-v1` | `5.0.14+d871b99e9e` | 两个创造标签 |
 
-⚠️ **`fabric-rendering-v1` 的版本尤其重要**：client Mixin 注入的是它的 `impl` 包内部实现。升级 Fabric API 时必须重新核实（见 `REFERENCE.md` 的「15a. 位置系统」那三点警告）。
-
-**另一个可靠的证据来源**：Fabric Loader 自己的 sources jar。查 `preLaunch` 时机、`Knot.init()` 流程、`EnvType`、异常处理路径都靠它：
-```powershell
-$l="$env:USERPROFILE\.gradle\caches\modules-2\files-2.1\net.fabricmc\fabric-loader"
-Get-ChildItem -Recurse -Filter '*sources.jar' $l | Select-Object -ExpandProperty FullName
-```
-**注意本机缓存里有多个版本，项目用的是 0.19.3**（`gradle.properties` 的 `loader_version`），别读错。
-
-7. **lang 文件用 `Get-Content` 看会是乱码**（PowerShell 默认按 GBK 解，文件是无 BOM UTF-8）。这是显示问题不是文件坏了，要看真实内容用：
-```powershell
-[System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes('src/main/resources/assets/abyssfall/lang/zh_cn.json'))
-```
+⚠️ **`fabric-rendering-v1` 版本尤其重要**：Mixin 注入的是它的 `impl` 包。升级 Fabric API 时必须重新核实（`REFERENCE.md` 15a 那三点）。
 
 ---
 
-## 给下一个你的话
+## 10. 给下一个你的话
 
-用户和我们之间已经建立了很高的信任度。维持它的关键不是「多做」，而是：
+信任度已经很高。维持它的关键不是「多做」：
 
-- **不撒谎**。没验证就说没验证。他会因此更信你，而不是更少。
-- **说清「为什么」**。他不只要能跑的代码，他要知道为什么这样做。每个非平凡决策都给出依据。
-- **先确认理念再写抽象**。San 的 `SanStage` 就是反面教材。
-- **该问就问，但别为小事问**。视觉细节、翻译、注释直接改；**涉及玩法语义、数值含义、数据结构走向时必须先问**（血泪教训 23、24）。
-- **保持简洁**。他明确说过省 token。长回复只在真的有必要时用。
-- 🔴 **不要动那些看起来「不够优雅」的代码。** 用户原话：「项目中所有看起来'不够优雅'的代码全部都是你或者你曾经经过验证后不得不这么做的妥协之法，不要瞎鸡巴乱改。」
+- **不撒谎**。没验证就说没验证。
+- **说清「为什么」**（针对你**新做**的决策）。
+- **该问就问，别为小事问**：视觉细节/翻译/注释直接改；**玩法语义、数值含义、数据结构走向必须先问**（教训 23、24）。
+- **保持简洁**，他明确说过省 token。
+- 🔴 **不要动那些看起来「不够优雅」的代码。** 原话：「项目中所有看起来'不够优雅'的代码全部都是你或者你曾经经过验证后不得不这么做的妥协之法，不要瞎鸡巴乱改。」
 
-  **每一处都有写在注释里的理由，先读理由。** 已知的一批：
-  - `ServerPlayerEvents.JOIN` 钩子、`set()` 里的回读（attachment 会 clamp，必须回读才知道存进去的是什么）
-  - 双色标题的空根组件（创造界面只替换根组件 style）
-  - 代码授予成就、配置读写用**两个不同 Codec**（`fieldOf` 写 / `LENIENT_CODEC` 读，合并会让新文件变成 `{}`）
-  - `p=1.0` 和 `p=0.0` 的特判
-  - 图标 HUD 用**两套贴图**做高亮而不是调 tint（`blitSprite` 的 tint 是乘算，只能变暗）
-  - 进度条却用 RGB 插值做高亮（`fill()` 颜色直给）——**这两处「不一致」是对的，别统一**
-  - `erode()` 里 `!(amount > 0.0F)` 而非 `amount <= 0`（为了拦 NaN）
-  - 认知窥镜判 `isClientSide()` 而非 `instanceof ServerPlayer`（单人世界会切两次）
-  - 只注册**一个** HUD 分发元素而不是两个（注册表会冻结、Mixin 只认一个 id）
-  - reveal 用 `Math.max(lastShownAt, revealEndsAt())`（双向边界）
-  - 唯一那个 Mixin（`HudStatusBarHeightRegistryImplMixin`）注入的是 Fabric API 的 `impl` 包
+  **每一处都有写在注释里的理由，先读理由。** 已知的一批（本文档与 `REFERENCE.md` 里都标了「勿改」）：
+  - `ServerPlayerEvents.JOIN` 钩子、`set()` 里的回读（3.3）
+  - 双色标题的空根组件（`REFERENCE.md` 1）
+  - 配置读写用两个不同 Codec（4.2）、代码授予成就（`REFERENCE.md` 9）
+  - `p=1.0` / `p=0.0` 的特判（4.5）
+  - 图标 HUD 用**两套贴图**做高亮，进度条却用 RGB 插值——**这两处「不一致」是对的，别统一**（`REFERENCE.md` 15c-2）
+  - `erode()` 里 `!(amount > 0.0F)`（4.5）
+  - 窥镜判 `isClientSide()` 而非 `instanceof ServerPlayer`（`REFERENCE.md` 13b）
+  - 只注册**一个** HUD 分发元素（`REFERENCE.md` 15c）
+  - reveal 用 `Math.max(lastShownAt, revealEndsAt())`（`REFERENCE.md` 15c）
+  - 唯一那个 Mixin 注入 Fabric API 的 `impl` 包（`REFERENCE.md` 15a）
 
   他要求过「最大程度按 HANDOFF 执行，有矛盾随时通知我」——照做，但矛盾要先自己核实过再报。
-- **能跑就跑一遍**。真 bug（`p=1.0` 只出 50%、默认配置写成 `{}`）都是靠临时编译一个测试类挂真实 classpath 跑出来的，读代码读不出来。用户不要你跑 runClient，但**不禁止你跑纯 Java 验证**，这条路成本极低且他很认这种证据。
+- **能跑就跑一遍**（教训 13）。他不要你跑 runClient，但**不禁止你跑纯 Java 验证**，成本极低且他很认这种证据。
 
 祝顺利。
