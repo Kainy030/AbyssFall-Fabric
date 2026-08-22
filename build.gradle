@@ -1,5 +1,8 @@
 plugins {
-	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+	// Non-remapping Loom: Minecraft is unobfuscated from 26.1 onward, so there are no
+	// obfuscation maps to apply. The 'net.fabricmc.fabric-loom-remap' id this project used
+	// through 1.21.11 is for obfuscated versions only.
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
 	id 'maven-publish'
 }
 
@@ -32,19 +35,24 @@ loom {
 dependencies {
 	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	mappings loom.officialMojangMappings()
-	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	// No 'mappings' line: 26.2 ships unobfuscated with parameter names, so there is nothing
+	// to remap against. Declaring officialMojangMappings() here would be meaningless.
+	//
+	// Plain 'implementation' rather than 'modImplementation': the latter exists only in
+	// remapping Loom, where mod dependencies had to be remapped to the development mappings.
+	// Without obfuscation there is nothing to remap, so that configuration is gone.
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
-	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
-	// Fabric API is loaded as a real remapped mod by the production run tasks below.
+	// Fabric API is loaded as a real mod by the production run tasks below.
 	productionRuntimeMods "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 }
 
-// Launches the remapped (intermediary) jar with the real Fabric production launcher on a
-// Java 21 runtime, matching the official 1.21.11 client environment. Use these to confirm
-// the built mod loads outside the dev environment.
+// Launches the built jar with the real Fabric production launcher on a Java 25 runtime,
+// matching the official 26.2 client environment. Use these to confirm the built mod loads
+// outside the dev environment.
 tasks.register("runProductionClient", net.fabricmc.loom.task.prod.ClientProductionRunTask) {
 	// Only useful on headless Linux CI; must stay off on Windows.
 	useXVFB = false
@@ -53,7 +61,7 @@ tasks.register("runProductionClient", net.fabricmc.loom.task.prod.ClientProducti
 	runDir = layout.buildDirectory.dir("run/prodClient").get().asFile
 
 	javaLauncher = javaToolchains.launcherFor {
-		languageVersion = JavaLanguageVersion.of(21)
+		languageVersion = JavaLanguageVersion.of(25)
 	}
 }
 
@@ -62,7 +70,7 @@ tasks.register("runProductionServer", net.fabricmc.loom.task.prod.ServerProducti
 	runDir = layout.buildDirectory.dir("run/prodServer").get().asFile
 
 	javaLauncher = javaToolchains.launcherFor {
-		languageVersion = JavaLanguageVersion.of(21)
+		languageVersion = JavaLanguageVersion.of(25)
 	}
 }
 
@@ -77,9 +85,9 @@ processResources {
 
 tasks.withType(JavaCompile).configureEach {
 	it.options.encoding = "UTF-8"
-	// Minecraft 1.21.11's official runtime is java-runtime-delta (Java 21), so the produced
-	// bytecode must target Java 21 even though Gradle itself runs on JDK 25.
-	it.options.release = 21
+	// Minecraft 26.2's official runtime is java-runtime-epsilon (Java 25), so the produced
+	// bytecode targets Java 25.
+	it.options.release = 25
 }
 
 // The sources carry Chinese comments and typographic dashes, so the doclet has to be told the
@@ -115,16 +123,18 @@ tasks.register("releaseJars", Copy) {
 	description = "Gathers the mod, sources and javadoc jars into build/release under short names."
 	group = "build"
 
-	// remapJar is the jar that actually runs: the plain "jar" output is still dev-mapped.
-	dependsOn tasks.remapJar, tasks.remapSourcesJar, tasks.javadocJar
+	// Plain 'jar' and 'sourcesJar' now: with Minecraft unobfuscated there is no remapping
+	// step, so non-remapping Loom registers no remapJar/remapSourcesJar at all. The jar the
+	// build produces is already the one that runs.
+	dependsOn tasks.jar, tasks.sourcesJar, tasks.javadocJar
 
 	into layout.buildDirectory.dir("release")
 
-	from(tasks.remapJar) {
+	from(tasks.jar) {
 		rename { "abyssfall.jar" }
 	}
 
-	from(tasks.remapSourcesJar) {
+	from(tasks.sourcesJar) {
 		rename { "abyssfall-source.jar" }
 	}
 
@@ -139,10 +149,10 @@ java {
 	// If you remove this line, sources will not be generated.
 	withSourcesJar()
 
-	// Compile against a real Java 21 toolchain instead of whatever JDK runs Gradle.
-	// This guarantees the mod only links against APIs present in the official 1.21.11 runtime.
+	// Compile against a real Java 25 toolchain instead of whatever JDK runs Gradle.
+	// This guarantees the mod only links against APIs present in the official 26.2 runtime.
 	toolchain {
-		languageVersion = JavaLanguageVersion.of(21)
+		languageVersion = JavaLanguageVersion.of(25)
 	}
 }
 

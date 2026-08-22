@@ -23,3 +23,7 @@ run/
 .settings/
 bin/
 .vscode/
+
+# Local scratch space kept during the 26.2 upgrade: the run/config files carried
+# over from the 1.21.11 tree, so they can be put back once the game runs again.
+.upgrade-backup/
