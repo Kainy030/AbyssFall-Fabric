@@ -22,6 +22,7 @@ package com.abyssfall.client;
 import net.fabricmc.api.ClientModInitializer;
 
 import com.abyssfall.client.hud.AbyssFallSanHud;
+import com.abyssfall.client.tooltip.AbyssFallTooltips;
 
 public class AbyssFallClient implements ClientModInitializer {
 	@Override
@@ -29,5 +30,7 @@ public class AbyssFallClient implements ClientModInitializer {
 		// Must happen during client initialisation: both HUD registries freeze once the client
 		// has finished starting, so there is no later opportunity to register.
 		AbyssFallSanHud.initialize();
+
+		AbyssFallTooltips.initialize();
 	}
 }

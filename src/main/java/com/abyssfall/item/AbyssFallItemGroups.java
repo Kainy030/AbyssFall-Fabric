@@ -110,6 +110,7 @@ public final class AbyssFallItemGroups {
 					entries.accept(AbyssFallItems.ABYSS_FLOWER);
 					entries.accept(AbyssFallItems.SAN_LENS);
 					entries.accept(AbyssFallItems.GOLD_LENS);
+					entries.accept(AbyssFallItems.FINAL_DEATH_OMEN);
 					entries.accept(AbyssFallBlocks.ABYSS_DIRT);
 					entries.accept(AbyssFallBlocks.TINTED_GLASS_PANE);
 				});

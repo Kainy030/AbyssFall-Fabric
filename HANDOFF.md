@@ -31,7 +31,7 @@
 
 > 「原则是尽量不使用 mixin，因为我以前是写外挂的，我的思考方式就是遇事不决用钩子，所以需要你来最大程度地不用 mixin，用 Fabric API 事件。但凡是有例外，有时候不得不用钩子的时候就要放心大胆地用钩子，**你在代码中看到的钩子就是不得不用的情况**。」
 
-⇒ 目前仅一个 Mixin：`client/mixin/HudStatusBarHeightRegistryImplMixin`。**不要当技术债清理、不要试图用 API 重写。** 写新功能时优先找 API 事件，找不到再注入并说明理由。
+⇒ 目前**两个** Mixin：`client/mixin/HudStatusBarHeightRegistryImplMixin`（HUD 高度，`REFERENCE.md` 15a）+ `mixin/PlayerAttackMixin`（毕业武器接管，`REFERENCE.md` 17）。**都不要当技术债清理、不要试图用 API 重写**——前者是 Fabric API 没给排序手段，后者是所有扩展点都在它要跳过的判定内部。写新功能时优先找 API 事件，找不到再注入并说明理由。
 
 **其他相处方式**：
 - 他问「这两个功能有什么区别」是真想搞清语义边界 → 直接答区别 + 什么情况下才看得出差异。说「简单回复即可」时别长篇大论。
@@ -48,7 +48,7 @@
 | Minecraft | **26.2**；**无映射**（26.1 起不再混淆，Fabric 停止维护第三方映射） |
 | Loader / Loom / Fabric API | 0.19.3 / 1.17.19（插件 id **`net.fabricmc.fabric-loom`**）/ 0.158.0+26.2 |
 | Gradle / JDK | 9.7.0 / **25**（`java-runtime-epsilon`），toolchain 与 `release` 都是 25 |
-| 版本 / 许可 | `1.2-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**） |
+| 版本 / 许可 | `1.3-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**） |
 | 源集 | `splitEnvironmentSourceSets()`：`src/main` + `src/client` |
 | Git | `https://github.com/Kainy030/AbyssFall-Fabric.git`，分支 `main` |
 
@@ -257,6 +257,13 @@ tasks.register('afPrintCp') { doLast { println sourceSets.main.runtimeClasspath.
 ```powershell
 $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('X2') }) -join ' '
 ```
+29. 🔴 **改了值不等于屏幕会变——渲染路径可能有缓存。** `MutableComponent` 把渲染结果存在 `visualOrderText`，**只在语言变化时才重算** ⇒ 事后 `setStyle` 永远不上屏（tooltip 动态颜色第一版就这么静止了一整轮）。**凡是"改完看不出效果"，先查目标类有没有缓存字段，别怀疑自己的算法。** 这是教训 20 的同族：函数返回了预期值 ≠ 那个值有实际效果。
+
+30. 🔴 **改共享对象会伤到别人：MC 的 `Component.copy()` 是浅拷贝。** 它只 `new ArrayList<>(getSiblings())`，**sibling 本身是共享引用**。创造界面给每个物品都加一行 `tab.getDisplayName().copy()`，而本项目标签名由两个共享 Component 拼成 ⇒ 递归 `setStyle` 穿过 copy 污染原始实例，**游戏内所有物品的那一行一起闪**。**处理 `Component` 树一律"重建"不"就地改"**（`REFERENCE.md` 17g）。改任何拿得到的对象前先问：这个实例还有谁在用？
+
+31. **`javap` 查 API 比读反编译源码更可靠地能回答"这个成员是 public 吗"。** 本轮两次踩到可见性：`Level.random` 是 protected（要用 `getRandom()`）、`ChatFormatting` 没有 `getColor()`（要 `TextColor.fromLegacyFormat`）。反编译源码不显式标注继承来的可见性，`javap -p` 一目了然。
+
+
 ⚠️ `blockstates/*.json` 用 `ConvertFrom-Json` 会**误报**（空字符串作属性名是合法 blockstate 写法），别据此改文件；**含中文的 `.ps1` 必须存成带 BOM 的 UTF-8**。
 
 **B · 与用户协作**
@@ -321,7 +328,7 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 ## 7. 当前状态
 
 - **编译已验证**：`build` 与 `releaseJars` 都 `BUILD SUCCESSFUL`。产物 `build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`
-- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.2-Dev`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）
+- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.3-Dev`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）
 
 ### 7.1 已实测通过（用户在真实环境验证，**别再列成待确认项去催他测**）
 
@@ -339,11 +346,32 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 - **认知窥镜贴图**：金框立镜 + 会左右扫视的眼睛（16×48 动画条）。**用户明确说「这一版做的我很满意」**——那四条画眼睛的约束别动（`REFERENCE.md` 13d）
 - **金镜** `gold_lens`：窥镜的无眼版，纯占位，配方 = 金锭×4 + 黑曜石×4 + 遮光玻璃板×1
 - **遮光玻璃板** `tinted_glass_pane`：**已实测「还真 tm 遮光」**，且能与原版各种玻璃板正常拼接，两个创造栏位置都准确（`REFERENCE.md` 13e）
+**1.3-Dev 新增内容（毕业武器，见 `REFERENCE.md` 17）**：
+
+- **死兆将至** `final_death_omen`：无视一切减伤的秒杀剑。`@WrapMethod` 包裹 `Player#attack`，不进 `hurtServer` ⇒ 凋灵/末影龙/52 个子类覆写/PvP 开关/创造模式/图腾全部不执行。贴图暂用下界合金剑
+- **伤害类型** `abyssfall:death_omen` + 8 个 `bypasses_*` tag；三条随机死亡消息（`DamageSource` 子类覆写，零额外 Mixin）
+- **tooltip 逐字波浪染色**：`+深渊 攻击伤害`，`+` 与属性名用原版蓝、「深渊」/「Abyss」按 code point 拆字做灰黑波浪（3.5 秒周期）
+- **恢复了 `src/main` 的 mixin 通道**（`abyssfall.mixins.json`），这是本轮唯一的架构变动，已事先报告并获同意
+
+⚠️ **1.3-Dev 全部内容仅编译与算法验证，用户尚未在游戏内实测。** 待测项见下面 7.2。
+
+
 - **认知窥镜品质改 EPIC**
 
-### 7.2 唯一仍未验证的观感项
+### 7.2 仍未验证的项
 
-**连续小额恢复会不会一直闪、显得吵。** 每次数值变动都重启慢闪，若 San 每 tick 涨一点会一直停在亮相。真出现就加最小间隔；四个常量在一起（`FULL_FLASH_BLINK_TICKS`/`FULL_FLASH_BLINKS`/`GAIN_FLASH_BLINK_TICKS`/`GAIN_FLASH_BLINKS`），两个 HUD 元素各一套。
+**观感（1.2-Dev 遗留）**：连续小额恢复会不会一直闪、显得吵。每次数值变动都重启慢闪，若 San 每 tick 涨一点会一直停在亮相。真出现就加最小间隔；四个常量在一起（`FULL_FLASH_BLINK_TICKS`/`FULL_FLASH_BLINKS`/`GAIN_FLASH_BLINK_TICKS`/`GAIN_FLASH_BLINKS`），两个 HUD 元素各一套。
+
+**🔴 毕业武器全部待测（1.3-Dev，只做过编译与算法验证，一次都没进游戏）**：
+
+- **Mixin 能否成功应用** —— `@WrapMethod` 落在 `Player#attack` 上未实跑。**失败会在启动时直接崩**（`defaultRequire=1` 故意如此），所以这条是「一启动就知道」
+- 秒杀各类目标：普通怪 / **凋灵（含召唤无敌阶段）** / **末影龙的头与身体各 hitbox** / 盔甲架、矿车、船、末影水晶 / 穿钻石套的玩家 / **PvP 关闭时的玩家** / **创造模式玩家** / 手持不朽图腾的目标
+- **双端判断是否真的避免了幽灵实体**（客户端死、服务端活）——这是最需要留意的失败形态
+- 死亡消息是否随机出现三条中文文案之一、**是否确实不是「XX 死了」**（那说明 `recordDamage` 那步没生效）
+- **掉落物与经验是否正常**（`setLastHurtByPlayer` 那步的验证点）
+- 附魔台与铁砧是否**都无法**附魔这把剑
+- tooltip：是否只有一行、`+` 与「攻击伤害」是否原版蓝、「深渊」两字是否逐字灰黑波浪、攻速行是否消失、挥击有无后摇
+- ⚠️ **顺手看一眼别的原版物品（如钻石剑）的 tooltip 有无异常** —— 那是 `REFERENCE.md` 17g 记的那次共享实例污染的受害面
 
 ### 7.3 已用真实 classpath 实测过约 210 项
 
@@ -360,6 +388,8 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 - 显示道具已实现（认知窥镜），四个待定点已定：双向切换、手持右键、无耐久时效、与理智计数器并存
 
 **内容**
+- **毕业武器（死兆将至）待定项**：贴图仍是原版下界合金剑占位；获取途径未定（目前只在创造栏，无配方）；横扫附带目标是否也秒杀未定；`stabAttack` 那条路是剑就不需要覆盖
+
 - **所有图标都是占位**，发布前统一换自己的美术：深渊污泥用原版泥土材质、`abyss_gardeners` 图标是向日葵、计数器与窥镜都用原版 `clock_00`（**指针不会转**，原版靠 `range_dispatch` 切 64 个模型才转）、两个精神效果是脚本生成的图
 - 深渊之花无实际功能；三个药水效果**无获取途径**（「深渊探索者」只被战利品侧读取，另两个只能 `/effect`）
 - **反精神崩溃魔咒：用户已给完整数值，明确说「先记录，不要实现」**（数值见 `REFERENCE.md` 7b 末尾）
@@ -394,9 +424,22 @@ $p="$env:USERPROFILE\.gradle\caches\modules-2\files-2.1\net.fabricmc.fabric-api"
 Get-ChildItem $p -Directory | ForEach-Object { $_.Name }
 & 'C:\Program Files\Java\jdk-25.0.2\bin\javap.exe' -p -cp <jar> 'net.fabricmc.fabric.impl.client.rendering.hud.HudStatusBarHeightRegistryImpl'
 ```
+
+**本机没有 Python**（已实测：`WindowsApps` 下只有 0 字节的 App 执行别名占位符、无 `py` 启动器、注册表无 Python 项、无 pip/conda；PowerShell 只有 5.1，无 `pwsh`）。CI 也只装 JDK 25。⇒ **日常验证一律用 JDK 25 单文件源码启动 + Gradle 缓存里的 jar**，例如用 Gson 2.14.0（MC 自己用的库）验 JSON，能绕开 PS 5.1 `ConvertFrom-Json` 对空字符串键的假报错：
+
+```powershell
+& 'C:\Program Files\Java\jdk-25.0.2\bin\java.exe' '-Dfile.encoding=UTF-8' --class-path <gson.jar> Check.java <files...>
+```
+
+**用户已授权：遇到下面两类瓶颈时直接提醒他配置 Python 环境（Pillow/numpy 等），不要硬用 PowerShell 扛**：
+1. **批量图像处理 / 图集运算** —— `System.Drawing` 逐像素 `SetPixel` 在 9×9、16×16 上很合适，上到几十上百张做像素 diff、对照表、超采样质量比较就慢得不合理
+2. **解析超大日志 / 性能采样**
+
+提醒时要连带说明 CI 影响：**CI 无 Python ⇒ 产物必须本机生成并提交**，会多出一条不被 `gradlew build` 校验的路径。
+
 ⚠️ **缓存里同时躺着 1.21.11 时期的旧版本**（如 `fabric-rendering-v1 16.2.10`），别读错。Fabric Loader 的 sources jar（查 `preLaunch` 时机、`Knot.init()`、`EnvType`）在 `...\net.fabricmc\fabric-loader`，**本机有多个版本，项目用 0.19.3**。
 
-**项目实际用到的六个子模块**（已验证，`gradlew dependencies --configuration compileClasspath`）：
+**项目实际用到的七个子模块**（已验证，`gradlew dependencies --configuration compileClasspath`）：
 
 | 子模块 | 版本 | 用途 |
 |---|---|---|
@@ -406,6 +449,7 @@ Get-ChildItem $p -Directory | ForEach-Object { $_.Name }
 | `fabric-loot-api-v3` | `3.0.17+06488ac19e` | `LootTableEvents.MODIFY` |
 | `fabric-rendering-v1` | `25.3.2+515ac5339e` | HUD 元素/高度注册 + **那个 Mixin 的注入目标** |
 | `fabric-creative-tab-api-v1` | `5.0.14+d871b99e9e` | 两个创造标签 |
+| `fabric-item-api-v1` | `14.5.0+c68f6cbe9e` | `ItemTooltipCallback`（tooltip 逐字波浪，`REFERENCE.md` 17g）。**是 fabric-api 传递依赖，无需在 `build.gradle` 声明** |
 
 ⚠️ **`fabric-rendering-v1` 版本尤其重要**：Mixin 注入的是它的 `impl` 包。升级 Fabric API 时必须重新核实（`REFERENCE.md` 15a 那三点）。
 
@@ -432,6 +476,9 @@ Get-ChildItem $p -Directory | ForEach-Object { $_.Name }
   - 只注册**一个** HUD 分发元素（`REFERENCE.md` 15c）
   - reveal 用 `Math.max(lastShownAt, revealEndsAt())`（`REFERENCE.md` 15c）
   - 唯一那个 Mixin 注入 Fabric API 的 `impl` 包（`REFERENCE.md` 15a）
+  - 毕业武器**不调 `original`**、判 `ServerLevel`、秒杀四步顺序、`bypasses_*` 明知冗余仍保留（`REFERENCE.md` 17b–17e）
+  - tooltip 染色**重建 Component 而非 `setStyle`**（`REFERENCE.md` 17g，两个已修 bug 的成因都记在那）
+  - 那个 `+` 是正确的 ASCII `U+002B`，字形像「十」是 MC 字体所致，别换字符（`REFERENCE.md` 17g）
 
   他要求过「最大程度按 HANDOFF 执行，有矛盾随时通知我」——照做，但矛盾要先自己核实过再报。
 - **能跑就跑一遍**（教训 13）。他不要你跑 runClient，但**不禁止你跑纯 Java 验证**，成本极低且他很认这种证据。

@@ -1,0 +1,14 @@
+{
+	"required": true,
+	"package": "com.abyssfall.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"mixins": [
+		"PlayerAttackMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}

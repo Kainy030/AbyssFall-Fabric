@@ -22,11 +22,22 @@ package com.abyssfall.item;
 import java.util.function.Function;
 
 import net.minecraft.core.Registry;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.CommonComponents;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.entity.EquipmentSlotGroup;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Rarity;
+import net.minecraft.world.item.ToolMaterial;
+import net.minecraft.world.item.component.ItemAttributeModifiers;
 
 import com.abyssfall.AbyssFall;
 
@@ -34,6 +45,23 @@ import com.abyssfall.AbyssFall;
  * Registry holder for every item the mod adds.
  */
 public final class AbyssFallItems {
+	/**
+	 * Translation key of the word standing in for the Final Death Omen's damage figure
+	 * ("深渊" / "Abyss").
+	 *
+	 * <p>Public because the client recolours this exact segment every frame and has to be able to
+	 * recognise it. Matching on the key rather than on the rendered text means the animation works
+	 * in every language without a list of translations to keep in step.
+	 */
+	public static final String ABYSS_WORD_KEY = "item.abyssfall.final_death_omen.abyss";
+
+	/**
+	 * The word's colour when nothing is animating it — the midpoint of the range the client cycles
+	 * through, so a still tooltip looks like a frozen frame of the animation rather than a
+	 * different design.
+	 */
+	private static final int ABYSS_WORD_REST_COLOR = 0x4A4A4A;
+
 	/**
 	 * Placeholder item. It has no behaviour yet and exists so the registry, the creative
 	 * tab and the resource pipeline can be exercised end to end.
@@ -72,7 +100,106 @@ public final class AbyssFallItems {
 	public static final Item GOLD_LENS = register("gold_lens", Item::new,
 			new Item.Properties().stacksTo(1));
 
+	/**
+	 * Final Death Omen — the endgame blade.
+	 *
+	 * <p>Built from {@code sword(NETHERITE, ...)} for everything a sword ought to have: durability,
+	 * the sweep and cobweb mining rules, the sword item tag behaviours, netherite's repair
+	 * material. Two of the resulting components are then deliberately replaced.
+	 *
+	 * <p>The attack damage attribute is {@link Float#MAX_VALUE}, and its tooltip line is replaced
+	 * with a fixed phrase rather than the number. Vanilla would print the value in full — a
+	 * thirty-nine digit wall of green that says nothing except that a float was overflowed, and
+	 * that dominates the item so thoroughly there is nothing else left to look at. The figure is
+	 * kept because it is the largest damage the game has a way of meaning: vanilla uses this same
+	 * constant in {@code LivingEntity#kill} and clamps any infinity down to it inside
+	 * {@code hurtServer}. What is shown instead is what the number is trying to say.
+	 *
+	 * <p>No attack speed modifier at all. Every other weapon needs one because a cooldown decides
+	 * how much of its damage lands; this one deals whatever the target has left, so a wind-up
+	 * would only govern how often the blade may be told to do the one thing it does. Leaving the
+	 * attribute out means it stays at the player's base value — the same rate as an empty hand,
+	 * with no recovery to sit through.
+	 *
+	 * <p>Enchantability is set to zero, which removes the component
+	 * {@code sword(...)} adds and leaves the blade unenchantable at a table. Every enchantment
+	 * worth putting on a sword modifies part of the damage pipeline this weapon steps around, so
+	 * they would be promises the item cannot keep. See {@link FinalDeathOmen} for what does happen
+	 * when it connects.
+	 */
+	public static final Item FINAL_DEATH_OMEN = register("final_death_omen", Item::new,
+			new Item.Properties()
+					.sword(ToolMaterial.NETHERITE, 3.0F, -2.4F)
+					.fireResistant()
+					.rarity(Rarity.EPIC)
+					.attributes(deathOmenAttributes())
+					.component(DataComponents.ENCHANTABLE, null));
+
 	private AbyssFallItems() {
+	}
+
+	/**
+	 * The blade's attribute set: an attack damage of {@link Float#MAX_VALUE}, shown as a phrase,
+	 * and nothing else.
+	 *
+	 * <p>Written out rather than adjusted afterwards because {@code ItemAttributeModifiers} is
+	 * immutable and {@code sword(...)} has already installed a complete set; replacing it wholesale
+	 * is the only way to change what it contains.
+	 *
+	 * <p>The damage line uses {@code Display.override}, which is vanilla's own provision for an
+	 * attribute whose number is not the point — no mixin and no tooltip event needed for the
+	 * substitution itself, and the replacement travels with the component, so a stack copied into
+	 * another inventory or sent to a client carries its own wording. Only the display is
+	 * overridden: what the attribute actually contributes is untouched.
+	 *
+	 * <p>What is built here is the still version, coloured as vanilla would colour it. The word
+	 * naming the Abyss is recoloured every frame on the client
+	 * ({@code AbyssFallTooltips}); this component is what a server, a screenshot or any other
+	 * reader without that animation sees, so it has to be legible on its own rather than a
+	 * placeholder.
+	 *
+	 * <p>Reuses vanilla's {@code BASE_ATTACK_DAMAGE_ID} so the entry occupies the same slot in the
+	 * layout a weapon's own damage always does, and so anything reading the modifier by id — the
+	 * anvil, a comparison screen, another mod — finds it where it expects to.
+	 */
+	private static ItemAttributeModifiers deathOmenAttributes() {
+		return ItemAttributeModifiers.builder()
+				.add(Attributes.ATTACK_DAMAGE,
+						new AttributeModifier(Item.BASE_ATTACK_DAMAGE_ID, Float.MAX_VALUE,
+								AttributeModifier.Operation.ADD_VALUE),
+						EquipmentSlotGroup.MAINHAND,
+						ItemAttributeModifiers.Display.override(damageLine()))
+				.build();
+	}
+
+	/**
+	 * The damage line: {@code +深渊 攻击伤害} / {@code +Abyss Attack Damage}.
+	 *
+	 * <p>Assembled from four pieces because they are not all the same kind of text. The leading
+	 * space, the {@code +} and the attribute's name are vanilla's own furniture and are coloured
+	 * the way vanilla colours them — {@code ATTACK_DAMAGE} is a {@code POSITIVE} attribute and this
+	 * is an increase, so {@link Attribute#getStyle} yields blue. Only the word naming the Abyss is
+	 * ours, and only that word is styled differently.
+	 *
+	 * <p>Shaped after vanilla's {@code attribute.modifier.plus} line so it reads as the same kind
+	 * of statement rather than as a note bolted on. The attribute name is looked up from the
+	 * attribute itself, so it stays translated and stays correct if the name ever changes.
+	 *
+	 * <p>The {@code +} is a plain ASCII {@code U+002B}, deliberately, not the fullwidth {@code ＋}
+	 * an IME would produce. It renders narrow and cross-like in Minecraft's default font, which is
+	 * simply what that glyph looks like at this size.
+	 */
+	private static MutableComponent damageLine() {
+		Style vanilla = Style.EMPTY.withColor(
+				Attributes.ATTACK_DAMAGE.value().getStyle(true));
+
+		return CommonComponents.space()
+				.append(Component.literal("+").withStyle(vanilla))
+				.append(Component.translatable(ABYSS_WORD_KEY)
+						.withStyle(Style.EMPTY.withColor(ABYSS_WORD_REST_COLOR)))
+				.append(CommonComponents.SPACE)
+				.append(Component.translatable(Attributes.ATTACK_DAMAGE.value().getDescriptionId())
+						.withStyle(vanilla));
 	}
 
 	private static <T extends Item> T register(String name, Function<Item.Properties, T> itemFactory, Item.Properties properties) {

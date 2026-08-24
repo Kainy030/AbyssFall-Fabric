@@ -20,20 +20,23 @@ src/main/java/com/abyssfall/
 │        TintedGlassPaneBlock.java
 ├── config/  (7 个，见 HANDOFF 4)
 ├── core/    (6 个，见 HANDOFF 3)
+├── damage/AbyssFallDamageTypes  DeathOmenDamageSource                见 17
 ├── effect/AbyssExplorerEffect  AbyssFallEffects  SanBreakdownEffect  SanSpiritedEffect
 ├── item/AbyssFallDevInventory  AbyssFallItemGroups  AbyssFallItems
-│        SanCounterItem  SanLensItem
-└── loot/AbyssFallLootTables.java
+│        SanCounterItem  SanLensItem  FinalDeathOmen                  见 17
+├── loot/AbyssFallLootTables.java
+└── mixin/PlayerAttackMixin.java        毕业武器接管点，见 17
 src/client/java/com/abyssfall/client/
 ├── AbyssFallClient.java
 ├── hud/AbyssFallSanHud.java          HUD 注册
 ├── hud/SanHudDispatchElement.java    按模式转发（唯一注册的元素）
 ├── hud/SanIconHudElement.java        图标行
 ├── hud/SanBarHudElement.java         进度条
-└── mixin/HudStatusBarHeightRegistryImplMixin.java   项目唯一 Mixin，见 15a
+├── tooltip/AbyssFallTooltips.java    tooltip 逐字波浪染色，见 17
+└── mixin/HudStatusBarHeightRegistryImplMixin.java   见 15a
 ```
 
-**`src/main` 下已无 `mixin/` 包**（`WitherRoseBlockMixin` 与 `abyssfall.mixins.json` 在 26.2 迁移时删除，见 4）。
+**Mixin 现在有两个**（`main` 一个 + `client` 一个），配置也是两份。`src/main` 下的 `mixin/` 包在 26.2 迁移时曾被删除（`WitherRoseBlockMixin` 改成数据文件，见 4），v1.3-Dev 为毕业武器**重新建立**——那次删除是因为不再需要，不是因为禁止。
 
 `onInitialize()` 调用顺序**有依赖关系，勿随意调整**：
 ```java
@@ -158,7 +161,7 @@ AbyssFallDevInventory.initialize();   // 最后，条件注册
 - `textures/gui/sprites/hud/san_{empty,full,half,full_blinking,half_blinking}.png`（9×9，`make-san-icon.ps1`）。**放进这个目录就自动进 GUI 图集**，零注册代码
 - lang：`en_us.json` + `zh_cn.json`（**无 BOM 的 UTF-8**）
 - `data/abyssfall/loot_table/blocks/abyss_dirt.json`、`data/minecraft/tags/block/mineable/shovel.json`
-- **`abyssfall.client.mixins.json`**（`package: com.abyssfall.client.mixin`，`compatibilityLevel: JAVA_25`）——**现在唯一的 mixin 配置**。`injectors.defaultRequire = 1` + `overwrites.requireAnnotations = true`：**注入点找不到会直接崩，这是故意的**（宁可启动失败也不要静默失效）。⚠️ 改完必须验 JSON（`HANDOFF.md` 教训 26）
+- **`abyssfall.client.mixins.json`**（`package: com.abyssfall.client.mixin`，`compatibilityLevel: JAVA_25`）与 **`abyssfall.mixins.json`**（`package: com.abyssfall.mixin`，无 `environment` ⇒ 两端加载，见 17）——**两份配置都在 `fabric.mod.json` 的 `mixins` 数组里注册**。两者都用 `injectors.defaultRequire = 1` + `overwrites.requireAnnotations = true`：**注入点找不到会直接崩，这是故意的**（宁可启动失败也不要静默失效）。⚠️ 改完必须验 JSON（`HANDOFF.md` 教训 26）
 
 ## 11. 美术脚本（PowerShell + System.Drawing）
 
@@ -414,6 +417,97 @@ long from = Math.max(this.lastShownAt, SanHudModeState.revealEndsAt());
 - **配置系统此时尚未加载**，记不住接受状态。正好符合用户「每次都问」的要求（记住的答案就是不再被阅读的答案）
 
 ---
+
+## 17. 毕业武器：死兆将至 `abyssfall:final_death_omen`（v1.3-Dev 新增）
+
+用户定位：**「不讲道理的秒杀所有生物——我说你死了，那你便是死了」**。核心宗旨：**AbyssFall 不相信 mod 或原版任何关于「能否造成伤害」的判定结果**。
+
+### 17a. 为什么不能用物品钩子或 Fabric 事件
+
+所有扩展点都在它要跳过的判定**内部**：`Item.hurtEnemy` 在 `hurtServer` 返回之后才跑（目标拒绝了这一击就到不了）；`ServerLivingEntityEvents.ALLOW_DAMAGE` 本身就是注入 `hurtServer` 的，属于被绕过的意见之一；`damage_type` 组件只改来源、伤害仍要过流水线。
+
+⇒ **`Player#attack` 是唯一确定早于全部判定的点**。
+
+### 17b. 接管方式：`@WrapMethod`，不是 `@Inject` / `@Redirect` / `@Overwrite`
+
+`mixin/PlayerAttackMixin`，`@Mixin(value = Player.class, priority = Integer.MAX_VALUE)`。
+
+- **`@WrapMethod`**（MixinExtras 0.5.4，**Loader 0.19.3 内嵌**，零新依赖）：vanilla 方法变成一个可调可不调的 `Operation`，「武器替换攻击」成为结构事实而非取消标志的副作用。**可叠加**，别的 mod 包裹同方法会形成嵌套链
+- ❌ **`@Overwrite` 曾被评估并否决**：`hurtServer` 全仓 **55 处覆写** + `actuallyHurt` 7 处，覆盖不全；且会**静默删掉** Fabric API 自己的 `ALLOW_DAMAGE`/`AFTER_DAMAGE` 注入点
+- ❌ `@Redirect` **独占**，第二个 mod 直接冲突
+- ⚠️ **`priority` 不保证「运行时先执行」**，只决定 mixin 合并顺序。真正让它说了算的是**包裹层在方法体之外**这个结构位置。写 `Integer.MAX_VALUE` 无害（默认 1000，`readPriority` 无上限校验），但别把它当正确性保证
+
+🔴 **必须判 `ServerLevel`**：`Player#attack` **两端都跑**（客户端 `MultiPlayerGameMode.attack:418` 发包后本地也调、服务端 `handleAttack:1797`），单人同进程会执行两次。不是服务端就 `original.call(target)` 交还 vanilla ⇒ 挥手动画照常本地播放。**注意这与认知窥镜刻意相反**（13b 判 `isClientSide()` 只在客户端做），同一个坑两个功能答案不同。
+
+### 17c. 秒杀四步（`item/FinalDeathOmen.strike`，顺序与每步都不可省）
+
+因为 vanilla 流水线**没在跑**，这些平时由它做的事必须自己做：
+
+1. **`setLastHurtByPlayer(attacker, 100)`** —— `lastHurtByPlayerMemoryTime` 平时由 `hurtServer` 内的 `resolvePlayerResponsibleForDamage` 设置。**不设则经验为 0、战利品走「非玩家击杀」分支**，很多怪几乎不掉东西
+2. **`getCombatTracker().recordDamage(source, getHealth())`** —— 死亡消息取 `CombatTracker` 最后一条记录，而 entries **只由 `actuallyHurt` 里的 `recordDamage` 写入**。无记录 ⇒ 退化成 `death.attack.generic`（「某某死了」），专属文案全丢。记录值＝目标此刻剩余生命值
+3. **`setHealth(0)`** —— 直接置零而非减伤害，因为减法那一步才是吸收等减伤生效的地方
+4. **`die(source)`** —— 掉落、经验、计分板、消息都在这里。**幂等**（开头判 `!isRemoved() && !dead`，`handleKillingBlow` 置 `dead=true`），重复调用安全
+
+**非 `LivingEntity`** 走 `entity.kill(level)`（船/矿车/盔甲架/末影水晶各有覆写，比 `remove()` 更尊重其语义）。**`EnderDragonPart` 转 `parentMob`**——vanilla 自己的 `KineticWeapon` 也这么处理 ⇒ 打翅膀等于打龙，非头部 `/4` 衰减不存在。
+
+### 17d. 覆盖范围（已核实的边界）
+
+不进入 `hurtServer` ⇒ 以下**一次都不执行**：凋灵无敌窗口/`WITHER_IMMUNE_TO`、末影龙 DYING 阶段与相位减伤、52 个子类的提前 return、PvP 开关、创造模式/`invulnerable`/abilities、护甲/抗性/附魔/盾牌/吸收、不朽图腾、无敌帧、其它 mod 的 `hurtServer` 覆写与 `ALLOW_DAMAGE`。
+
+- **武器是剑**（不挂 `PIERCING_WEAPON`/`KINETIC_WEAPON`）⇒ 只走 `attack`，`Player.stabAttack` 那条路**永不触发**，无需注入
+- ⚠️ **掉落物与经验球秒不了**：`handleAttack:1788` 在调 `attack` 之前就判定它们不可攻击并**直接踢玩家下线**。这是 vanilla 前置校验，绕不过。「所有实体」实际＝「所有能被合法左键攻击的实体」
+- ⚠️ 横扫附带目标走 `doSweepAttack` → `nearby.hurtServer(...)`，**不经过 `attack`**，目前不秒杀
+### 17e. 伤害类型 `abyssfall:death_omen`
+
+**唯一不能纯 Mixin 的一环**：`DamageType` 是注册表内容，必须是数据文件 `data/abyssfall/damage_type/death_omen.json`（vanilla 自己所有伤害类型也都是数据文件）。`damage/AbyssFallDamageTypes` 只持 key + 在**每次调用时**从 level 的注册表解析（不缓存静态字段：datapack 内容，`/reload` 后旧 holder 会失效）。
+
+**8 个 `bypasses_*` tag 全加**（`data/minecraft/tags/damage_type/*.json`，`"replace": false` 只做加法）：`armor` `cooldown` `effects` `enchantments` `invulnerability` `resistance` `shield` `wolf_armor`。
+
+⚠️ **这些 tag 对当前实现严格来说是冗余的**（不进 `hurtServer` ⇒ 没有减伤步骤被执行到）。保留的理由：伤害类型的语义应当自洽（万一将来有东西走常规流水线造成这个伤害，不该被护甲减免），且 datapack 作者读 tag 就能知道它声称什么。**曾一度多写了 `is_player_attack`/`no_knockback`/`no_impact` 三个——那不属于「穿透减伤」语义，已删，别再加回去。**
+
+**三条随机死亡消息**：vanilla 从 `message_id` 推导消息键、不提供变体机制 ⇒ `DeathOmenDamageSource extends DamageSource` **覆写 `getLocalizedDeathMessage`**（所有死亡消息的唯一出口）。**零额外 Mixin**。
+
+🔴 **变体在构造 source 时抽取，不在读消息时抽取**：一次死亡会调用 `getLocalizedDeathMessage` **三次**（玩家自己的战斗包、广播给其他人、命名实体的日志行），每次抽会让同一次死亡出现三种说法。
+
+lang key `death.attack.death_omen.1/2/3`，数量由 `DEATH_MESSAGE_VARIANTS` 定义。
+
+### 17f. 物品属性
+
+`sword(ToolMaterial.NETHERITE, 3.0F, -2.4F)` 打底（耐久、横扫、蛛网挖掘、下界合金修复），然后**替换两处**：
+
+- **`ATTACK_DAMAGE = Float.MAX_VALUE`**：原版 `LivingEntity#kill` 用的正是这个常量，且 `hurtServer` 会把 `Infinity` 钳到它 ⇒ 这是游戏能表达的最大伤害。传 `Float.POSITIVE_INFINITY` 无意义（会被钳成同一个值）。**实际伤害与它无关**（＝目标剩余生命值）
+- **无 `ATTACK_SPEED` modifier**（整条不加，不是设 0）：攻速对别的武器有意义是因为冷却决定多少伤害能打进去；这把打的是「还剩多少」，蓄力只影响下令频率。不加 ⇒ 保持玩家基础攻速，**无后摇**
+- **`component(DataComponents.ENCHANTABLE, null)` 移除附魔能力**：已追到底层验证 `component(type, null)` → `Initializer.add` → `DataComponentMap.Builder.setUnchecked` → **`map.remove(type)`**，而 `ItemStack.isEnchantable()` 第一行就是 `if (!has(ENCHANTABLE)) return false` ⇒ 附魔台与铁砧都走这个判断，**零 Mixin**。理由：值得上剑的附魔全都修改被跳过的流水线，留着是兑不了的承诺
+
+⚠️ 曾计划用 Mixin 替换铁砧「过于昂贵」提示，**已放弃**：`TOO_EXPENSIVE_TEXT` 是 `AnvilScreen` 的 `private static final` 全局字段、不区分物品，替换会影响所有物品。
+
+**贴图暂用 `minecraft:item/netherite_sword`**（占位，`parent: item/handheld`）。进常规创造栏，无 config 门禁。
+
+### 17g. tooltip 逐字波浪染色（`client/tooltip/AbyssFallTooltips`）
+
+那一行是 `+深渊 攻击伤害` / `+Abyss Attack Damage`，用 vanilla 自己的 **`ItemAttributeModifiers.Display.override(Component)`** 替换掉数字（否则会显示 39 位数字墙）。**只改显示，attribute 实际值不动。**
+
+**分四段拼**：前导空格、`+`、深渊、属性名。`+` 与属性名用**原版色**（`Attributes.ATTACK_DAMAGE.value().getStyle(true)` → `POSITIVE` + 增益 ⇒ `BLUE`），只有「深渊」是我们的。属性名从 `getDescriptionId()` 取 ⇒ 跟着语言走。
+
+`+` 是**正确的 ASCII `U+002B`**（已验码点）。看起来像「十」是 MC 默认字体在该字号下的字形，**不是编码错误，别去改成别的字符**。
+
+**波浪**：`Language.getInstance().getOrDefault(key)` 取当前语言实际文字 → **按 code point 拆成单字**（中文 2 段、英文 5 段，自动适配，不硬编码），每字相位偏移 `PHASE_STEP_PER_CHARACTER = -0.125`（负值 ⇒ 波从左往右跑）。`CYCLE_MILLIS = 3500`。灰阶范围 `#1E1E1E`–`#767676`（最亮处仍低于 vanilla `GRAY`）。余弦驱动 ⇒ 两端有停顿、无锯齿跳变，且**相位无需取模**（余弦本身周期）。用 `Util.getMillis()` ⇒ **游戏暂停时仍在动**（看 tooltip 时常是暂停的）。
+
+物品组件里仍存静态 `#4A4A4A`（正好是动画中点），供截图/纯服务端/拿不到回调的场合。
+
+依赖 **`fabric-item-api-v1`**（`ItemTooltipCallback`）——**fabric-api 传递依赖，无需在 `build.gradle` 声明**。
+
+🔴 **两个已修 bug，写法刻意如此，不要"简化"回去**（类注释里也标了）：
+
+1. **不能用 `setStyle` 改样式** —— `MutableComponent` 把渲染结果缓存在 `visualOrderText`，**只在语言变化时才重算** ⇒ 改样式不会上屏，颜色永远停在第一帧。**必须重建 Component。**
+2. **更不能就地改** —— `Component.copy()` 只复制 sibling **列表**、sibling 本身是**共享引用**。创造界面用 `tab.getDisplayName().copy()` 给每个物品加标签名行（`CreativeModeInventoryScreen:718`），而本项目标签名是「深渊」「浮现」两个共享 Component 拼的 ⇒ 就地改样式会**穿过 copy 污染那两个原始实例**，导致游戏内**所有**物品的该行一起闪。
+
+现在的写法：命中则 `MutableComponent.create(contents)` 造新的，未命中返回 `null` 让那一行保持原对象（不分配、不触碰），sibling 列表惰性复制。**新对象无旧缓存 ⇒ 颜色真的变；不写既有实例 ⇒ 不可能再污染。**
+
+
+- **用户明确要求不打日志**：「我们的武器不需要跟任何人解释」
+
+
 
 
 ## Git / 发布流程（由你负责）

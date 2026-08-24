@@ -28,6 +28,9 @@
 	},
 	"mixins": [
 		{
+			"config": "abyssfall.mixins.json"
+		},
+		{
 			"config": "abyssfall.client.mixins.json",
 			"environment": "client"
 		}
