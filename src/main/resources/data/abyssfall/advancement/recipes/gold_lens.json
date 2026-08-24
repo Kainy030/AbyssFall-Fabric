@@ -1,0 +1,40 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_formed_obsidian": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "player": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "minecraft:type_specific/player": {
+                "advancements": {
+                  "minecraft:story/form_obsidian": true
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "has_the_recipe": {
+      "trigger": "minecraft:recipe_unlocked",
+      "conditions": {
+        "recipe": "abyssfall:gold_lens"
+      }
+    }
+  },
+  "requirements": [
+    [
+      "has_the_recipe",
+      "has_formed_obsidian"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "abyssfall:gold_lens"
+    ]
+  }
+}

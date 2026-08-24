@@ -25,9 +25,11 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
 import net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTab;
@@ -65,6 +67,19 @@ public final class AbyssFallItemGroups {
 			.icon(() -> new ItemStack(AbyssFallItems.ABYSS_FLOWER))
 			.build();
 
+	/**
+	 * Vanilla's Coloured Blocks tab, rebuilt as a key rather than referenced.
+	 *
+	 * <p>{@code CreativeModeTabs} keeps every one of its tab keys {@code private}, so the constant
+	 * cannot be reached from outside. The key is only a registry id though, and vanilla builds its
+	 * own the same way — {@code ResourceKey.create(Registries.CREATIVE_MODE_TAB,
+	 * Identifier.withDefaultNamespace(id))} — so constructing an identical one here refers to
+	 * exactly the same tab rather than to a copy of it.
+	 */
+	private static final ResourceKey<CreativeModeTab> VANILLA_COLORED_BLOCKS_KEY =
+			ResourceKey.create(Registries.CREATIVE_MODE_TAB,
+					Identifier.withDefaultNamespace("colored_blocks"));
+
 	private AbyssFallItemGroups() {
 	}
 
@@ -94,7 +109,19 @@ public final class AbyssFallItemGroups {
 				.register(entries -> {
 					entries.accept(AbyssFallItems.ABYSS_FLOWER);
 					entries.accept(AbyssFallItems.SAN_LENS);
+					entries.accept(AbyssFallItems.GOLD_LENS);
 					entries.accept(AbyssFallBlocks.ABYSS_DIRT);
+					entries.accept(AbyssFallBlocks.TINTED_GLASS_PANE);
 				});
+
+		// The tinted pane also joins the vanilla tab it would have been in had vanilla shipped it,
+		// immediately after the plain glass pane. Vanilla's own order there is glass, tinted glass,
+		// the sixteen stained glasses, the glass pane, then the sixteen stained panes, so sitting
+		// directly after the plain pane puts it beside its own kind rather than at the end of the tab.
+		//
+		// insertAfter rather than accept: accept would append it after the banners at the very bottom,
+		// which is where a modded item lands by default and is nowhere near the glass.
+		CreativeModeTabEvents.modifyOutputEvent(VANILLA_COLORED_BLOCKS_KEY)
+				.register(entries -> entries.insertAfter(Items.GLASS_PANE, AbyssFallBlocks.TINTED_GLASS_PANE));
 	}
 }

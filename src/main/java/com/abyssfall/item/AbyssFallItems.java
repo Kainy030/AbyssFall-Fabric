@@ -50,8 +50,26 @@ public final class AbyssFallItems {
 	 * the San Counter, because it is player-facing content: it reveals nothing the design wants
 	 * hidden, only changing how an already-visible reading is drawn. Stacks to one, since a second
 	 * copy would do nothing a first cannot.
+	 *
+	 * <p>Uses {@link Rarity#EPIC}, the highest rarity vanilla provides.
 	 */
 	public static final Item SAN_LENS = register("san_lens", SanLensItem::new,
+			new Item.Properties().stacksTo(1).rarity(Rarity.EPIC));
+
+	/**
+	 * Gold Lens — a mirror with nothing looking back out of it.
+	 *
+	 * <p>No behaviour at all, and a plain {@link Item} rather than a subclass, because there is
+	 * nothing yet for a subclass to do. It shares the Cognition Lens's frame and glass and differs
+	 * only in having no eye, which is the whole of what it currently says: the same object, before
+	 * or after whatever it is that looks through the other one.
+	 *
+	 * <p>Stacks to one, like the Cognition Lens. Not for that item's reason — a second copy of this
+	 * one would be no less useful than the first, since neither does anything — but because the two
+	 * are the same object at different moments and a pile of framed mirrors is not the register the
+	 * item is written in.
+	 */
+	public static final Item GOLD_LENS = register("gold_lens", Item::new,
 			new Item.Properties().stacksTo(1));
 
 	private AbyssFallItems() {

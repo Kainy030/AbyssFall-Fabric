@@ -29,7 +29,10 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.block.state.properties.NoteBlockInstrument;
+import net.minecraft.world.level.material.MapColor;
 
 import com.abyssfall.AbyssFall;
 
@@ -45,6 +48,31 @@ public final class AbyssFallBlocks {
 			"abyss_dirt",
 			AbyssDirtBlock::new,
 			BlockBehaviour.Properties.ofFullCopy(Blocks.DIRT),
+			true
+	);
+
+	/**
+	 * Tinted Glass Pane. The properties are vanilla's own {@code GLASS_PANE} line copied field for
+	 * field, plus tinted glass's grey map colour so it reads correctly on a map.
+	 *
+	 * <p>Written out rather than using {@code ofFullCopy(Blocks.GLASS_PANE)} because a copy would
+	 * also bring the map colour along and then have to override it, which reads as though the colour
+	 * were an afterthought rather than the one intended difference.
+	 *
+	 * <p>{@code noOcclusion} stays despite the block blocking light. The two are unrelated:
+	 * occlusion decides whether neighbouring faces are skipped when rendering, and a pane is not a
+	 * full cube so it must not claim to hide anything. The light blocking lives in
+	 * {@link TintedGlassPaneBlock} instead.
+	 */
+	public static final Block TINTED_GLASS_PANE = register(
+			"tinted_glass_pane",
+			TintedGlassPaneBlock::new,
+			BlockBehaviour.Properties.of()
+					.mapColor(MapColor.COLOR_GRAY)
+					.instrument(NoteBlockInstrument.HAT)
+					.strength(0.3F)
+					.sound(SoundType.GLASS)
+					.noOcclusion(),
 			true
 	);
 

@@ -17,6 +17,7 @@ src/main/java/com/abyssfall/
 ├── agreement/AgreementText.java        测试协议文案（双语，硬编码）
 ├── agreement/TestAgreement.java        preLaunch 入口点，见 16
 ├── block/AbyssDirtBlock.java  AbyssFallBlocks.java  AbyssFallBoneMealHandler.java
+│        TintedGlassPaneBlock.java
 ├── config/  (7 个，见 HANDOFF 4)
 ├── core/    (6 个，见 HANDOFF 3)
 ├── effect/AbyssExplorerEffect  AbyssFallEffects  SanBreakdownEffect  SanSpiritedEffect
@@ -161,7 +162,7 @@ AbyssFallDevInventory.initialize();   // 最后，条件注册
 
 ## 11. 美术脚本（PowerShell + System.Drawing）
 
-`make-icon.ps1`（128×128）、`make-item-texture.ps1`（16×16）、`make-effect-icon.ps1`（18×18）、`make-dev-icon.ps1`（16×16 DEV）、`make-san-icon.ps1`（9×9 ×5，见 15d）、`make-breakdown-icon.ps1` / `make-spirited-icon.ps1`（18×18，**占位**）。均用 `$PSScriptRoot` 相对定位。
+`make-icon.ps1`（128×128）、`make-item-texture.ps1`（16×16）、`make-effect-icon.ps1`（18×18）、`make-dev-icon.ps1`（16×16 DEV）、`make-san-icon.ps1`（9×9 ×5，见 15d）、`make-lens-icon.ps1`（两面镜子，见 13d）、`make-breakdown-icon.ps1` / `make-spirited-icon.ps1`（18×18，**占位**）。均用 `$PSScriptRoot` 相对定位。
 
 ⚠️ **本机执行策略禁止直接跑**：必须 `powershell -ExecutionPolicy Bypass -File .\xxx.ps1`。
 ⚠️ **含中文注释的脚本必须存成带 BOM 的 UTF-8**（只有 `make-san-icon.ps1` 有中文）。
@@ -191,7 +192,7 @@ AbyssFallDevInventory.initialize();   // 最后，条件注册
 
 ## 13b. 认知窥镜 `abyssfall:san_lens`
 
-**玩家向内容，不是 debug 工具**，所以注册在 `AbyssFallItems` / 默认创造栏而非开发者栏。`stacksTo(1)`，图标同为占位 `clock_00`。**作用**：右键在两种 San 读数间切换 + 快捷栏上方提示（机制见 15c）。
+**玩家向内容，不是 debug 工具**，所以注册在 `AbyssFallItems` / 默认创造栏而非开发者栏。`stacksTo(1)`、`Rarity.EPIC`。贴图见 13d。**作用**：右键在两种 San 读数间切换 + 快捷栏上方提示（机制见 15c）。
 
 **🔴 与理智计数器端相反**：
 
@@ -204,6 +205,93 @@ AbyssFallDevInventory.initialize();   // 最后，条件注册
 ⚠️ **必须判 `isClientSide()` 而不是 `instanceof ServerPlayer`**：`use()` 两侧都跑，单人世界两端同进程，不判会切两次、自己抵消。
 
 **lang 键**：`item.abyssfall.san_lens`、`.switched`（一个 `%s`）、`.mode.icons` / `.mode.percent`。模式名是「**具象 / 量化**」（Figurative / Quantified）而非「图标/百分比」——窥镜给的不是另一种界面，而是另一种认知方式。提示语「视界已切换：量化」。
+
+## 13c. 金镜 `abyssfall:gold_lens`
+
+**纯占位，无任何行为**，`Item::new` + `stacksTo(1)`（品质仍是默认 COMMON）。放常规创造栏，紧随认知窥镜。
+
+**它就是认知窥镜去掉眼睛的那一版**——同一面镜子，在「有东西透过它看你」之前或之后。堆叠限 1 不是因为多拿一个没用（它本来就没用），而是这个物品的气质不适合成叠。
+
+**配方**（`data/abyssfall/recipe/gold_lens.json`）：金锭四角 + 黑曜石四边 + 遮光玻璃板居中，产出 1。`category: "misc"`。
+
+**解锁**：`advancement/recipes/gold_lens.json`，条件是**已获得原版成就 `minecraft:story/form_obsidian`**（「冰桶挑战」，即获得黑曜石）。**刻意复用原版成就而非自建**——配方本身就要黑曜石，玩家做出黑曜石那一刻正好解锁。该 advancement **无 `display`**，玩家看不到条目，它只是配方解锁器（原版所有 `recipes/` 下的条目都这样）。
+
+## 13d. 两面镜子的美术（`make-lens-icon.ps1`）
+
+**一个脚本产出两个物品的贴图**，刻意不拆：两者共用金框、镜面与整套配色，拆开就会各改一半然后飘。差异只在有没有眼睛。
+
+产物四件：`san_lens.png`（16×48 动画条）、`san_lens.png.mcmeta`、`gold_lens.png`（16×16 静态、**无 mcmeta**）、`build/lens-icon-preview.png`（带行列号的放大预览，不进仓库）。
+
+### 🔴 16px 画眼睛的四条硬约束（照原版 `ender_eye.png` 逐像素提取得来）
+
+当年画这只眼睛失败了十几轮，全是甜甜圈/字母 O/H/M/金币。**这四条缺一条就不成立**：
+
+1. **瞳孔必须 1px 宽 × 3 行高的竖缝**。2×2 方块瞳孔被虹膜包围，任何尺度下都读作甜甜圈
+2. **瞳孔与虹膜之间必须有一层暗环**（本项目 `2E3348`，原版 `1E4835`）。**这是最后让它成立的那一笔**——缺这层中间明度，瞳孔与虹膜糊成一个形状
+3. **虹膜左上要有高光点**（`F4F7FF`，原版 `CBFCDD`）。它打破对称，否则读作字母
+4. **虹膜色相必须与镜框对立**。虹膜也用金色 ⇒ 整枚读作一枚金币。所以虹膜是冷蓝灰 `BFC8DE`
+
+另加：**虹膜与金框之间必须留一圈暗镜面**，否则两者粘连。
+
+⚠️ **别去「优化」瞳孔尺寸或删掉暗环层**，那是唯一让它读作眼睛的结构。
+
+### 动画
+
+只存 3 张唯一帧（正视/左视/右视，`$gazeFrames = @(0, -1, 1)`），mcmeta 用 `{index, time}` 逐帧指定时长来引用它们——所以文件是 16×48 而不是「一步一格」。
+
+**节奏刻意不均匀**（`$gazeSequence`）：正视停 70/45/85/38 tick，瞥向两侧只 12~22 tick。**均匀节奏读作机器扫描，高傲的注视是长久平视 + 偶尔屈尊一瞥**。整循环 304 tick ≈ 15.2 秒。
+
+**瞳孔只能左右各移 1px**：虹膜仅 col 5–10，移 2px 暗环就出到镜面上、眼睛散架。
+
+### ⚠️ PowerShell 陷阱（踩过）
+
+**哈希表键大小写不敏感**——用 `'d'` / `'D'` 区分明暗会直接 `Duplicate keys` 解析失败，脚本压根跑不起来。所以调色板全用互不相同的字符。
+
+## 13e. 方块：遮光玻璃板 `abyssfall:tinted_glass_pane`
+
+**原版缺的那一块**：原版有遮光玻璃（整块）和其他所有玻璃的板，却没有遮光玻璃板。
+
+`TintedGlassPaneBlock extends IronBarsBlock`。**必须建子类**，两个原因：`IronBarsBlock` 构造器是 `protected`（跨包引用不到，`IronBarsBlock::new` 不成立），且遮光覆写得有地方放。
+
+**遮光靠这两个方法**（照抄 `TintedGlassBlock`，26.2 只有它这么做）：
+```java
+propagatesSkylightDown → false   // 阻断天光直下
+getLightDampening      → 15      // 光照衰减打满
+```
+⚠️ **方法名是 `getLightDampening`，不是 `getLightBlock`。**
+
+✅ **已实测真遮光**（用户在游戏内确认）。⇒ **`getLightDampening` 不看方块实际体积，2px 薄片也照满值算。** 这条以后可直接复用。
+
+**属性**：显式写出原版 `GLASS_PANE` 那一行（`instrument(HAT).strength(0.3F).sound(GLASS).noOcclusion()`）+ `mapColor(COLOR_GRAY)`。**不用 `ofFullCopy`**，因为那会连 mapColor 一起抄来再覆盖，读起来像事后补的。`noOcclusion` 与遮光无关，别因为「它遮光了」就去掉——occlusion 管的是渲染剔除，板子不是满方块不能宣称遮挡。
+
+**材质 1:1 复制的关键**：模型继承原版 `template_glass_pane_*`（5 个变体），texture 只需两个键、**都要包 `force_translucent`**：
+```json
+"edge": { "force_translucent": true, "sprite": "minecraft:block/glass_pane_top" },
+"pane": { "force_translucent": true, "sprite": "minecraft:block/tinted_glass" }
+```
+**没有自画任何贴图**，直接引用原版路径——这才是真 1:1。`edge` 沿用通用顶边（染色玻璃板全都复用它）。
+
+**blockstate** 照抄原版 9 条 multipart。**战利品表**照抄玻璃板：**只有精准采集才掉落**。
+
+**未加 `mineable` tag**：原版玻璃板不属于任何工具 tag（徒手/任意工具速度一致），保持一致。
+
+**配方**：遮光玻璃 6 个（3×2）→ 16 个板，与原版玻璃板同比例。解锁条件是拿到遮光玻璃。
+
+### 🔴 进两个创造栏，其中一个是原版的
+
+自己的栏直接 `accept`。原版**染色方块**栏（`itemGroup.coloredBlocks`）用：
+```java
+entries.insertAfter(Items.GLASS_PANE, AbyssFallBlocks.TINTED_GLASS_PANE)
+```
+**用 `insertAfter` 不用 `accept`**：`accept` 会追加到整个标签最末尾（横幅之后），离玻璃十万八千里。
+
+原版该栏顺序（已验证）：`GLASS → TINTED_GLASS → 16色STAINED_GLASS → GLASS_PANE → 16色STAINED_GLASS_PANE`，所以插在 `GLASS_PANE` 后正是原版会放它的位置。
+
+⚠️ **`CreativeModeTabs` 的 14 个 tab key 全是 `private`**，引用不到。自建等价 key 即可（`createKey` 的实现就是这个）：
+```java
+ResourceKey.create(Registries.CREATIVE_MODE_TAB, Identifier.withDefaultNamespace("colored_blocks"))
+```
+指向的是**同一个标签**，不是副本。
 
 ## 14. DEV 图标 `abyssfall:abyss_dev_icon`
 

@@ -1,0 +1,32 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_tinted_glass": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "minecraft:tinted_glass"
+          }
+        ]
+      }
+    },
+    "has_the_recipe": {
+      "trigger": "minecraft:recipe_unlocked",
+      "conditions": {
+        "recipe": "abyssfall:tinted_glass_pane"
+      }
+    }
+  },
+  "requirements": [
+    [
+      "has_the_recipe",
+      "has_tinted_glass"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "abyssfall:tinted_glass_pane"
+    ]
+  }
+}

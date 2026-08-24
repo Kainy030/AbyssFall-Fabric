@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "#": "minecraft:gold_ingot",
+    "O": "minecraft:obsidian",
+    "P": "abyssfall:tinted_glass_pane"
+  },
+  "pattern": [
+    "#O#",
+    "OPO",
+    "#O#"
+  ],
+  "result": {
+    "id": "abyssfall:gold_lens"
+  }
+}

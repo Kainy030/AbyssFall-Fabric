@@ -48,7 +48,7 @@
 | Minecraft | **26.2**；**无映射**（26.1 起不再混淆，Fabric 停止维护第三方映射） |
 | Loader / Loom / Fabric API | 0.19.3 / 1.17.19（插件 id **`net.fabricmc.fabric-loom`**）/ 0.158.0+26.2 |
 | Gradle / JDK | 9.7.0 / **25**（`java-runtime-epsilon`），toolchain 与 `release` 都是 25 |
-| 版本 / 许可 | `1.1-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**） |
+| 版本 / 许可 | `1.2-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**） |
 | 源集 | `splitEnvironmentSourceSets()`：`src/main` + `src/client` |
 | Git | `https://github.com/Kainy030/AbyssFall-Fabric.git`，分支 `main` |
 
@@ -298,6 +298,8 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 27. **改长文档时别用大块 `editor` 覆写**：`Copy-Item` 备份 → 分段写（每段 ≤6000 字符，`insert_line` 追加）→ 每段后核行数 → 收尾核字节与首字节。
 
+28. **PowerShell 读本项目文件必须显式指定 UTF-8**：`Get-Content`（含 `-Raw`）按本机 GBK 解码，含中文的文件会整片乱码——`zh_cn.json` 会假报「JSON 无效」，`HANDOFF.md` 会读出天书。用 `[System.IO.File]::ReadAllText(path, [System.Text.Encoding]::UTF8)` / `ReadAllLines`。**别因为假报错去「修」文件。** 另：`ConvertFrom-Json` **拒绝空字符串键**，而 `blockstates/abyss_dirt.json` 的 `"variants": { "": {...} }` 是 MC 合法写法 ⇒ 它永远会被误报，**不是文件坏了**。
+
 ---
 
 
@@ -319,7 +321,7 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 ## 7. 当前状态
 
 - **编译已验证**：`build` 与 `releaseJars` 都 `BUILD SUCCESSFUL`。产物 `build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`
-- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.1-Dev`（26.2 首版；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）
+- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.2-Dev`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）
 
 ### 7.1 已实测通过（用户在真实环境验证，**别再列成待确认项去催他测**）
 
@@ -331,6 +333,13 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 - **HUD 两种读数**：满值不显示且不占空间、紧贴饱食度且饱食度不移位、约 1 秒淡出且结束时上方不跳、氧气条/物品名不被压、F1 一同隐藏；图标行半格映射/抖动/下降抖一下/上升行波/回满闪光；进度条颜色长度随 San 变化、RGB 高亮、整条抖动抬升；窥镜双向切换与 500ms reveal
 - **药水**：两效果五级数值、同级并存净变化为 0、**和平模式拦精神崩溃但不拦精神饱满**、`/san add` 在和平仍生效
 - **测试协议**：真实玩家环境（非 runClient）测过，Swing 弹窗在 `preLaunch` 确实能显示
+
+**1.2-Dev 新增内容（本轮，用户已实测确认）**：
+
+- **认知窥镜贴图**：金框立镜 + 会左右扫视的眼睛（16×48 动画条）。**用户明确说「这一版做的我很满意」**——那四条画眼睛的约束别动（`REFERENCE.md` 13d）
+- **金镜** `gold_lens`：窥镜的无眼版，纯占位，配方 = 金锭×4 + 黑曜石×4 + 遮光玻璃板×1
+- **遮光玻璃板** `tinted_glass_pane`：**已实测「还真 tm 遮光」**，且能与原版各种玻璃板正常拼接，两个创造栏位置都准确（`REFERENCE.md` 13e）
+- **认知窥镜品质改 EPIC**
 
 ### 7.2 唯一仍未验证的观感项
 
