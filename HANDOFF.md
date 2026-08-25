@@ -31,7 +31,7 @@
 
 > 「原则是尽量不使用 mixin，因为我以前是写外挂的，我的思考方式就是遇事不决用钩子，所以需要你来最大程度地不用 mixin，用 Fabric API 事件。但凡是有例外，有时候不得不用钩子的时候就要放心大胆地用钩子，**你在代码中看到的钩子就是不得不用的情况**。」
 
-⇒ 目前**两个** Mixin：`client/mixin/HudStatusBarHeightRegistryImplMixin`（HUD 高度，`REFERENCE.md` 15a）+ `mixin/PlayerAttackMixin`（毕业武器接管，`REFERENCE.md` 17）。**都不要当技术债清理、不要试图用 API 重写**——前者是 Fabric API 没给排序手段，后者是所有扩展点都在它要跳过的判定内部。写新功能时优先找 API 事件，找不到再注入并说明理由。
+⇒ 目前**三个** Mixin：`client/mixin/HudStatusBarHeightRegistryImplMixin`（HUD 高度，`REFERENCE.md` 15a）+ `mixin/PlayerAttackMixin`（毕业武器接管，`REFERENCE.md` 17）+ `client/mixin/RenderTypeInvoker`（Shader 系统造 RenderType，`REFERENCE.md` 18b）。**都不要当技术债清理、不要试图用 API 重写**——前两个的理由见各自那节，第三个是 `RenderType.create` 为 package-private 且 Fabric API 未提供替代（已逐个核实 `api` 包）。写新功能时优先找 API 事件，找不到再注入并说明理由。
 
 **其他相处方式**：
 - 他问「这两个功能有什么区别」是真想搞清语义边界 → 直接答区别 + 什么情况下才看得出差异。说「简单回复即可」时别长篇大论。
@@ -48,7 +48,7 @@
 | Minecraft | **26.2**；**无映射**（26.1 起不再混淆，Fabric 停止维护第三方映射） |
 | Loader / Loom / Fabric API | 0.19.3 / 1.17.19（插件 id **`net.fabricmc.fabric-loom`**）/ 0.158.0+26.2 |
 | Gradle / JDK | 9.7.0 / **25**（`java-runtime-epsilon`），toolchain 与 `release` 都是 25 |
-| 版本 / 许可 | `1.3-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**） |
+| 版本 / 许可 | `1.4-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**） |
 | 源集 | `splitEnvironmentSourceSets()`：`src/main` + `src/client` |
 | Git | `https://github.com/Kainy030/AbyssFall-Fabric.git`，分支 `main` |
 
@@ -218,6 +218,80 @@ float intensity = f(change.current().ratio());   // 随 San 连续变化，无�
 
 ---
 
+## 4b. 地基三：Shader 渲染系统（1.4-Dev 新增）
+
+用户定位：**「SanCore 负责的是游戏的规则框架，Shader 负责的是游戏物品的渲染框架」**、**「这个渲染器只给一个物品用就太浪费了」**、**「未来我想随着 san 值变化，实时在游戏内给各种物品贴上"异常"渲染」**。
+
+### 4b.1 🔴 它不是死兆将至的专属系统
+
+`shadercore` 包里**没有任何一处提到那把剑**。剑只是 `AbyssFallShader.json` 默认文件里的一条 entry，是**消费者之一**。
+
+**禁忌**：不要往 `shadercore` 加任何物品专属逻辑。要让某物品有渲染 → 加 provider 或加 effect 类型，两者都不用碰系统类。
+
+### 4b.2 两条正交扩展轴（分开是刻意的）
+
+| 轴 | 入口 | 加东西要做什么 |
+|---|---|---|
+| **效果种类**（长什么样） | `ShaderEffectTypes.register()` | 写一个 record（`implements ShaderEffect`）+ 一个 GLSL，注册。**不碰现有类** |
+| **决策来源**（何时、给谁） | `AbyssFallShaderCore.addProvider()` | 写一个 provider，可返回任意已注册种类 |
+
+⇒ **「San 低了给物品贴异常渲染」是加一个 provider，不是改架构。** provider 决定「何时/多强」，复用已有种类决定「长什么样」。
+
+**已实测**：从系统外部定义并注册一个全新种类（自带字段与 shader），零系统改动即生效。
+
+### 4b.3 每帧决策，不是启动时固化
+
+`ItemModel#update` 每帧都跑 ⇒ **每帧问一次 `AbyssFallShaderCore.effectFor()`**，返回值可以每帧不同。这是「实时贴异常渲染」能成立的根本。
+
+**因此渲染层包装了所有物品的模型**，不是只包装配置里那几个——否则未在配置中的物品没有 wrapper，provider 声明了也画不出来。不命中时不加图层、渲染结果与原版一致。无 provider 时完全不安装。**别"优化"成按配置预筛，那会砍掉动态性。**
+
+**Provider 优先级 = 注册顺序倒序**（后注册的先问，第一个非 null 胜出）。配置 provider 最先注册 ⇒ 优先级最低，任何反应式 provider 都能覆盖它。
+
+### 4b.4 🔴 颜色来源是一条**刻意留空**的接缝
+
+用户原话：「颜色来源、计算方式以及后续 Provider 怎么决定效果，等整体渲染架构稳定后再单独设计」、「让 Shader System 不绑定任何一种颜色来源，避免以后选择方案时需要重做底层渲染系统」。
+
+⇒ `ShaderColorSource` 接口 + **唯一的占位实现** `FixedColorSource`。
+
+**`FixedColorSource` 是占位，不是决定。** 它的三条限制写在自己的 javadoc 里，且明确标注「这是占位的限制，不是系统的限制」：编译期常量、整块同色、不读原贴图。
+
+**已知未解决**：绿/蓝两通道共用一个颜色——`opacity` 合并那步就把来源信息丢了。修它必然涉及颜色方案设计，故未修。
+
+**动颜色系统前先读那个接口的 javadoc。** 若将来要「每帧变色」，改的是那**一个接口文件**（从「贡献 define」扩成「也能贡献 uniform」），不是渲染代码——这正是这条接缝的价值。
+
+### 4b.5 参数走编译期 define，不走 uniform
+
+**原因（已验证）**：uniform buffer 必须手动驱动 `RenderPass` 填充，而渲染在 `submitCustomGeometry` 内部，**拿不到 `RenderPass`**。
+
+**代价**：参数不同 ⇒ 不同 pipeline。所以 **provider 不要每帧造新 effect 实例**（连续变化的值会编译上千条 pipeline）。effect 按值缓存 pipeline，配置相同的物品自动共享。
+
+⚠️ `withShaderDefine` 只有 `(String)` / `(String,int)` / `(String,float)` 三个重载，**没有 String 值**。故 `shaderDefines()` 返回 `Map<String, Float>`——顺带避开了 GLSL「整数除法」陷阱。
+
+### 4b.6 独立配置文件 `config/AbyssFallShader.json`
+
+与 `abyssfall.json` **分开**（用户明确要求单独文件）：那个是玩法，这个是外观。容错逻辑刻意与主配置**同构**（同样的三种失败、同样的时间戳备份、同样不抛异常）。
+
+**`"type"` 字段是可扩展的关键** —— dispatch codec 按它选 codec，新种类无需改文件格式。用 `partialDispatch`（不是 `dispatch`，后者签名不收 `DataResult`）。
+
+**必须在 `AbyssFallShaderCore.initialize()` 之后 load** —— 解析 entry 需要类型已注册。
+
+### 4b.7 静默失败（调试时必读）
+
+自定义 pipeline **不在** `RenderPipelines.getStaticPipelines()` 里 ⇒ `ShaderManager.apply` 不预编译、不报错。**GLSL 编译失败会静默**：什么都不画、日志无异常。
+
+⇒ 「遮罩没显示」既可能是美术画错，也可能是 shader 没编译过。**排查时先怀疑后者。**
+
+### 4b.8 已知未解决
+
+- **`Z_PLANE = 8.5/16` 假设平面物品** ⇒ 3D 模型物品（盾牌、方块物品）位置会偏。需从 baked quads 推真实包围盒
+- **bind group / 顶点格式固定**：所有效果 shader 必须 import 同一套 uniform。新种类若需第三张贴图，得给 `AbyssFallPipelines` 加选项
+- 绿/蓝共色（见 4b.4）
+- **全部未进游戏实测**（见 7.2）
+
+---
+
+
+
 
 ## 5. 血泪教训
 
@@ -262,6 +336,13 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 30. 🔴 **改共享对象会伤到别人：MC 的 `Component.copy()` 是浅拷贝。** 它只 `new ArrayList<>(getSiblings())`，**sibling 本身是共享引用**。创造界面给每个物品都加一行 `tab.getDisplayName().copy()`，而本项目标签名由两个共享 Component 拼成 ⇒ 递归 `setStyle` 穿过 copy 污染原始实例，**游戏内所有物品的那一行一起闪**。**处理 `Component` 树一律"重建"不"就地改"**（`REFERENCE.md` 17g）。改任何拿得到的对象前先问：这个实例还有谁在用？
 
 31. **`javap` 查 API 比读反编译源码更可靠地能回答"这个成员是 public 吗"。** 本轮两次踩到可见性：`Level.random` 是 protected（要用 `getRandom()`）、`ChatFormatting` 没有 `getColor()`（要 `TextColor.fromLegacyFormat`）。反编译源码不显式标注继承来的可见性，`javap -p` 一目了然。
+
+32. 🔴 **写 API 名之前用 `javap` 列一遍重载，别只确认「这个方法存在」。** 本轮两次栽在重载集合上：`RenderPipeline.Builder.withShaderDefine` 只有 `(String)` / `(String,int)` / `(String,float)`，**没有 String 值版**，我按 `Map<String,String>` 设计了整个接口才发现（已改 `Map<String,Float>`）；`Codec.dispatch` 的两个重载都不收 `DataResult`，要用 `partialDispatch`。**「方法名对」不等于「签名对」。**
+
+33. **跨版本抄代码时，类名/字段名是最先腐烂的部分。** 从 1.21.1 的无尽贪婪移植时抄错三处：`DefaultVertexFormat.NEW_ENTITY`（26.2 只有 `BLOCK`/`ENTITY`）、`LightTexture.FULL_BRIGHT`（26.2 是 `net.minecraft.util.LightCoordsUtil.FULL_BRIGHT`）、`ShaderInstance`+`AbstractUniform`（26.2 整套没了，改 `RenderPipeline`+UBO）。**参考实现给的是思路，名字一律现查。**
+
+34. **物品模型空间是 `0..1`，不是 `-0.5..0.5`。** `ItemModelGenerator` 在 0..16 网格里造，`FaceBakery:145` 除以 16 ⇒ 成品占 0..1、中心在 `(0.5,0.5)`；平面物品 z 在 `7.5/16 ~ 8.5/16`。**反直觉之处**：`ItemTransform.apply` 每条路径**最后**都有 `translate(-0.5,-0.5,-0.5)`，那句才是居中——所以它作用于仍是 0..1 的几何，按原点画的东西会被一起平移半格。另：`ItemStackRenderState.submit` 是**逐图层**套变换的，新建图层默认 `NO_TRANSFORM`，不手动 `setItemTransform` 就不会跟着物品转。
+
 
 
 ⚠️ `blockstates/*.json` 用 `ConvertFrom-Json` 会**误报**（空字符串作属性名是合法 blockstate 写法），别据此改文件；**含中文的 `.ps1` 必须存成带 BOM 的 UTF-8**。
@@ -328,7 +409,7 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 ## 7. 当前状态
 
 - **编译已验证**：`build` 与 `releaseJars` 都 `BUILD SUCCESSFUL`。产物 `build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`
-- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.3-Dev`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）
+- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.4-Dev`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）
 
 ### 7.1 已实测通过（用户在真实环境验证，**别再列成待确认项去催他测**）
 
@@ -348,7 +429,7 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 - **遮光玻璃板** `tinted_glass_pane`：**已实测「还真 tm 遮光」**，且能与原版各种玻璃板正常拼接，两个创造栏位置都准确（`REFERENCE.md` 13e）
 **1.3-Dev 新增内容（毕业武器，见 `REFERENCE.md` 17）**：
 
-- **死兆将至** `final_death_omen`：无视一切减伤的秒杀剑。`@WrapMethod` 包裹 `Player#attack`，不进 `hurtServer` ⇒ 凋灵/末影龙/52 个子类覆写/PvP 开关/创造模式/图腾全部不执行。贴图暂用下界合金剑
+- **死兆将至** `final_death_omen`：无视一切减伤的秒杀剑。`@WrapMethod` 包裹 `Player#attack`，不进 `hurtServer` ⇒ 凋灵/末影龙/52 个子类覆写/PvP 开关/创造模式/图腾全部不执行。贴图 `abyssfall:item/final_death_omen`（16×16）
 - **伤害类型** `abyssfall:death_omen` + 8 个 `bypasses_*` tag；三条随机死亡消息（`DamageSource` 子类覆写，零额外 Mixin）
 - **tooltip 逐字波浪染色**：`+深渊 攻击伤害`，`+` 与属性名用原版蓝、「深渊」/「Abyss」按 code point 拆字做灰黑波浪（3.5 秒周期）
 - **恢复了 `src/main` 的 mixin 通道**（`abyssfall.mixins.json`），这是本轮唯一的架构变动，已事先报告并获同意
@@ -357,6 +438,22 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 
 - **认知窥镜品质改 EPIC**
+
+**1.4-Dev 新增内容（Shader 渲染系统，见 4b 与 `REFERENCE.md` 18）**：
+
+- **地基三 `shadercore`**：物品渲染框架。两条正交扩展轴（效果种类 / 决策来源），每帧决策，不绑定任何颜色来源
+- **独立配置** `config/AbyssFallShader.json`（dispatch codec，`"type"` 可扩展）
+- **第一个效果种类** `abyssfall:masked_pulse`：遮罩绿=常驻、蓝=随机抽样，共用脉动
+- **第三个 Mixin** `RenderTypeInvoker`（`@Invoker` 取 package-private 的 `RenderType.create`）
+- **死兆将至贴图定稿**，并成为 Shader 系统的第一个消费者
+
+🟢 **用户已实测通过的部分**（这是难点，别再列成待测）：
+- mod 自带 GLSL 能被 26.2 加载并编译（纯红上屏）
+- **OpenGL 与 Vulkan 两个后端都正常**
+- `GameTime` uniform 通路（红蓝脉动可见）
+- 物品栏 / 掉落物 / 手持 / 视角四种场景变换全部正确
+
+⚠️ **通用化重构（多物品、可扩展种类、颜色接缝）之后未再进游戏。** 见 7.2。
 
 ### 7.2 仍未验证的项
 
@@ -373,6 +470,15 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 - tooltip：是否只有一行、`+` 与「攻击伤害」是否原版蓝、「深渊」两字是否逐字灰黑波浪、攻速行是否消失、挥击有无后摇
 - ⚠️ **顺手看一眼别的原版物品（如钻石剑）的 tooltip 有无异常** —— 那是 `REFERENCE.md` 17g 记的那次共享实例污染的受害面
 
+**🔴 Shader 系统重构后待测（1.4-Dev）**：
+
+- **启动是否成功** —— 新增了第三个 Mixin，`defaultRequire=1` ⇒ 失败会直接崩，一启动就知道
+- **`config/AbyssFallShader.json` 是否正常生成**，格式是否与 4b.6 描述一致
+- **死兆将至的效果是否仍显示** —— 重构后 shader 改名 `masked_pulse`、颜色改走 `mix(colorB, colorA, pulse)`，观感理论上不变
+- ⚠️ **性能**：渲染层现在包装**所有**物品模型（理由见 4b.3）。开满物品的创造栏 / 大量掉落物场景是否掉帧 —— 这是本轮唯一有性能风险的改动
+- **别的物品是否被误染** —— 不命中时应完全等同原版
+- 遮罩仍是**我按亮度自动生成的占位图**（`final_death_omen_mask.png`），用户的美术定稿后直接覆盖即可，代码不用改
+
 ### 7.3 已用真实 classpath 实测过约 210 项
 
 覆盖：配置往返与残缺回落、战利品权重换算与两个边界特判、测试协议密钥与无头降级、DEV 图标逐像素、jar 解包、HUD 全部动效时序、两个药水效果数值表与镜像对称、窥镜切换与语言键完整性、进度条高亮 RGB、reveal 时间轴、**HUD 层序归位的 9 种注册顺序场景**（`REFERENCE.md` 15a）。**注意教训 20：这类验证证明不了渲染效果。**
@@ -388,9 +494,17 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 - 显示道具已实现（认知窥镜），四个待定点已定：双向切换、手持右键、无耐久时效、与理智计数器并存
 
 **内容**
-- **毕业武器（死兆将至）待定项**：贴图仍是原版下界合金剑占位；获取途径未定（目前只在创造栏，无配方）；横扫附带目标是否也秒杀未定；`stabAttack` 那条路是剑就不需要覆盖
+- **毕业武器（死兆将至）待定项**：获取途径未定（目前只在创造栏，无配方）；横扫附带目标是否也秒杀未定；`stabAttack` 那条路是剑就不需要覆盖
 
-- **所有图标都是占位**，发布前统一换自己的美术：深渊污泥用原版泥土材质、`abyss_gardeners` 图标是向日葵、计数器与窥镜都用原版 `clock_00`（**指针不会转**，原版靠 `range_dispatch` 切 64 个模型才转）、两个精神效果是脚本生成的图
+**Shader 渲染系统（地基三，1.4-Dev）**
+- 🔴 **颜色系统未设计** —— 用户明确要求先剥离、后设计（见 4b.4）。**动之前先读 `ShaderColorSource` 的 javadoc。** 四个候选方案（配置常量 / provider 每帧算 / 运行时 uniform / 取原贴图变换）各有代价，其中「每帧算」有 pipeline 爆炸风险、「运行时 uniform」需改渲染路径
+- **星空效果种类未做** —— 无尽贪婪那套程序化生成（球面射线 + 伪随机撒点）已调研完（`REFERENCE.md` 18f），素材问题因此消失，但没实现
+- **San 联动 provider 未做** —— 这是这套系统存在的理由，框架已就绪等玩法来用（与 3.6 的 San 事件同一处境）
+- **`Z_PLANE` 假设平面物品** ⇒ 3D 物品位置会偏（见 4b.8）
+- 绿/蓝共用一个颜色（见 4b.4）
+- 遮罩红色通道空着，可作第三种行为
+
+- **多数图标仍是占位**，发布前统一换自己的美术：`abyss_gardeners` 图标是向日葵、计数器与窥镜都用原版 `clock_00`（**指针不会转**，原版靠 `range_dispatch` 切 64 个模型才转）、两个精神效果是脚本生成的图。**已有自己美术的**：认知窥镜、金镜、深渊之花、深渊污泥、死兆将至。⚠️ **`final_death_omen_mask.png` 是我脚本生成的占位遮罩**，等用户美术
 - 深渊之花无实际功能；三个药水效果**无获取途径**（「深渊探索者」只被战利品侧读取，另两个只能 `/effect`）
 - **反精神崩溃魔咒：用户已给完整数值，明确说「先记录，不要实现」**（数值见 `REFERENCE.md` 7b 末尾）
 - 无配方、无 datagen、无自定义音效资源
@@ -411,7 +525,8 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 0. 通读本文件，再按需查 `REFERENCE.md`（动哪个功能读哪节，别通读）
 1. 读 `gradle.properties`、`fabric.mod.json`、`AbyssFall.java` 确认状态与本文档一致
 2. 读 `core/` 六个 + `config/` 七个文件（两块地基）
-3. 现场核实 Git：`git --no-pager log --oneline -5; git status --short; git --no-pager tag`
+3. **动渲染就读 `shadercore/` 八个文件**（地基三）。**动颜色必读 `ShaderColorSource` 的 javadoc**——那是刻意留空的接缝，不是没写完
+4. 现场核实 Git：`git --no-pager log --oneline -5; git status --short; git --no-pager tag`
 
 **MCP 用法（都实测过）**：
 - **`Fabric-Knowledge`**：`get_fabric_context(minecraft_version="26.2")` → `status = exact`。⚠️ 传 `fabric_api_version="0.158.0+26.2"` 会得到 `version_match_only`（上游把 `reference/latest` 钉在 `0.155.2+26.2`，项目用 0.158.0）。**已实测这差异不影响开发**（两版相关子模块 12 个类签名全同、类集合零增删）。**别去手改 MCP 索引里的版本号**，那会伪造 provenance。⚠️ `reference/latest` 是滚动别名（26.3 快照已存在），**每次都要用显式版本号复核**。

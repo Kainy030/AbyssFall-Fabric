@@ -25,6 +25,12 @@ src/main/java/com/abyssfall/
 ├── item/AbyssFallDevInventory  AbyssFallItemGroups  AbyssFallItems
 │        SanCounterItem  SanLensItem  FinalDeathOmen                  见 17
 ├── loot/AbyssFallLootTables.java
+├── shadercore/  (8 个：AbyssFallShaderCore  AbyssFallShaderConfig  ShaderConfigData
+│                 ShaderConfigProvider  ShaderEffect  ShaderEffectProvider
+│                 ShaderEffectType  ShaderEffectTypes  ShaderColorSource
+│                 ShaderRenderContext)                                见 18 / HANDOFF 4b
+├── shadercore/color/FixedColorSource.java      ⚠️ 占位实现，见 18d
+├── shadercore/effect/MaskedPulseEffect.java    第一个效果种类，见 18e
 └── mixin/PlayerAttackMixin.java        毕业武器接管点，见 17
 src/client/java/com/abyssfall/client/
 ├── AbyssFallClient.java
@@ -33,14 +39,24 @@ src/client/java/com/abyssfall/client/
 ├── hud/SanIconHudElement.java        图标行
 ├── hud/SanBarHudElement.java         进度条
 ├── tooltip/AbyssFallTooltips.java    tooltip 逐字波浪染色，见 17
+├── render/ShaderLayerItemModel.java      包装物品模型 + 每帧决策，见 18c
+├── render/ShaderLayerModelPlugin.java    装到所有物品上，见 18c
+├── render/ShaderLayerRenderer.java       画那个 quad，见 18c
+├── shader/AbyssFallPipelines.java        effect → RenderType，见 18b
+├── mixin/RenderTypeInvoker.java          取 package-private 的 create，见 18b
 └── mixin/HudStatusBarHeightRegistryImplMixin.java   见 15a
+
+src/main/resources/assets/abyssfall/shaders/core/
+├── masked_pulse.vsh / .fsh            见 18e
 ```
 
-**Mixin 现在有两个**（`main` 一个 + `client` 一个），配置也是两份。`src/main` 下的 `mixin/` 包在 26.2 迁移时曾被删除（`WitherRoseBlockMixin` 改成数据文件，见 4），v1.3-Dev 为毕业武器**重新建立**——那次删除是因为不再需要，不是因为禁止。
+**Mixin 现在有三个**（`main` 一个 + `client` 两个），配置两份。`src/main` 下的 `mixin/` 包在 26.2 迁移时曾被删除（`WitherRoseBlockMixin` 改成数据文件，见 4），v1.3-Dev 为毕业武器**重新建立**——那次删除是因为不再需要，不是因为禁止。
 
 `onInitialize()` 调用顺序**有依赖关系，勿随意调整**：
 ```java
 AbyssFallConfig.load();               // 最先！注册与否取决于配置，注册后无法回头
+AbyssFallShaderCore.initialize();     // 必须在下一行之前：解析 entry 需要 effect 类型已注册
+AbyssFallShaderConfig.load();
 AbyssFallCoreSystem.initialize();     // San 最先，它是其他一切要移动的值
 AbyssFallSanCommand.initialize();     // 条件注册（dev_command）
 AbyssFallEffects → Items → Blocks → ItemGroups（依赖前两者）
@@ -64,7 +80,7 @@ AbyssFallDevInventory.initialize();   // 最后，条件注册
 
 ## 3. 方块：深渊污泥 `abyssfall:abyss_dirt`
 
-`Properties.ofFullCopy(Blocks.DIRT)`，实现 `BonemealableBlock`。材质暂用原版 `minecraft:block/dirt`。tag：`mineable/shovel` + `supports_wither_rose`。
+`Properties.ofFullCopy(Blocks.DIRT)`，实现 `BonemealableBlock`。材质 `abyssfall:block/abyss_dirt`。tag：`mineable/shovel` + `supports_wither_rose`。
 
 `bloom(ServerLevel, BlockPos dirtPos)` → `boolean`：摧毁上方凋零玫瑰（`destroyBlock(pos, false)` 不掉落原方块）+ `popResource` 吐出深渊之花 + 播放特效，返回是否真的消耗了玫瑰。
 
@@ -481,7 +497,7 @@ lang key `death.attack.death_omen.1/2/3`，数量由 `DEATH_MESSAGE_VARIANTS` �
 
 ⚠️ 曾计划用 Mixin 替换铁砧「过于昂贵」提示，**已放弃**：`TOO_EXPENSIVE_TEXT` 是 `AnvilScreen` 的 `private static final` 全局字段、不区分物品，替换会影响所有物品。
 
-**贴图暂用 `minecraft:item/netherite_sword`**（占位，`parent: item/handheld`）。进常规创造栏，无 config 门禁。
+**贴图 `abyssfall:item/final_death_omen`**（16×16，`parent: item/handheld`）。进常规创造栏，无 config 门禁。
 
 ### 17g. tooltip 逐字波浪染色（`client/tooltip/AbyssFallTooltips`）
 
@@ -508,6 +524,122 @@ lang key `death.attack.death_omen.1/2/3`，数量由 `DEATH_MESSAGE_VARIANTS` �
 - **用户明确要求不打日志**：「我们的武器不需要跟任何人解释」
 
 
+## 18. Shader 渲染系统（v1.4-Dev 新增，地基三）
+
+**架构与禁忌读 `HANDOFF.md` 4b**，这里只记「怎么实现的」。
+
+用户定位：**「SanCore 负责规则框架，Shader 负责物品渲染框架」**。🔴 **它不是死兆将至的专属系统**，那把剑只是第一个消费者。
+
+### 18a. 26.2 渲染管线的四个事实（决定了整套设计）
+
+全部用 `javap` / 源码实测，**不要凭 1.21.x 的记忆改**：
+
+1. **无 `ItemRenderer`、无 `ShaderInstance`、无 `AbstractUniform`** —— 26.2 整套换成 `RenderPipeline` + UBO。
+2. **`CuboidItemModelWrapper.validateAtlasUsage` 拒绝非图集 quad**（全库仅 2 处引用，都在该类）⇒ 高分辨率/程序化贴图**不能走普通 `layer0`**。
+3. **逃生口是 `SpecialModelRenderer`** —— vanilla 自己的盾牌/三叉戟/箱子走这条路，纹理是裸 `Identifier` 而非图集精灵。`LayerRenderState.setupSpecialModel` 是 public。
+4. **`SubmitNodeCollector.submitCustomGeometry(PoseStack, RenderType, CustomGeometryRenderer)`** 可提交任意 RenderType 的几何。GUI 与世界渲染都有 vanilla 用例（`GuiProfilerChartRenderer`、`BeaconRenderer` 等 15 处）。
+
+⇒ 结论：**包装物品模型 + 追加一个 special 图层 + 自定义 RenderType**。那个 atlas 校验没有被绕过，它只是不适用于这种图层。
+
+### 18b. 自定义 RenderType：唯一必须的 Mixin
+
+`client/mixin/RenderTypeInvoker`，`@Invoker` 取 `RenderType.create`。
+
+**为什么不可避免**（每一环都实测过）：
+- `RenderPipeline.builder()` / `withVertexShader(Identifier)` / `withFragmentShader(Identifier)` —— **public**，接受自定义命名空间
+- `RenderSetup.builder(RenderPipeline)` 及其 builder 全部方法 —— **public**
+- **`RenderType.create(String, RenderSetup)` —— package-private**，descriptor 从字节码读得：
+  `(Ljava/lang/String;Lnet/minecraft/client/renderer/rendertype/RenderSetup;)Lnet/minecraft/client/renderer/rendertype/RenderType;`
+- `RenderTypes` 里全部 public 工厂**只产 vanilla 自己的 pipeline**
+- **Fabric API 没有替代** —— `fabric-rendering-v1 25.3.2` 与 `fabric-renderer-api-v1 14.1.3` 的 `api` 包已逐个扫过，只有 `FabricRenderPipeline`（仅一个 GUI draw-mode 开关）
+
+**曾评估的替代方案**：把类放进 `net.minecraft.client.renderer.rendertype` 包借 package 访问权。可行，但会往 vanilla 包里塞我们的文件；三行 invoker 侵入更小。用户选了 Mixin（原话「我们要保证自己的架构干净」）。
+
+**GLSL 加载路径**：`ShaderManager.prepare` 用 `manager.listResources("shaders", ...)` 扫**全部命名空间** ⇒ `assets/abyssfall/shaders/core/*.vsh/.fsh` 会被加载，`#moj_import <minecraft:xxx.glsl>` 也可用。
+
+**pipeline 无需注册**：`RenderPipelines.register` 是 private，但不需要它——`GlRenderPass:76` 走 `getOrCompilePipeline` **懒编译**。
+
+🔴 **代价：静默失败。** `ShaderManager.apply` 只预编译 `getStaticPipelines()`、只为它们报错。自定义 pipeline 编译失败**不抛异常、不打日志、什么都不画**。排查「效果没出现」时先怀疑这个。
+
+**pipeline location 必须按 effect 唯一**（用 `effect.hashCode()`）：两个只差一个 define 的 effect 是不同程序，共用 location 会让 GPU 缓存把第二个当成第一个。
+
+
+
+
+### 18c. 渲染路径（`client/render/` 三个类）
+
+```
+ShaderLayerModelPlugin   modifyItemModelAfterBake 装到【所有】物品上
+        ↓
+ShaderLayerItemModel     每帧：先委托原模型，再问 core 要 effect
+        ↓
+ShaderLayerRenderer      submitCustomGeometry 画一个 quad
+```
+
+**为什么装到所有物品**（不是只装配置里那几个）：provider 可能在任意一帧声明任意物品，按配置筛选会把答案固化在 bake 时。不命中时不加图层、结果等同原版。无 provider 时完全不安装。**别"优化"成预筛。**
+
+🔴 **两个坐标系陷阱**（都踩过，见 HANDOFF 教训 34）：
+
+1. **模型空间是 `0..1`，中心在 `(0.5,0.5)`**，不是以原点为中心。平面物品 z 在 `7.5/16 ~ 8.5/16`，故 `Z_PLANE = 8.5/16 + 0.002`。
+2. **每个图层要自己 `setItemTransform`** —— `ItemStackRenderState.submit` 逐图层套变换，新图层默认 `NO_TRANSFORM`，不设就不跟着物品转（手持时最明显）。变换取自 `ResolvedModel.getTopTransforms()`（沿父链解析，所以 `handheld` 的值是继承来的）。
+
+**顶点必须写满 `DefaultVertexFormat.ENTITY` 的六个属性**（position/color/UV0/overlay/light/normal），顺序照 vanilla 的 `submitCustomGeometry` 调用方（如 `ExperienceOrbRenderer`）。绑定是位置相关的，少一个后面全错位。
+
+**GUI 缓存**：`output.setAnimated()` + `output.appendModelIdentityElement(effect)`。第二个传 effect 本身 ⇒ effect 变了就是 cache miss（教训 29 同族）。
+
+### 18d. 🔴 颜色来源是刻意留空的接缝
+
+用户明确要求：**「让 Shader System 不绑定任何一种颜色来源，避免以后选择方案时需要重做底层渲染系统」**。
+
+`ShaderColorSource` 接口 + **唯一占位实现** `FixedColorSource`。
+
+**`FixedColorSource` 不是设计决定，是占位。** 它的限制（编译期常量、整块同色、不读原贴图）写在自己 javadoc 里并标注「这是占位的限制，不是系统的限制」。
+
+**已实测**：从外部定义一个性质完全不同的 source（贡献 `HUE_START`/`HUE_SPAN` + `COLOR_FROM_GRADIENT` 标志），零系统改动即生效，且 `COLOR_A_*` 那组 define 完全消失 —— 证明系统没有任何地方假设「颜色是两个 RGB 常量」。
+
+**接口当前边界**：source 只能贡献编译期 define。若要「每帧变色」，改的是**这一个接口文件**（扩成也能贡献 uniform），不是渲染代码。
+
+**未解决**：绿/蓝共用一个颜色 —— `opacity = continuous + sampled` 那步就把来源信息丢了，到着色时已分不清。修它必然涉及颜色方案设计，故未修。
+
+### 18e. `abyssfall:masked_pulse`（第一个效果种类）
+
+遮罩**按通道**分工，通道**值**即不透明度（所以美术可以做渐隐）：
+
+| 通道 | 行为 |
+|---|---|
+| **G** | 常驻显示 |
+| **B** | 随机抽样：每轮随机选一批，持续一轮后换一批 |
+| **R** | 空着，可作第三种行为 |
+
+**时基全部挂在 vanilla 的 `GameTime` 上**（`globals.glsl` 自带，免费）。⚠️ 它是 `((gameTime % 24000) + partialTick) / 24000.0`，即 **0..1 归一化、一个 MC 日一圈**，不是秒也不是 tick。
+
+🔴 **必须在归一化域里直接乘，不要先还原成 tick**：`floor(GameTime * 24000 / 10)` 实测 2400 个边界里有 **138 个错位**（float32 把 `110/24000*24000` 算成 `109.999992`）。正确写法 `floor(GameTime * 2400.0)`。
+
+**实测的抽样时基质量**（0.5 秒 = 10 tick）：2400 桶全部访问、**零跳桶**、每桶 9~11 tick。抖动无害（只让切换早/晚一帧）。⚠️ 每 MC 日归零时会多一次不规则切换，20 分钟一次、持续一帧，判断可忽略。
+
+**哈希抽样是纯函数**，无 CPU 侧状态：键 = `(像素坐标, 轮号)` ⇒ 同轮结果恒定、换轮全新一批。实测阈值 0.15 → 实际点亮率 0.1505。**像素坐标必须用 `floor(texCoord0 * MASK_RESOLUTION)`**，直接用 UV 会让单个物品像素内部出现噪点。
+
+**`MASK_RESOLUTION` 必须可配** —— 项目里已有 16×48 的物品贴图（`san_lens.png`），写死 16 就错。
+
+**采样器必须 `FilterMode.NEAREST`** —— 遮罩是数据不是图片，线性插值会在绿蓝边界混出中间值，造出属于任何效果的假像素。
+
+**参数走编译期 define 的原因与代价**见 HANDOFF 4b.5。⚠️ `withShaderDefine` 只有 `int`/`float`/flag 三个重载（教训 32）。
+
+### 18f. 无尽贪婪（Re-Avaritia）调研结论
+
+用户提供 1.21.1 NeoForge 源码作参考。**最重要的发现：它的星空不是贴图，是着色器程序化生成的。**
+
+实测其全部贴图分辨率：`infinity_sword_mask.png` **16×32**、`cosmic_0..9.png` **16×48~16×112**。**没有一张高清图。** `layer0` 只当遮罩用（`col.a *= mask.r`）。
+
+`cosmic.fsh` 的做法：把每个片元当一条射线 → 按玩家 yaw/pitch 旋转 → 球面映射取 UV → **叠 16 层，每层随机旋转轴** → 每层切 16×16 格、伪随机决定该格放不放星（`cosmiccount/cosmicoutof = 10/101` ≈ 10%）。
+
+⇒ **素材问题因此消失**：密度是常数、视野无限、永不重复、无需无缝平铺。我们纠结过的 1254² 素材根本不需要。
+
+**GUI 处理值得抄**：它不关动画，而是把 `externalScale` 设成 **100**（把星空"拉远"，视觉上成为细密静止的深空）。
+
+**移植障碍**（若要做星空种类）：它用 `ShaderInstance` + `AbstractUniform.set()` 逐个设标量，**26.2 全没了**；`UniformType` 只有 `UNIFORM_BUFFER`/`TEXEL_BUFFER`，`RenderPass.setUniform` 只收 buffer ⇒ 要么打包 UBO（但 `submitCustomGeometry` 内拿不到 `RenderPass`），要么走 define（值固定）。**这是星空种类还没做的真正原因。**
+
+它自己也用 Mixin（`ItemRendererMixin`/`PlayerRendererMixin`），且专门做了 Iris 兼容（`CosmicRenderQueue` 延迟渲染）—— 说明与光影包冲突是真实问题，我们也会遇到。
 
 
 ## Git / 发布流程（由你负责）

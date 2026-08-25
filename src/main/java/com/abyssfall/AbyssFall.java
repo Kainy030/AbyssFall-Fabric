@@ -36,6 +36,8 @@ import com.abyssfall.item.AbyssFallDevInventory;
 import com.abyssfall.item.AbyssFallItemGroups;
 import com.abyssfall.item.AbyssFallItems;
 import com.abyssfall.loot.AbyssFallLootTables;
+import com.abyssfall.shadercore.AbyssFallShaderConfig;
+import com.abyssfall.shadercore.AbyssFallShaderCore;
 
 public class AbyssFall implements ModInitializer {
 	public static final String MOD_ID = "abyssfall";
@@ -50,6 +52,11 @@ public class AbyssFall implements ModInitializer {
 		// cannot be amended once the game is running, so it has to be read before anything
 		// else happens.
 		AbyssFallConfig.load();
+
+		// The shader core comes before its own configuration is read: an entry in that file names an
+		// effect type, and the type has to be registered before the entry can be understood.
+		AbyssFallShaderCore.initialize();
+		AbyssFallShaderConfig.load();
 
 		// The San system comes first: it is the value the rest of the mod is meant to move, and
 		// registering its attachment before anything else can consult it keeps that ordering
