@@ -20,6 +20,7 @@
 package com.abyssfall.client.render;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -35,6 +36,7 @@ import org.jspecify.annotations.Nullable;
 
 import com.abyssfall.shadercore.AbyssFallShaderCore;
 import com.abyssfall.shadercore.ShaderEffect;
+import com.abyssfall.shadercore.ShaderQuad;
 import com.abyssfall.shadercore.ShaderRenderContext;
 
 /**
@@ -87,6 +89,23 @@ public final class ShaderLayerItemModel implements ItemModel {
 	private final Identifier itemId;
 
 	/**
+	 * The item's own geometry, converted once when the model was baked.
+	 *
+	 * <p>Held rather than fetched per frame because it is a property of the model: the same quads every frame
+	 * until the model is rebaked, at which point this wrapper is rebuilt anyway. Fetching it per frame would
+	 * also mean reading it back out of the render state, which is cleared and refilled each frame — a copy per
+	 * item per frame, on the render path, for a value that never changes.
+	 */
+	private final List<ShaderQuad> itemGeometry;
+
+	/**
+	 * Which atlas holds this item's own texture, for effects that read it.
+	 *
+	 * <p>Part of what identifies a render type, since the setup binds it as a sampler.
+	 */
+	private final @Nullable Identifier atlas;
+
+	/**
 	 * One renderer per effect seen so far.
 	 *
 	 * <p>Keyed by value, like the pipeline cache, so the small set of effects a provider cycles through
@@ -95,10 +114,12 @@ public final class ShaderLayerItemModel implements ItemModel {
 	private final Map<ShaderEffect, ShaderLayerRenderer> renderers = new HashMap<>();
 
 	public ShaderLayerItemModel(final ItemModel delegate, final ItemTransforms transforms,
-			final Identifier itemId) {
+			final Identifier itemId, final ShaderLayerModelPlugin.ItemGeometry itemGeometry) {
 		this.delegate = delegate;
 		this.transforms = transforms;
 		this.itemId = itemId;
+		this.itemGeometry = itemGeometry.quads();
+		this.atlas = itemGeometry.atlas();
 	}
 
 	@Override
@@ -125,7 +146,9 @@ public final class ShaderLayerItemModel implements ItemModel {
 		ItemStackRenderState.LayerRenderState layer = output.newLayer();
 		layer.setItemTransform(this.transforms.getTransform(displayContext));
 		layer.setupSpecialModel(
-				this.renderers.computeIfAbsent(effect, ShaderLayerRenderer::new), null);
+				this.renderers.computeIfAbsent(effect,
+						key -> new ShaderLayerRenderer(key, this.itemGeometry, this.atlas)),
+				null);
 
 		// Marks the result as time-varying so the GUI does not serve a stale first frame forever, and
 		// includes the effect in the identity so a change of effect is itself a cache miss.

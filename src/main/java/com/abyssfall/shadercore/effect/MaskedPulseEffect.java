@@ -35,6 +35,7 @@ import com.abyssfall.shadercore.ShaderColorSource;
 import com.abyssfall.shadercore.ShaderEffect;
 import com.abyssfall.shadercore.ShaderEffectType;
 import com.abyssfall.shadercore.color.FixedColorSource;
+import com.abyssfall.shadercore.color.ShaderColorSources;
 
 /**
  * Two effects on one mask, told apart by channel, both modulated by a shared pulse.
@@ -98,11 +99,11 @@ public record MaskedPulseEffect(Identifier mask, int maskResolution, ShaderColor
 					.forGetter(MaskedPulseEffect::mask),
 			Codec.intRange(1, 4096).optionalFieldOf("mask_resolution", DEFAULT_MASK_RESOLUTION)
 					.forGetter(MaskedPulseEffect::maskResolution),
-			// Flattened rather than nested under a "color" object: how colour is chosen is not settled,
-			// and a nesting invented now would be a format decision made ahead of the design. When the
-			// colour system arrives this field is expected to change shape.
-			FixedColorSource.CODEC.optionalFieldOf("color", FixedColorSource.DEFAULT)
-					.xmap(source -> (ShaderColorSource) source, source -> (FixedColorSource) source)
+			// Colour is read through a dispatching codec keyed on a "type" field, the same shape the effect
+			// registry uses. It used to be a single codec with a cast on the write path, which was safe only
+			// while one implementation existed; a second one now does, so the dispatch it was noted as
+			// requiring is in place. An older file without a "type" still reads, as fixed.
+			ShaderColorSources.LENIENT_CODEC.optionalFieldOf("color", FixedColorSource.DEFAULT)
 					.forGetter(MaskedPulseEffect::color),
 			Codec.floatRange(0.0F, 1.0F).optionalFieldOf("sample_density", DEFAULT_SAMPLE_DENSITY)
 					.forGetter(MaskedPulseEffect::sampleDensity),

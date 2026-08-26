@@ -48,7 +48,7 @@
 | Minecraft | **26.2**；**无映射**（26.1 起不再混淆，Fabric 停止维护第三方映射） |
 | Loader / Loom / Fabric API | 0.19.3 / 1.17.19（插件 id **`net.fabricmc.fabric-loom`**）/ 0.158.0+26.2 |
 | Gradle / JDK | 9.7.0 / **25**（`java-runtime-epsilon`），toolchain 与 `release` 都是 25 |
-| 版本 / 许可 | `1.4-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**） |
+| 版本 / 许可 | `1.5-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**） |
 | 源集 | `splitEnvironmentSourceSets()`：`src/main` + `src/client` |
 | Git | `https://github.com/Kainy030/AbyssFall-Fabric.git`，分支 `main` |
 
@@ -283,10 +283,12 @@ float intensity = f(change.current().ratio());   // 随 San 连续变化，无�
 
 ### 4b.8 已知未解决
 
-- **`Z_PLANE = 8.5/16` 假设平面物品** ⇒ 3D 模型物品（盾牌、方块物品）位置会偏。需从 baked quads 推真实包围盒
-- **bind group / 顶点格式固定**：所有效果 shader 必须 import 同一套 uniform。新种类若需第三张贴图，得给 `AbyssFallPipelines` 加选项
+- ~~**`Z_PLANE = 8.5/16` 假设平面物品** ⇒ 3D 模型物品（盾牌、方块物品）位置会偏。需从 baked quads 推真实包围盒~~
+  ✅ **v1.5-Dev 已解决，并且这条旧表述是错的**：受影响的不是「3D 物品」这个子集，而是**全部物品** —— vanilla 给每个生成型物品都造了 1/16 厚度 + 逐像素侧壁，**没有一个物品是平的**。现在几何跟随物品真实外壳（`ShaderGeometrySource` / `ItemHullGeometry`，见 `REFERENCE.md` 18h），`Z_PLANE` 已删除
+- **bind group / 顶点格式固定**：所有效果 shader 必须 import 同一套 uniform。⚠️ **v1.5-Dev 起 `Sampler0` 是物品图集、`Sampler1` 是遮罩**（原先两个都绑遮罩且 `Sampler0` 从不读），新种类若需第三张贴图，得给 `AbyssFallPipelines` 加选项
 - 绿/蓝共色（见 4b.4）
-- **全部未进游戏实测**（见 7.2）
+- **`glowing` 推导对近黑物品等于不发光**（公式与底层亮度成正比，实测增量仅 +3.5/255，见 `REFERENCE.md` 18g）
+- **`masked_pulse` 之外仍无第二个效果种类**（星空未做）
 
 ---
 
@@ -346,7 +348,7 @@ ShaderCore（只管渲染，不知道数值从哪来）
 ### 4c.5 现状
 
 - `SanCore` ✅ 已完成，零跨 core 依赖
-- `ShaderCore` ✅ 已完成，零跨 core 依赖
+- `ShaderCore` ✅ 已完成，零跨 core 依赖（1.5-Dev 升级后复测仍为零，见 `REFERENCE.md` 18d-4）
 - `GameCore` ⬜ **未开始**，等其他 core 齐了再写
 
 **现在没有总闸**，消费方（HUD、药水效果、物品）各自直连 SanCore ⇒ 「San 变化 → 渲染变化」这条线没人负责，这就是 §8 记的最大空白。**引入 game core 不是重构，是把散落的连线收进一处，现有 core 一行不用改。**
@@ -474,7 +476,13 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 35. 🔴 **「参数走编译期常量」这个决定有作用域，别当全局结论用。** 4b.5 定下「shader 参数走 define」，对**配置态**参数完全正确；但把它套到**每帧变化**的值上，实测会编译 1001~2000 条 pipeline。**同一个技术决定在不同频率的数据上是相反的答案**——判断「该走哪条路」时，先问这个值多久变一次。正解不在 uniform（拿不到 `RenderPass`）而在顶点属性（每次 draw call 写，不进 pipeline 缓存的 key），见 4d。
 
-36. **找「值往哪儿塞」时，先把顶点格式的每个属性都数一遍有没有被用。** `DefaultVertexFormat.ENTITY` 的 `Color` 是 `RGBA8_UNORM`、四个 8 bit 通道，而项目的 shader 层一直写常量 `setColor(255,255,255,255)`、vsh 声明了 `in vec4 Color` 却从不转发 ⇒ **整条通道白白空着**。它不进 pipeline 缓存的 key，所以是「每帧变化的值」的天然载体。**类比**：教训 32 说「方法名对≠签名对」，这条是「格式声明了≠有人在用」。
+36. **找「值往哪儿塞」时，先把顶点格式的每个属性都数一遍有没有被用。** `DefaultVertexFormat.ENTITY` 的 `Color` 是 `RGBA8_UNORM`、四个 8 bit 通道，而项目的 shader 层一直写常量 `setColor(255,255,255,255)`、vsh 声明了 `in vec4 Color` 却从不转发 ⇒ **整条通道白白空着**。它不进 pipeline 缓存的 key，所以是「每帧变化的值」的天然载体。**类比**：教训 32 说「方法名对≠签名对」，这条是「格式声明了≠有人在用」。**v1.5-Dev 又用了一次**：遮罩 UV 挤进了同样闲置的 `UV1`（`REFERENCE.md` 18h-2）。
+
+37. 🔴 **先问「要画的东西存在吗」，再问「怎么画」。** 本轮最大的浪费：用户报「物品被 shader 渲染后没有中间厚度」，我从「shader 怎么画」往下查了**五轮** —— 改深度状态、改几何、加四种颜色推导、重画遮罩 —— 每一步都解决了真实存在的问题，但都不是他问的那个。真正的原因是**贴图有 83 个 alpha 1~254 的半透明像素**，vanilla 用 `alpha == 0` 严格判透明 ⇒ 116 个侧壁里 76 个长在 alpha 均值 6.6/255 的像素上，**那圈厚度本来就不可见**，我一直在给不存在的东西上色。
+
+    **一条命令就能定位**（alpha 分布统计，见 `REFERENCE.md` 18i）。**教训不是「要多验证」，而是验证的顺序**：渲染问题先确认「目标几何/像素是否真的可见」，再往管线下游查。这条是教训 20（函数返回预期值 ≠ 有实际效果）与教训 29（改了值 ≠ 屏幕会变）的上游 —— 那两条问「效果有没有到屏幕」，这条问「对象存不存在」。
+
+38. **归因错了要立刻承认并回滚，不要在错误归因上继续加码。** 本轮我先断言「shader 层写深度压掉了本体细节」并据此改了 `DepthStencilState`（写深度→不写）。用户实测反馈「毫无变化，反而效果变淡了」——**那是归因错误的直接证据**。当时正确的动作是回滚 + 重新查，我做到了；但更早的信号是：我给出那个归因时**没有验证过「本体细节被盖住」这件事本身**，只验证了「写深度会盖住同深度的东西」这条通则。**通则成立 ≠ 它是本例的原因。**
 
 
 
@@ -542,7 +550,7 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 ## 7. 当前状态
 
 - **编译已验证**：`build` 与 `releaseJars` 都 `BUILD SUCCESSFUL`。产物 `build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`
-- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.4-Dev`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）
+- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.5-Dev`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）
 
 ### 7.1 已实测通过（用户在真实环境验证，**别再列成待确认项去催他测**）
 
@@ -587,11 +595,32 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 - 物品栏 / 掉落物 / 手持 / 视角四种场景变换全部正确
 - **通用化重构（多物品、可扩展种类、颜色接缝）之后也已实测通过**（本轮确认）
 
+**1.5-Dev 新增内容（Shader 系统升级 + 一次归因失败的教训）**：
+
+本轮起因是用户报「物品被 shader 渲染后变成单片、只渲染一面、中间没厚度」。**最终查明主因是贴图问题不是代码问题**（教训 37），但排查过程中做的几项改动是真正的升级，用户原话：**「感觉也算是shader升级了」**。
+
+- **几何从单平面改为跟随物品真实外壳** —— `ShaderGeometrySource` 接缝 + `ItemHullGeometry` 实现，覆盖前面/后面/逐像素侧壁。`Z_PLANE` 已删除（`REFERENCE.md` 18h）
+- **`DerivedColorSource` + 四种推导**（`tinted`/`drained`/`inverted`/`glowing`）—— 颜色可从物品自己的贴图推导，⇒ **以后不必逐物品画遮罩**。用户原话「这个丁很重要」（`REFERENCE.md` 18g）
+- **`Sampler0` 改绑物品图集**（原先绑遮罩且从不读），`ShaderVertex` 携带两套 UV
+- **颜色 codec 改成 dispatch** —— 兑现了 18d-3 记的那个待办，写路径不再抛 CCE，旧文件仍可读
+- **贴图 alpha 二值化** —— `make-death-omen-texture.ps1`，幽灵像素 76→0，侧壁可见率 34.5%→**100%**（`REFERENCE.md` 18i）
+- **debug 遮罩改按几何分区** —— `make-death-omen-mask.ps1`，剑刃蓝（抽样）/ 护手与柄绿（常驻）
+- 顺带修掉 `TextureAtlas.LOCATION_*` 的 deprecation 警告
+
+⚠️ **1.5-Dev 的渲染观感尚未经用户完整实测**：贴图二值化与 debug 遮罩刚做完就收尾了。**待测项见 7.2。**
+
 ### 7.2 仍未验证的项
 
 **观感（1.2-Dev 遗留）**：连续小额恢复会不会一直闪、显得吵。每次数值变动都重启慢闪，若 San 每 tick 涨一点会一直停在亮相。真出现就加最小间隔；四个常量在一起（`FULL_FLASH_BLINK_TICKS`/`FULL_FLASH_BLINKS`/`GAIN_FLASH_BLINK_TICKS`/`GAIN_FLASH_BLINKS`），两个 HUD 元素各一套。
 
-**Shader 性能**：渲染层包装**所有**物品模型（理由见 4b.3）。开满物品的创造栏 / 大量掉落物场景是否掉帧 —— 唯一有性能风险的地方，用户未报告问题但也未专门压测。
+**Shader 性能**：渲染层包装**所有**物品模型（理由见 4b.3）。开满物品的创造栏 / 大量掉落物场景是否掉帧 —— 唯一有性能风险的地方，用户未报告问题但也未专门压测。⚠️ **v1.5-Dev 起单个物品的 quad 数从 1 涨到「2 + 侧壁数」**（死兆将至实测 98 个），压测的必要性上升了。
+
+**🔴 1.5-Dev 渲染观感（本轮遗留，优先级最高）**：
+- **厚度是否终于可见** —— 贴图二值化后侧壁 100% 长在可见像素上，但**没有进游戏确认过**
+- **debug 遮罩的分区是否清晰**（剑刃闪 / 护手与柄常驻，边界是否一眼可辨）
+- **四种推导各自的观感** —— `tinted`/`drained`/`inverted`/`glowing` 全部实现且 codec 验证通过，但**一个都没在游戏里看过**。改 `run/config/AbyssFallShader.json` 的 `derivation` 字段即可切换
+- **`glowing` 对近黑物品的缺陷**已算清（+3.5/255，见 `REFERENCE.md` 18g），但修法涉及数值语义，**未动、待用户决定**
+- 当前配置刻意是**红蓝 + 高抽样密度**（`sample_density: 0.85`、`sample_period_ticks: 20`）用于 debug，不是最终观感
 
 **顶点颜色通路（4d 提出的方案）**：算法与 API 层面已验证，但**没有进游戏**。待测：顶点颜色能否真把值送到 fragment stage、`RGBA8_UNORM` 归一化在 Vulkan 后端是否与 OpenGL 一致。
 
@@ -620,17 +649,19 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 **内容**
 - **毕业武器（死兆将至）待定项**：横扫附带目标是否也秒杀未定；`stabAttack` 那条路是剑就不需要覆盖
 
-**Shader 渲染系统（地基三，1.4-Dev）**
-- 🔴 **颜色系统未设计** —— 用户明确要求先剥离、后设计（见 4b.4）。**动之前先读 `ShaderColorSource` 的 javadoc。** ⚠️ **本轮已排除「运行时 uniform」，正解是顶点属性（见 4d）**；「每帧算 define」已实测证明会编译上千条 pipeline，彻底否决
-- 🔴 **遮罩定稿后要删掉整套 debug 配色** —— `FixedColorSource` + 那行 xmap + shader 里 `COLOR_*`（见 `REFERENCE.md` 18d-2、18d-3）。**这是用户明确交代的清理项，不是可选的重构**
-- **星空效果种类未做** —— 无尽贪婪那套程序化生成（球面射线 + 伪随机撒点）已调研完（`REFERENCE.md` 18f），素材问题因此消失，但没实现。⚠️ 它**不需要遮罩**，会撞上 `ShaderEffect.mask()` 的强制约束（见 `REFERENCE.md` 18d-4）
+**Shader 渲染系统（地基三，1.4-Dev 建立，1.5-Dev 升级）**
+- ~~🔴 **颜色系统未设计**~~ ✅ **1.5-Dev 兑现了第一步**：`DerivedColorSource` + 四种推导，从物品自己的贴图推色（`REFERENCE.md` 18g）。⚠️ **这不等于「颜色系统设计完了」** —— 用户当初要的「颜色来源、计算方式、Provider 怎么决定效果」中，**「Provider 怎么决定」仍未设计**（那属于 game core）
+- ~~🔴 **遮罩定稿后要删掉整套 debug 配色**~~ ⏸ **用户明确改为「暂不删」**：新美术定稿前，红蓝是对比最强的 debug 工具（`REFERENCE.md` 18d-2）。那行危险的 xmap 已在 1.5-Dev 换成 dispatch codec
+- **星空效果种类未做** —— 无尽贪婪那套程序化生成（球面射线 + 伪随机撒点）已调研完（`REFERENCE.md` 18f），素材问题因此消失，但没实现。⚠️ 它**不需要遮罩**，会撞上 `ShaderEffect.mask()` 的强制约束（见 `REFERENCE.md` 18d-4）。✅ **但几何那一半的路已经铺好** —— 加一个 `ShaderGeometrySource` 实现即可，不必改渲染器（18h）
+- **用户点名的下一个想法：用丁的机制程序化生成一只眼睛贴到物品上。** ⚠️ **它不属于颜色轴而属于效果种类轴**（`ShaderEffectTypes.register()`）——写一个 record + 一个 GLSL（SDF 画圆与竖缝），零系统改动。**已跟用户说明过这个归属**
 - **San 联动 provider 未做** —— 这是这套系统存在的理由，但**它属于 game core**（见 4c.4），不该直接塞进 shadercore
-- **`Z_PLANE` 假设平面物品** ⇒ 3D 物品位置会偏（见 4b.8）
+- ~~**`Z_PLANE` 假设平面物品** ⇒ 3D 物品位置会偏~~ ✅ **1.5-Dev 已解决**（见 4b.8 与 18h）
 - 绿/蓝共用一个颜色（见 4b.4）
 - 遮罩红色通道空着，可作第三种行为
 - `AbyssFallPipelines.clear()` 无人调用，加资源重载支持时记得接上
+- **`glowing` 对近黑物品几乎不发光** —— 修法涉及数值语义，待用户决定（`REFERENCE.md` 18g）
 
-- **少数图标仍是占位**（多数已换成自己的美术）：`abyss_gardeners` 图标是向日葵、计数器与窥镜都用原版 `clock_00`（**指针不会转**，原版靠 `range_dispatch` 切 64 个模型才转）、两个精神效果是脚本生成的图。⚠️ **`final_death_omen_mask.png` 是我脚本生成的占位遮罩**，等用户美术
+- **少数图标仍是占位**（多数已换成自己的美术）：`abyss_gardeners` 图标是向日葵、计数器与窥镜都用原版 `clock_00`（**指针不会转**，原版靠 `range_dispatch` 切 64 个模型才转）、两个精神效果是脚本生成的图。⚠️ **`final_death_omen_mask.png` 是脚本生成的 debug 遮罩**（1.5-Dev 改为按几何分区，见 `REFERENCE.md` 18i-2），等用户美术。✅ **剑本体贴图已由用户重画**（1.5-Dev，经 alpha 二值化后入库）
 - 深渊之花无实际功能；三个药水效果**无获取途径**（「深渊探索者」只被战利品侧读取，另两个只能 `/effect`）
 - **反精神崩溃魔咒：用户已给完整数值，明确说「先记录，不要实现」**（数值见 `REFERENCE.md` 7b 末尾）
 - 无 datagen、无自定义音效资源
@@ -720,7 +751,10 @@ Get-ChildItem $p -Directory | ForEach-Object { $_.Name }
   - 毕业武器**不调 `original`**、判 `ServerLevel`、秒杀四步顺序、`bypasses_*` 明知冗余仍保留（`REFERENCE.md` 17b–17e）
   - tooltip 染色**重建 Component 而非 `setStyle`**（`REFERENCE.md` 17g，两个已修 bug 的成因都记在那）
   - 那个 `+` 是正确的 ASCII `U+002B`，字形像「十」是 MC 字体所致，别换字符（`REFERENCE.md` 17g）
-  - `final_death_omen` 的红蓝配色**是 debug 产物**，遮罩定稿时连带 `FixedColorSource` 一起删（`REFERENCE.md` 18d-2）；那行 xmap 的强转**现在不会炸**，别当 bug 去修（18d-3）
+  - `final_death_omen` 的红蓝配色**是 debug 产物**，~~遮罩定稿时连带 `FixedColorSource` 一起删~~ ⏸ **用户已改主意：暂不删**，新美术定稿前红蓝是最强对照色（`REFERENCE.md` 18d-2）；那行 xmap 的强转已于 1.5-Dev 换成 dispatch codec（18g-3）
+  - **贴图 alpha 只能是 0 或 255**（1.5-Dev）——`make-death-omen-texture.ps1` 的二值化不是"洁癖"，是让厚度可见的唯一办法（`REFERENCE.md` 18i）
+  - **`ShaderVertex` 携带两套 UV**（遮罩 UV + 图集 UV），`UV1` 装遮罩 UV 的定点数 —— 顶点格式只有一个浮点 UV 槽，这不是冗余设计（18h-2）
+  - **`ItemHullGeometry` 沿各自法线外推而非固定轴** —— 固定轴对侧壁全错（18h）
 
   他要求过「最大程度按 HANDOFF 执行，有矛盾随时通知我」——照做，但矛盾要先自己核实过再报。
 - **能跑就跑一遍**（教训 13）。他不要你跑 runClient，但**不禁止你跑纯 Java 验证**，成本极低且他很认这种证据。

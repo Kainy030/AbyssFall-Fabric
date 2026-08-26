@@ -21,10 +21,18 @@ in ivec2 UV1;
 in ivec2 UV2;
 in vec3 Normal;
 
-out vec2 texCoord0;
+// Two coordinate pairs, because the layer reads two textures addressed differently. UV0 holds the
+// atlas coordinate for the item's own texture and stays a float; UV1 holds the mask coordinate as a
+// signed 16-bit pair, divided back out here. See ShaderLayerRenderer for why round this way.
+out vec2 texCoord0;   // mask, 0..1 over the item's artwork
+out vec2 atlasCoord;  // the item's own sprite, within the atlas
+
+// Must match FIXED_POINT_SCALE in ShaderLayerRenderer.
+const float FIXED_POINT_SCALE = 32767.0;
 
 void main() {
 	gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);
 
-	texCoord0 = UV0;
+	texCoord0 = vec2(UV1) / FIXED_POINT_SCALE;
+	atlasCoord = UV0;
 }

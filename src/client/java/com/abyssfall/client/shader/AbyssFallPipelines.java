@@ -84,16 +84,31 @@ public final class AbyssFallPipelines {
 	 * <p>Not synchronised: rendering happens on one thread, and the worst case if that stopped being true
 	 * is a second identical pipeline rather than a corrupt one.
 	 */
-	private static final Map<ShaderEffect, RenderType> CACHE = new HashMap<>();
+	/**
+	 * Effects already built, keyed by value and by the atlas they read.
+	 *
+	 * <p>The atlas is part of the key because it is bound into the render setup: the same effect over a block
+	 * item and over an ordinary item are two render types, since they sample different sheets.
+	 *
+	 * <p>Not synchronised: rendering happens on one thread, and the worst case if that stopped being true
+	 * is a second identical pipeline rather than a corrupt one.
+	 */
+	private static final Map<CacheKey, RenderType> CACHE = new HashMap<>();
+
+	/**
+	 * What distinguishes one built render type from another.
+	 */
+	private record CacheKey(ShaderEffect effect, Identifier atlas) {
+	}
 
 	private AbyssFallPipelines() {
 	}
 
 	/**
-	 * The render type for an effect, building it on first use.
+	 * The render type for an effect over an item on the given atlas, building it on first use.
 	 */
-	public static RenderType forEffect(ShaderEffect effect) {
-		return CACHE.computeIfAbsent(effect, AbyssFallPipelines::create);
+	public static RenderType forEffect(final ShaderEffect effect, final Identifier atlas) {
+		return CACHE.computeIfAbsent(new CacheKey(effect, atlas), AbyssFallPipelines::create);
 	}
 
 	/**
@@ -105,7 +120,8 @@ public final class AbyssFallPipelines {
 		CACHE.clear();
 	}
 
-	private static RenderType create(ShaderEffect effect) {
+	private static RenderType create(final CacheKey key) {
+		ShaderEffect effect = key.effect();
 		Identifier shader = effect.type().shader();
 
 		RenderPipeline.Builder builder = RenderPipeline.builder()
@@ -126,14 +142,22 @@ public final class AbyssFallPipelines {
 		effect.shaderDefines().forEach((name, value) -> builder.withShaderDefine(name, value.floatValue()));
 		effect.shaderFlags().forEach(builder::withShaderDefine);
 
-		// NEAREST on both samplers. The mask is read as data, not as a picture: linear filtering would
-		// blend one channel into another along their shared edges and invent pixels that belong to
-		// neither effect.
 		return RenderTypeInvoker.abyssfall$create(
 				AbyssFall.MOD_ID + ":" + effect.type().id().getPath() + "/" + effect.mask(),
 				RenderSetup.builder(builder.build())
-						.withTexture("Sampler0", effect.mask(),
+						// 🔴 Sampler0 is the ITEM's own texture, not the mask. It was bound to the mask and
+						// left unread while nothing needed it; a colour derived from what the effect is
+						// covering needs the real thing. It is an atlas, so the vertices carry atlas
+						// coordinates for it — see ShaderVertex.
+						//
+						// LINEAR would be wrong here for the same reason it is wrong for the mask: item art is
+						// pixel art, and interpolating it invents colours the artist never used, which a
+						// derivation would then faithfully amplify.
+						.withTexture("Sampler0", key.atlas(),
 								() -> RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST))
+						// Sampler1 stays the mask. NEAREST because the mask is read as data, not as a picture:
+						// linear filtering would blend one channel into another along their shared edges and
+						// invent pixels that belong to neither effect.
 						.withTexture("Sampler1", effect.mask(),
 								() -> RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST))
 						.createRenderSetup());

@@ -25,6 +25,8 @@ import com.mojang.serialization.MapCodec;
 
 import net.minecraft.resources.Identifier;
 
+import com.abyssfall.shadercore.geometry.ItemHullGeometry;
+
 /**
  * One way of drawing over an item, and the values that particular way needs.
  *
@@ -61,6 +63,19 @@ public interface ShaderEffect {
 	 * the item recognisable. What the individual channels mean is the effect's own business.
 	 */
 	Identifier mask();
+
+	/**
+	 * What surface this effect is drawn on.
+	 *
+	 * <p>Defaults to following the item's own hull, which is what an effect meant to make an ordinary object
+	 * look wrong almost always wants: the item keeps its shape and its thickness, and the effect covers all
+	 * of it. See {@link ShaderGeometrySource} for why this is answerable per effect rather than fixed — an
+	 * effect that projects rather than coats, a starfield being the case already in mind, has an entirely
+	 * different answer.
+	 */
+	default ShaderGeometrySource geometry() {
+		return ItemHullGeometry.INSTANCE;
+	}
 
 	/**
 	 * Values to compile into the shader, as {@code #define NAME value} pairs.
