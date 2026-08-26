@@ -597,9 +597,53 @@ ShaderLayerRenderer      submitCustomGeometry 画一个 quad
 
 **已实测**：从外部定义一个性质完全不同的 source（贡献 `HUE_START`/`HUE_SPAN` + `COLOR_FROM_GRADIENT` 标志），零系统改动即生效，且 `COLOR_A_*` 那组 define 完全消失 —— 证明系统没有任何地方假设「颜色是两个 RGB 常量」。
 
-**接口当前边界**：source 只能贡献编译期 define。若要「每帧变色」，改的是**这一个接口文件**（扩成也能贡献 uniform），不是渲染代码。
+**接口当前边界**：source 只能贡献编译期 define。若要「每帧变色」，改的是**这一个接口文件**（扩成也能贡献 uniform），不是渲染代码。⚠️ **但 `HANDOFF.md` 4d 实测证明不该走 uniform 而该走顶点属性** —— 动之前先读那节。
 
 **未解决**：绿/蓝共用一个颜色 —— `opacity = continuous + sampled` 那步就把来源信息丢了，到着色时已分不清。修它必然涉及颜色方案设计，故未修。
+
+#### 🔴 18d-2. 死兆将至的颜色是 debug 产物，遮罩定稿后连带删除
+
+**用户原话**：「现在死兆将至还没有画出来 mask，同时当时 shader 系统刚刚解耦，必须要有一个道具用来测试，我就用的这种办法，**死兆将至相关的色彩系统压根就是 debug 下的产物**，后面遮罩画好之后这部分记得删除即可，届时也是颜色系统构思出来的时候。」
+
+⇒ 配置文件里 `final_death_omen` 那条 entry **不写 `color` 字段**，回落到 `FixedColorSource.DEFAULT` = 红(`0xFF0000`)→蓝(`0x0000FF`)渐变。**这是调试配色，不是美术决定。**
+
+**遮罩定稿时要一起清掉的东西**：`FixedColorSource`、`MaskedPulseEffect.MAP_CODEC` 里那行 xmap（见下）、以及 `masked_pulse.fsh` 里 `COLOR_A_*`/`COLOR_B_*` 那套。
+
+#### ⚠️ 18d-3. 那行 `xmap` 的写路径会 ClassCastException（已实测）
+
+`MaskedPulseEffect.MAP_CODEC`：
+
+```java
+FixedColorSource.CODEC.optionalFieldOf("color", FixedColorSource.DEFAULT)
+    .xmap(source -> (ShaderColorSource) source,   // 读：向上转，安全
+          source -> (FixedColorSource) source)     // 写：向下强转，危险
+```
+
+**实测结论**（JDK 25 + DFU 10.0.21 单文件验证）：
+
+| 路径 | 结果 |
+|---|---|
+| 运行时用非 Fixed 的 source | ✅ 正常，defines/flags 都对，`COLOR_A_R` 确实消失 |
+| 读文件 | ✅ 但**永远只能读出 `FixedColorSource`**（`optionalFieldOf` 不认的字段回落默认） |
+| **写文件（`save()`）** | ❌ **`ClassCastException`** |
+
+**现在不会炸**，因为读出来的永远是 `FixedColorSource`，写回去强转必然成功 —— 这条路是死循环，走不出去。
+
+⇒ **不是待修 bug，是等遮罩就绪后自然消失的临时代码。** 但若在那之前引入第二种颜色来源，**这行必须先改成 dispatch codec**（和 `"type"` 字段那套 `partialDispatch` 同构）。
+
+#### 18d-4. 解耦程度盘点（1.4-Dev 收尾实测）
+
+| 边界 | 状态 |
+|---|---|
+| `shadercore` → 任何具体物品 | ✅ 零引用（`ShaderConfigData.DEFAULT` 提到那把剑，但那是**默认值/消费方**，不是系统层） |
+| 渲染层四个类 → 效果种类 / 颜色 | ✅ **零引用** `MaskedPulse`/`FixedColor`/`COLOR_*` |
+| 效果种类 → 渲染层 | ✅ 零引用 `client/` |
+| `core` ↔ `shadercore` | ✅ **互不相识**（两向 grep 均为空） |
+
+**已知的两处非缺陷**：
+- `ShaderEffect.mask()` 是接口级强制 —— 每个效果都必须有遮罩。对 `masked_pulse` 合理，但**星空类程序化效果不需要遮罩**，届时要么给占位白图、要么改接口。这是设计取舍不是 bug
+- `AbyssFallPipelines.clear()` **无人调用** —— 资源重载场景需要它，加 reload 支持时记得接上
+
 
 ### 18e. `abyssfall:masked_pulse`（第一个效果种类）
 
