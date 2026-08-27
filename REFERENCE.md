@@ -866,7 +866,9 @@ $semi=0; for($y=0;$y -lt $b.Height;$y++){for($x=0;$x -lt $b.Width;$x++){
 | `opacity` | **丢弃** | 这里没有按数量淡出的东西 |
 | `cosmicuvs[10]` | **编译期 define** | 见下，这条是**简化不是妥协** |
 
-🔴 **`cosmicuvs` 那条是关键差异**：参考每帧重传十个精灵矩形，因为 **MC 1.12 靠移动 UV 来播动画**。26.2 反过来 —— 精灵矩形固定，vanilla 把当前帧**画进**那个矩形。所以坐标是常量，而动画照样播，全程由 vanilla 驱动。
+🔴 **`cosmicuvs` 那条是关键差异**：参考每帧重传十个精灵矩形。26.2 里精灵矩形固定不动，vanilla 把当前帧**画进**那个矩形（`TextureAtlasSprite` 的 `u0/v0/u1/v1` 是 `final`）。所以坐标可以当常量，而动画照样播，全程由 vanilla 驱动。
+
+⚠️ **不要把这条写成「1.12 靠移动 UV 播动画」** —— 参考实现每帧重传这个事实，并不能证明它的 UV 会动（`CosmicShaderHelper` 里就写着 `//TODO, This can be optimized.`）。**我们能证明的是 26.2 的坐标稳定**，这就够了：这条 draw path 根本没有 per-frame uniform，坐标稳定不是便利而是前提。
 
 ### 18j-2. `ShaderSpriteAtlas`：拿精灵矩形的唯一时机
 
@@ -916,9 +918,18 @@ COPLANAR_DEPTH_BIAS_CONSTANT = -10.0F;
 | 573 | — | `1.0F, 1.0F` |
 | 618 | — | `3.0F, 3.0F` |
 
-**全部正数。** 且量级与参考实现的 `polygonOffset(-1.0F, -10.0F)` 绝对值一致 —— 那个负号属于 1.12 的正向深度范围。
+**全部正数。**
 
-⇒ 现在是 `1.0F / 10.0F`。**别再"修"回负数。**
+🔴 **参考实现根本没用 polygon offset。** `CosmicItemRender:73` 用的是：
+
+```java
+GlStateManager.disableAlpha();
+GlStateManager.depthFunc(GL11.GL_EQUAL);   // 只放行深度恰好相等的片段
+```
+
+即「精确相等」而不是「偏移后取胜」。26.2 这条 draw path 没有 `GL_EQUAL` 的等价物（`DepthStencilState` 只给 `CompareOp` + bias），所以我们用 bias 顶替了精确匹配。**视觉结果相同，机制不同。** 之前注释说「量级来自参考实现的 `polygonOffset(-1.0F, -10.0F)`」，那是编的 —— 那两个数是我们项目自己的历史值。
+
+⇒ 现在是 `1.0F / 10.0F`，出处是 vanilla 上表。**别再"修"回负数。**
 
 ### 18j-7. 资源重载：`clear()` 挂在 plugin 回调体里，零 Mixin
 
@@ -975,7 +986,45 @@ $i.Dispose(); $m.Dispose()
 2. **`Sampler2` 强加给所有效果**（`SAMPLER0_SAMPLER1_SAMPLER2` + `useLightmap()`）⇒ `masked_pulse.fsh` 被迫声明一个它从不用的 sampler。换成第二套 layout 就得让 `AbyssFallPipelines` 知道「哪些效果要 lightmap」，**那正是这个类要避免的知识**。取舍：一个空声明比一次架构泄露便宜。
 3. **`externalScale` 的 25 这个数没有出处**。参考实现（1.12.2 与 Re-Avaritia 1.21.1 都查过）是**逐帧 uniform**，不存在固定 25。这里只能取近/远两端插值，注释已改成实话。
 
-### 18j-12. 其他修正（1.6-Dev 一并做掉）
+### 18j-12. 🔴 `RenderPipeline` 没有 `equals` —— GPU pipeline 缓存按对象身份
+
+**这条专门记下来，因为我在审查时据此报了两个不存在的严重 bug。**
+
+`RenderPipeline` 是 **plain class 不是 record**，全文 425 行只覆盖了 `toString()`，**没有覆盖 `equals` / `hashCode`**（`getSortKey()` 里还出现 `super.hashCode()`，反证 `hashCode` 未被覆盖）。
+
+而 `VulkanDevice:263` / `GlDevice:309`：
+
+```java
+protected VulkanRenderPipeline getOrCompilePipeline(final RenderPipeline pipeline) {
+    return this.pipelineCache.computeIfAbsent(pipeline, ignored -> this.compilePipeline(...));
+}
+```
+
+⇒ **缓存键是对象身份（identity）**。每个 `new RenderPipeline` 各自编译一次，**`location` 相同也不会互相命中**。
+
+**因此以下两个"bug"都不存在**：
+- ❌「`pipelineId` 不含 atlas ⇒ 两个图集共用错误 pipeline」
+- ❌「`AbyssFallPipelines.clear()` 清不到 GPU 缓存 ⇒ 重载后仍用旧 UV」
+
+`clear()` 丢掉 `CACHE` 里的 `RenderType`，下次 `create()` 造**新的 `RenderPipeline` 对象** ⇒ GPU 层必然重新编译。整条链是对的。
+
+⚠️ **`location` 的作用只是调试标识**（`toString()` 返回它）。它不参与任何缓存判定。所以 `pipelineId` 用 `hashCode` 拼是**够用的**，不需要把 atlas 编进去。
+
+### 18j-13. 与参考实现的两处有意分歧（不是 bug，但别当 bug 修）
+
+**1. 掉落物 / 展示框用远端 depth**
+
+`isViewerRelative` 只认手持与头部；`GROUND`、`ITEM_FRAME`、`GUI` 一律 `depth = 1.0`（即 `externalScale = 25`，细密静止）。
+
+参考实现只把 **GUI** 特殊处理（`CosmicItemRender:50` 判 `TransformType.GUI`），`GROUND` 走 `renderSimple` 用正常尺度。
+
+**我们的逻辑站得住**（掉在地上的东西不该跟着玩家转头而变），但**与参考不同**。如果哪天觉得地上的剑星空太细，改 `isViewerRelative` 而不是改 shader。
+
+**2. `GL_EQUAL` → bias**
+
+见 18j-6。参考用精确深度相等，我们用深度偏移，因为 26.2 没有前者。
+
+### 18j-14. 其他修正（1.6-Dev 一并做掉）
 
 - **`starBounds` 越界**：`density > 1.0` 时 `symbol` 可达 19 而只有 10 个精灵 ⇒ 采到图集原点。加 `mod(symbol, SPRITE_COUNT)`，现在是**复用**精灵
 - **`pow(0,0)` 未定义**：改 `pow(float(tu) + 1.0, float(tv))`，底数恒正，意图（逐格稳定混合）不变
@@ -984,6 +1033,8 @@ $i.Dispose(); $m.Dispose()
 - **`LENIENT_CODEC` 注释撒谎**：`FixedColorSource` 删除后（用户授意）回落只能是 `derived`，注释改成实话 —— 旧字段会被丢弃，只保留「曾配置过颜色」这个事实
 
 
+
+## Git / 发布流程（由你负责）
 
 用户明确授权：**「以后 github 构建都由你来」**。
 

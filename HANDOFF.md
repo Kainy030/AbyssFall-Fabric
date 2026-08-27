@@ -492,6 +492,12 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 40. **注释里写「实测过」「参考实现如此」的断言，也可能是错的 —— 尤其当它紧挨着描述自己造成的 bug 时。** `AbyssFallPipelines` 的 `COPLANAR_DEPTH_BIAS_*` 是负数，注释论证「26.2 深度范围反了 ⇒ 符号要反」，而**紧接着的下一句就写着「符号搞反会把图层推进物品里，被拒绝，什么都不画」** —— 它准确描述了自己造成的现象却没意识到。`glPolygonOffset` 作用在窗口空间，与深度范围方向无关；vanilla 26.2 的 `crumbling` / `text_polygon_offset` 在同样的反深度 + `GREATER_THAN_OR_EQUAL` 下**全部用正数**（`RenderPipelines.java:445/489/498`）。**看到「已实测」的注释可以省一次验证，但看到「注释的推理链」时要读得懂它 —— 推理是可以错的，实测数据不会。**
 
+    ⚠️ 同一条注释还编了出处：说那两个数「来自参考实现的 `polygonOffset(-1.0F, -10.0F)`」。**参考实现根本没用 polygon offset**，它用 `depthFunc(GL_EQUAL)`（`CosmicItemRender:73`）。那两个数是本项目自己的历史值。**给数字编一个权威出处比不写出处更糟**，因为它会挡住下一个人的复查。
+
+41. 🔴 **报「缓存键算错了」这类 bug 之前，先确认那个缓存的键到底是什么比法。** 本轮审查我报了两个"严重 bug"：`pipelineId` 没把 atlas 编进去、`clear()` 清不到 GPU 缓存。两条都基于同一个未经验证的假设 —— **`RenderPipeline` 按值比较**。实际读源码：它是 plain class，425 行里只覆盖了 `toString()`，`getSortKey()` 里还出现 `super.hashCode()`。⇒ `pipelineCache.computeIfAbsent(pipeline, ...)` 是**身份键**，每个 `new` 各编译各的，`location` 相同也不串。**两个 bug 都不存在，代码本来是对的。**
+
+    这条与教训 32（方法名对≠签名对）同族，但更隐蔽：我核实了「`pipelineCache` 用 `computeIfAbsent`」这个**事实**，却没核实「键类型的 `equals` 语义」这个**前提**。`Map` 的行为由键的 `equals` 决定，而那是另一个类的事。**看到 `computeIfAbsent` 就要去看键类有没有 `equals`。** 更普遍的教训：**审查时报出的 bug 与实现时写下的代码，需要同等强度的证据** —— 我对自己写的代码要求实测，对自己报的 bug 却只要求推理，这个不对称浪费了用户一轮注意力。
+
 
 
 ⚠️ `blockstates/*.json` 用 `ConvertFrom-Json` 会**误报**（空字符串作属性名是合法 blockstate 写法），别据此改文件；**含中文的 `.ps1` 必须存成带 BOM 的 UTF-8**。

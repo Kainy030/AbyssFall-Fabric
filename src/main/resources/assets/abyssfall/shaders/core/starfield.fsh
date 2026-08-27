@@ -20,10 +20,9 @@
 //   cosmicuvs[10] -> compile-time constants, contributed by the renderer at bake time.
 //
 // 🔴 THAT LAST ONE IS THE IMPORTANT DIFFERENCE, and it is a simplification rather than a compromise. The
-// reference re-uploaded its ten sprite rectangles every single frame because MC 1.12 animated a sprite by
-// MOVING ITS UVs. 26.2 animates by drawing the current frame INTO the sprite's fixed rectangle, so the
-// rectangle never moves -- the pixels inside it change. The coordinates are therefore constants, and the
-// animation still plays, driven entirely by vanilla.
+// reference re-uploaded its ten sprite rectangles every single frame. 26.2 animates a sprite by drawing the
+// current frame INTO the sprite's fixed rectangle, so the rectangle never moves -- the pixels inside it
+// change. The coordinates are therefore constants, and the animation still plays, driven entirely by vanilla.
 
 #moj_import <minecraft:globals.glsl>
 

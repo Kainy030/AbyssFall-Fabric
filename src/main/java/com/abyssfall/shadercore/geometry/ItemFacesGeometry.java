@@ -34,10 +34,10 @@ import com.abyssfall.shadercore.ShaderQuad;
  * one clean read per visible pixel. Following the whole hull gives it the opposite.
  *
  * <p>Vanilla bakes a generated item as a front face, a back face, and <strong>one side face per outline
- * pixel</strong> — measured at 106 for the blade this was written for, so 108 quads in total. Each of those
- * side quads carries the texture coordinates of the single item pixel it walls, which is correct for texturing
- * it and useless for reading a mask: the mask coordinate barely moves across the quad, so the whole wall takes
- * the colour of one mask pixel.
+ * pixel</strong> — so the quad count scales with the silhouette's perimeter and is typically in the dozens to
+ * low hundreds. Each of those side quads carries the texture coordinates of the single item pixel it walls,
+ * which is correct for texturing it and useless for reading a mask: the mask coordinate barely moves across
+ * the quad, so the whole wall takes the colour of one mask pixel.
  *
  * <p>Drawn together with the front face, and with a depth bias lifting all of them, the result is a hundred
  * overlapping surfaces each sampling a different single pixel — visible as patchy, broken coverage that follows

@@ -219,13 +219,13 @@ public record StarfieldEffect(Identifier mask, List<Identifier> stars, int layer
 		//
 		// 🔴 The star sprites' atlas coordinates are NOT here, and cannot be: this record has no way to know
 		// where the atlas packer put them, and the packing changes with the resource pack. They are contributed
-		// by the renderer, which resolves each sprite when the model is baked and adds STAR_N_U0 and friends.
+		// by the renderer, which resolves each sprite when the model is baked and adds SPRITE_N_U0 and friends.
 		// See AbyssFallPipelines.
 		//
 		// They are still compile-time constants, because a sprite's coordinates never change once the atlas is
 		// stitched — 26.2 animates a sprite by drawing the current frame into its fixed rectangle, leaving its
-		// UVs alone. That fact is what makes this whole approach possible; the reference implementation had to
-		// re-upload them every frame because 1.12 moved the UVs instead.
+		// UVs alone. That is what makes this whole approach possible: the reference implementation re-uploaded
+		// its sprite rectangles as a uniform every frame, which on this draw path is not available at all.
 		return Map.of(
 				"STAR_LAYERS", (float) this.layers,
 				"STAR_DRIFT_SPEED", this.driftSpeed,

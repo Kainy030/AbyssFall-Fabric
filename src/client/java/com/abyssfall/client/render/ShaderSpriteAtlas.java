@@ -52,9 +52,9 @@ import com.abyssfall.AbyssFall;
  * {@code final} fields, assigned once.
  *
  * <p>That single fact is what makes this whole approach possible. The reference implementation this effect is
- * ported from had to re-upload its sprite coordinates as a uniform <strong>every frame</strong>, because 1.12
- * animated a sprite by moving its UVs instead. On this draw path a per-frame uniform is impossible — so had
- * 26.2 kept that behaviour, the effect could not have been ported at all.
+ * ported from re-uploaded its sprite rectangles as a uniform <strong>every frame</strong>. On this draw path a
+ * per-frame uniform is not available at all — so the coordinates being stable is not a convenience here, it is
+ * the precondition.
  *
  * <p>⇒ Coordinates resolved here go into the shader as compile-time constants, and animation still works,
  * because the pixels behind those constants are what change.

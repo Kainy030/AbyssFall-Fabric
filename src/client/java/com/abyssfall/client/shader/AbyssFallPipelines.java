@@ -113,9 +113,15 @@ public final class AbyssFallPipelines {
 	 * in window space (the depth buffer), not in NDC, and the sign convention in window space is the
 	 * same regardless of the range direction — positive is nearer.
 	 *
-	 * <p>The magnitudes are the reference implementation's own {@code polygonOffset(-1.0F, -10.0F)},
-	 * which were written for a forward depth range. In 26.2's reversed range the same depth offset
-	 * in window space is achieved by the same magnitude and a positive sign.
+	 * <p>The magnitudes are vanilla's own, taken from the two render types that solve this exact problem:
+	 * {@code crumbling} (block-breaking cracks over a block face) and {@code text_polygon_offset} (sign
+	 * text over a sign face) both use {@code 1.0F, 10.0F} under the same reversed depth range and the same
+	 * {@code GREATER_THAN_OR_EQUAL} test.
+	 *
+	 * <p>⚠️ The reference implementation did not use a polygon offset at all — it drew its cosmic layer with
+	 * {@code depthFunc(GL_EQUAL)}, admitting only fragments at exactly the item's depth. 26.2 has no
+	 * equivalent on this path, so a bias that wins the comparison replaces an exact match that cannot be
+	 * expressed. The visual result is the same; the mechanism is not.
 	 */
 	private static final float COPLANAR_DEPTH_BIAS_SCALE = 1.0F;
 	private static final float COPLANAR_DEPTH_BIAS_CONSTANT = 10.0F;
