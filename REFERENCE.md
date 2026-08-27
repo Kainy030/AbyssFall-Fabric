@@ -56,6 +56,7 @@ src/client/java/com/abyssfall/client/
 
 src/main/resources/assets/abyssfall/shaders/core/
 ├── masked_pulse.vsh / .fsh            见 18e / 18g
+└── starfield.vsh / .fsh               见 18j（亮度增益见 18j-19）
 ```
 
 **美术脚本**（见 11）：`make-death-omen-texture.ps1`（alpha 二值化，见 18i）+ `make-death-omen-mask.ps1`（debug 遮罩，见 18i）。
@@ -1189,7 +1190,92 @@ cosmic_6: [f0=60]  [f1=72]  ... [f5=72]
 **`layer_1.png` 已查明**（16×448、28 帧、仅 28 个不透明像素 = 每帧 1 像素）：剑柄底部单像素的渐变，走普通 layer 路径，与 cosmic shader 无关，**无需移植**（用户判断，已复核）。
 
 
+### 18j-18. 🔴 资源重载有一个窗口期，那期间**不许**建 pipeline（v1.8-Dev-Fix）
+
+**用户报的现象**：游戏内切换语言后星空永久消失，日志 `undefined variable "SPRITE_0_U0"` ×40。
+
+**根因不是切语言，是「两个来源不同步」。** pipeline 的 define 来自两处可信度完全不同的地方：
+
+| define | 来源 | 性质 |
+|---|---|---|
+| `SPRITE_COUNT` | `effect.spriteDependencies().size()` | **常量**，永远答 10 |
+| `SPRITE_n_U0..V1` | `ShaderSpriteAtlas.get()` | **可变缓存**，重载时被清空 |
+
+`clear()` 挂在 `ModelLoadingPlugin` 回调体里（18j-7），跑在重载的 **prepare 阶段** —— 而模型是之后才烘焙的。于是 `BOUNDS` 空、`SPRITE_COUNT` 仍是 10 ⇒ shader 编译出十个引用不存在 define 的分支。
+
+🔴 **窗口期内渲染线程没有停**（26.2 源码实证，`GameRenderer.render`）：`renderLevel` 受 `isGameLoadFinished()` 门控，但 **`guiRenderer.render()` 在那个 if 块之外、无条件执行** —— LoadingOverlay 本身就靠这条路画出来。所以窗口期内旧 wrapper 仍会调 `forEffect`。
+
+**为什么是永久性的**：坏 pipeline 被 `computeIfAbsent` **记进了 `CACHE`**，而 `CACHE` 只在**下一次**重载才清。加上自定义 pipeline 编译失败是静默的（4b.7）⇒ 一次切语言换来一个永不自愈的坏缓存。
+
+**修法（`forEffect`）**：
+
+```java
+Set<Identifier> missing = unresolvedSprites(effect);   // 建之前先问
+if (!missing.isEmpty()) return null;                    // 不建、【不缓存】、下一帧重试
+```
+
+⚠️ **`computeIfAbsent` 必须改成显式 `get`/`put`** —— 它无法表达「算不出来就别记」。这不是风格改动。
+
+⚠️ **`unresolvedSprites` 必须把 `mask()` 也算进去。** mask 同样来自 `ShaderSpriteAtlas`，但它缺失时 `addMaskDefines` 走的是「四个 0 的退化矩形」= 全 discard ⇒ **编译成功、什么都不画**，比报错更难查。两条一起治。
+
+⚠️ **`addSpriteDefines` 里那句 `continue` + WARN 不是安全降级。** 原注释读起来像是，实际上跳过一个精灵必然产生 undefined。现在它只服务于「永远不会解析的名字」（拼错），正常窗口由上游挡住 —— 注释已改。
+
+**代价**：重载期间效果不画。那时屏幕上是加载覆盖层，无所谓。
+
+### 18j-19. 星空亮度：环境光实时增益（v1.8-Dev-Fix）
+
+**用户报**：原版无尽贪婪的星空无论白天黑夜都更亮一些。
+
+**查明：光照公式两边逐字相同**（`col.rgb *= light * lightmix + (1 - lightmix)`，`lightmix` 都是 0.2）。**差异在喂进去的 `light`：**
+
+| | 参考（1.12.2） | 我们（26.2） |
+|---|---|---|
+| `light` 起点 | `gl_Color`，**携带固定管线光照**（`cosmic.vert` 的 `sceneColor + Ambient + Diffuse`） | 无，26.2 没有固定管线 |
+| GUI / 兜底 | `setLightLevel(1.2F)` / `(1.0F)`，**直接断言全亮**、不采样世界光 | 一律走 vanilla 递来的 `lightCoords` |
+
+⇒ **这是第四处「从参考实现继承来的问题」**（前三处见 18j-16/18j-17），性质与教训 33 同族：跨版本腐烂的不只是类名，还有**平台提供的隐式量**。
+
+**用户选择**：不照抄参考的恒定全亮（那会连带提亮已照亮的场景），改为**按环境光实时插值增益**：
+
+```glsl
+float ambient = clamp(dot(light, LUMINANCE_WEIGHTS), 0.0, 1.0);
+float gain    = mix(GAIN_IN_DARK, GAIN_IN_LIGHT, ambient);   // 1.7 → 1.2
+col.rgb *= shade * gain;
+```
+
+🔴 **插值因子必须取 `light` 的亮度，不能取 `shade` 的。** `LIGHT_MIX=0.2` 把 `shade` 压在 `[0.8, 1.0]`，拿它当因子 gain 永远到不了 1.7。`light` 是 lightmap 原始采样，跨满 0..1。
+
+🔴 **`GAIN_IN_DARK = 1.7` 是实测选出的甜点，别乱调**（用户原话「正好是甜点数值」）：
+
+| dark 端取值 | 峰值总倍率 | 后果 |
+|---|---|---|
+| 1.2 | **0.96×** | **比不加增益还暗**（`shade` 在暗处是 0.8）⇒ 区间下限只能给 `GAIN_IN_LIGHT` |
+| **1.7** | **1.36×** | **三通道全在 clamp 以下，冷蓝调完整** |
+| 2.5（曾试） | 2.00× | G/B 双双打满 ⇒ **整片星空褪成白色** |
+
+参考的星星配色是 R 0.4–0.7 / G 0.6–1.0 / B 0.7–1.0，**G/B 远早于 R 饱和**（B 只需 1.429× 就削顶）。1.7 的 1.36× 恰好卡在下面 —— 唯一过曝的是贴图本身 G/B 已是 1.0 的那几颗最亮星，**这就是「可接受的过曝」**。
+
+⚠️ **总倍率对环境光是【反向】的**（1.36× 全黑 → 1.20× 全亮），即山洞最亮、正午最淡，**与 `LIGHT_MIX` 那步的方向相反**。这是用户要的意图，不是 bug，别去「修正」方向。
+
+**用亮度加权而非逐通道**：否则红石火把/岩浆会给星空染色。三个权重和恰为 `1.0f`（已实测），所以中性光下两个端点精确到达。
+
+### 18j-20. ⏳ 这套星空迟早要重构（用户已提上日程）
+
+用户原话：**「他妈迟早给这个 14 年前的破东西重构了，这个可以提上日程了」**。
+
+**已知的四处继承缺陷**（都不是我们写错，是参考实现本身的）：
+
+1. `rand2d` 对 π 取模 ⇒ `sin` 半个值域不可达（18j-16 已修）
+2. `pow(tu, tv)` 溢出 float32 ⇒ 六成星星朝向一致（18j-16 已修）
+3. 十张素材量级悬殊 **41 倍**，小的 2-4 像素在屏幕上不可见（18j-17，**未修，属素材**）
+4. **亮度依赖 1.12.2 固定管线光照**，26.2 无可继承（18j-19 用末端增益补偿，**不是治根因**）
+
+**还未修的散列瓶颈**：`rand2d(vec2(tu, tv + i*10.0))` 的层步长 10 小于 `tv` 的 16 值域 ⇒ **35.2% 的 (层, cell) 组合碰撞**。修它会移动每一颗星，18j-16 判断「星座图案属原设计」故未动 —— **重构时这条是首要目标**。
+
+⚠️ **重构前必读 18j-17**：用户已逐帧对比确认「我们的比原版好」，且 18j 开头写着算法部分「不要再动」。**重构 ≠ 可以随手改** —— 那是一次需要用户重新验收观感的整体工作，不是修 bug。
+
 ## 19. 自有稀有度：Abyssal / Infinity（v1.8-Dev 新增）
+
 
 `item/AbyssFallRarity`，两级：**`ABYSSAL`**（物品名灰阶逐字波浪）+ **`INFINITY`**（固定 `§c` 红）。**当前只改物品名颜色，无其它作用** —— 用户明确要求本轮只做这个，别自行加掉率/排序/tooltip 行等语义。
 

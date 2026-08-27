@@ -20,8 +20,10 @@
 package com.abyssfall.client.shader;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.mojang.blaze3d.PrimitiveTopology;
 import com.mojang.blaze3d.pipeline.BlendFunction;
@@ -37,6 +39,7 @@ import net.minecraft.client.renderer.BindGroupLayouts;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.resources.Identifier;
+import org.jspecify.annotations.Nullable;
 
 import com.abyssfall.AbyssFall;
 import com.abyssfall.client.mixin.RenderTypeInvoker;
@@ -131,17 +134,83 @@ public final class AbyssFallPipelines {
 
 	/**
 	 * The render type for an effect over an item on the given atlas, building it on first use.
+	 *
+	 * <p>🔴 Returns {@code null} while the effect's artwork has not been resolved yet. See
+	 * {@link #unresolvedSprites} for why that state exists at all and why nothing is cached during it.
 	 */
-	public static RenderType forEffect(final ShaderEffect effect, final Identifier atlas) {
-		return CACHE.computeIfAbsent(new CacheKey(effect, atlas), key -> {
-			// Logged because a pipeline failing to compile is silent — ShaderManager only reports failures for
-			// vanilla's static list. Seeing this line means the draw path was reached and a render type was
-			// built; not seeing it means nothing ever asked for one, which is a different problem entirely.
-			AbyssFall.LOGGER.debug("Building render type for {} on atlas {}", key.effect().type().id(),
-					key.atlas());
+	public static @Nullable RenderType forEffect(final ShaderEffect effect, final Identifier atlas) {
+		CacheKey key = new CacheKey(effect, atlas);
+		RenderType known = CACHE.get(key);
 
-			return create(key);
-		});
+		if (known != null) {
+			return known;
+		}
+
+		// 🔴 Checked BEFORE building, and the result is not cached when it fails.
+		//
+		// Every coordinate compiled into the pipeline comes from ShaderSpriteAtlas, which is emptied at the
+		// start of each resource reload and refilled while models bake. Between those two moments the map is
+		// legitimately empty — and the render thread keeps drawing throughout, because 26.2 renders the GUI
+		// unconditionally (GameRenderer.render puts the level behind isGameLoadFinished() but not the GUI, which
+		// is how the loading overlay itself is drawn).
+		//
+		// Building in that window produced a pipeline that contradicted itself: SPRITE_COUNT comes from the
+		// effect, which is a constant and always answers ten, while the SPRITE_n_* coordinates come from the
+		// map and were all absent. The shader compiled in ten branches referring to defines that did not exist,
+		// which is a GLSL compile error — and since a custom pipeline's failure is silent (see the class
+		// javadoc), the broken render type then sat in the cache until the NEXT reload cleared it. Switching
+		// language, which is a full reload, therefore lost the starfield permanently.
+		//
+		// Declining is the whole fix: with nothing cached, the next frame asks again, and the frame after the
+		// atlas is stitched gets a correct pipeline. The cost is that the effect does not draw for the length of
+		// the reload, which is a screen showing a loading overlay.
+		Set<Identifier> missing = unresolvedSprites(effect);
+
+		if (!missing.isEmpty()) {
+			AbyssFall.LOGGER.debug(
+					"Deferring render type for {}: {} of its sprites are not resolved yet ({})",
+					effect.type().id(), missing.size(), missing);
+
+			return null;
+		}
+
+		// Logged because a pipeline failing to compile is silent — ShaderManager only reports failures for
+		// vanilla's static list. Seeing this line means the draw path was reached and a render type was
+		// built; not seeing it means nothing ever asked for one, which is a different problem entirely.
+		AbyssFall.LOGGER.debug("Building render type for {} on atlas {}", effect.type().id(), atlas);
+
+		RenderType built = create(key);
+
+		CACHE.put(key, built);
+
+		return built;
+	}
+
+	/**
+	 * Which of the sprites an effect needs are not resolved yet, mask included.
+	 *
+	 * <p>The mask is checked alongside the star sprites because it fails the same way and is read from the same
+	 * map. An unresolved mask does not produce a compile error — {@code addMaskDefines} emits a degenerate
+	 * rectangle that discards every fragment — so on its own it would be cached as an effect that compiles
+	 * cleanly and draws nothing at all, which is harder to diagnose than the compile error, not easier.
+	 *
+	 * <p>Returns the names rather than a boolean so the log line can say which artwork is missing: during a
+	 * reload the answer is "all of it", while a genuine typo leaves exactly one name behind.
+	 */
+	private static Set<Identifier> unresolvedSprites(final ShaderEffect effect) {
+		Set<Identifier> missing = new HashSet<>();
+
+		if (ShaderSpriteAtlas.get(effect.mask()) == null) {
+			missing.add(effect.mask());
+		}
+
+		for (Identifier spriteId : effect.spriteDependencies()) {
+			if (ShaderSpriteAtlas.get(spriteId) == null) {
+				missing.add(spriteId);
+			}
+		}
+
+		return missing;
 	}
 
 	/**
@@ -248,6 +317,12 @@ public final class AbyssFallPipelines {
 	 * <p>An unresolved sprite is skipped with a warning rather than substituted: a zero-sized region would
 	 * sample one pixel of whatever is packed at the origin, which looks like a bug in the effect rather than a
 	 * missing texture.
+	 *
+	 * <p>⚠️ <strong>That skip must not be relied on to produce a usable pipeline.</strong> {@code SPRITE_COUNT}
+	 * comes from the effect and is a constant, so skipping a sprite leaves the shader compiling a branch for a
+	 * define that was never emitted — a compile error, and a silent one. {@link #forEffect} therefore refuses to
+	 * build at all while anything is unresolved, and this warning survives only for the case that check cannot
+	 * cover: a name that will never resolve, such as a typo, which reaches here on some later attempt.
 	 */
 	private static void addSpriteDefines(final RenderPipeline.Builder builder, final ShaderEffect effect) {
 		List<Identifier> sprites = effect.spriteDependencies();

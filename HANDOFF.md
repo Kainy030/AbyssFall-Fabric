@@ -48,7 +48,7 @@
 | Minecraft | **26.2**；**无映射**（26.1 起不再混淆，Fabric 停止维护第三方映射） |
 | Loader / Loom / Fabric API | 0.19.3 / 1.17.19（插件 id **`net.fabricmc.fabric-loom`**）/ 0.158.0+26.2 |
 | Gradle / JDK | 9.7.0 / **25**（`java-runtime-epsilon`），toolchain 与 `release` 都是 25 |
-| 版本 / 许可 | `1.7-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**） |
+| 版本 / 许可 | `1.8-Dev-Fix` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**）。⚠️ **`gradle.properties` 的 `version` 是唯一事实来源，这一行易过时，现场核一遍** |
 | 源集 | `splitEnvironmentSourceSets()`：`src/main` + `src/client` |
 | Git | `https://github.com/Kainy030/AbyssFall-Fabric.git`，分支 `main` |
 
@@ -513,6 +513,15 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 46. **报「这是死代码」之前先确认是不是自己刚造的。** 本轮我先在调用点写了字面量 `"hint"`，让刚定义的 `HINT_KEY` 常量闲置；随后又留了个没人调的 `line(String, Style)` 重载。**两处都是我这一次自己造出来的**，不是历史妥协。收尾前扫一遍本轮新增的常量与方法有没有被真正引用，比事后被人问「这个为什么没用」要好。
 
+47. 🔴 **一个缓存被清空之后、被填回之前，是一段真实存在的时间 —— 那期间的读者会读到空值，而它可能把空值当答案记下来。** 本轮的严重 bug：`ShaderSpriteAtlas` 在资源重载的 prepare 阶段被 `clear()`，模型烘焙完才填回；这两点之间渲染线程**没有停**（26.2 的 `GameRenderer.render` 只把 `renderLevel` 挡在 `isGameLoadFinished()` 后面，**GUI 那段无条件执行** —— LoadingOverlay 本身就靠它画）。于是窗口期内建出的 pipeline 一半 define 来自常量、一半来自空缓存，自相矛盾，**而 `computeIfAbsent` 把它记进了缓存**，下一次重载才清 ⇒ 切一次语言换来永久性损坏。
+
+    **三条可复用的东西**：①**给「清空」找到调用点只是第一步，还要问「清空到填回之间谁在读」** —— 18j-7 当年只验证了前者，注释里写得很有信心，缺的正是后者；②**当一个值有两个来源、可信度不同（一个是常量、一个是可变缓存），就必须校验它们一致**，不一致时放弃比凑出一个残废结果好；③**`computeIfAbsent` 无法表达「算不出来就别记」** —— 需要「有条件缓存」时它是错的工具，得退回显式 `get`/`put`。这条与教训 41 互补：那条说「看到 `computeIfAbsent` 要去看键类有没有 `equals`」，这条说「还要看值算不出来时会不会被记下」。
+
+48. **「参考实现看起来更亮」这类观感差异，先去数它依赖了什么平台隐式量，别去比对它的公式。** 本轮查星空亮度：两边的光照公式**逐字相同**（连 `lightmix = 0.2` 都一样），差异全在喂进去的 `light` —— 参考的起点是 `gl_Color`，携带 1.12.2 **固定管线**累加的 `sceneColor + Ambient + Diffuse`，而且它在 GUI 与兜底路径上根本不采样世界光、直接 `setLightLevel(1.0F)` 断言全亮。26.2 两样都没有。**这是教训 33 的延伸**：跨版本移植时腐烂的不只是类名和签名，还有**平台曾经免费提供、新版本不再提供的量** —— 那种缺失不会报错，只会让观感对不上，而公式比对永远查不出来。
+
+49. **给一个倍率选数值前，先算它在整条链路末端的实际结果，别只看这一步。** 用户给的区间是 1.2~1.7，而**下限 1.2 是错的那一端**：`shade` 在全黑处是 0.8，`0.8 × 1.2 = 0.96` ⇒ 比不加增益还暗。同理上一版试的 2.5 会让总倍率到 2.0，而星星配色 G/B 最低只有 0.6/0.7、**在 1.43× 就削顶** ⇒ 整片星空褪成白色。**一个乘数的合理范围由它前后所有环节共同决定**，孤立地看「1.2 到 1.7 是温和的」会选错端点。做法很便宜：把链路算式写成十行 Java 跑一遍端点与单调性（教训 13）。
+
+
 
 
 
@@ -581,7 +590,7 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 ## 7. 当前状态
 
 - **编译已验证**：`build` 与 `releaseJars` 都 `BUILD SUCCESSFUL`。产物 `build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`
-- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.8-Dev`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）
+- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.9-Dev-Fix`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）。⚠️ **tag 名与 `version` 本轮起不再对应**：`version=1.8-Dev-Fix` 而 tag 是 `v1.9-Dev-Fix`，这是用户指定的，不是笔误（`REFERENCE.md` 的发布流程一节早就写了两者不必一致）
 
 ### 7.1 已实测通过（用户在真实环境验证，**别再列成待确认项去催他测**）
 
@@ -650,6 +659,14 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 ⚠️ **1.8-Dev 待测**：Abyssal 灰阶提亮后的观感（`0x1F1F1F`~`0xB4B4B4`，最亮 180 已略高于 vanilla `GRAY` 170）、手持提示里的波浪与 tooltip 是否观感一致、碑文展开后 25 行的实际高度与配色、中文提示语「按住 Shift 阅读碑文」的措辞。
 
+**1.8-Dev-Fix 内容（本轮，星空渲染两处修复，用户已全部实测通过）**：
+
+- 🔴 **切语言导致星空永久丢失（严重 bug）已修** —— 根因是 `SPRITE_COUNT`（常量）与 `SPRITE_n_*`（可变缓存）在重载窗口期不同步，产出自相矛盾的 pipeline 并被永久缓存。`forEffect` 现在建之前先查、缺任何精灵就返回 `null` 且**不缓存**，下一帧重试。见 `REFERENCE.md` 18j-18
+- **星空亮度环境增益** —— 查明「原版更亮」的根因是参考实现继承了 1.12.2 固定管线光照、且 GUI/兜底路径直接断言全亮，26.2 均无。改为按环境光实时插值 `1.7 → 1.2`，山洞最亮、正午最淡。`1.7` 是实测甜点（用户原话「正好是甜点数值」），见 `REFERENCE.md` 18j-19
+- ⏳ **用户已把「重构这套 14 年前的星空」提上日程** —— 四处继承缺陷与首要重构目标记在 `REFERENCE.md` 18j-20
+
+🟢 **用户已实测通过**：切语言后星空仍在、亮度观感认可（原话「实现效果不错」）。**本轮全部事项验证完毕。**
+
 
 
 ### 7.2 仍未验证的项
@@ -669,7 +686,7 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 **顶点颜色通路（4d 提出的方案）**：✅ **1.6-Dev 已在游戏里验证** —— 星空的 `depth` / 两个光照等级全部走顶点颜色的 R/G/B 字节，yaw/pitch 走 `UV2` 的 16-bit 对，用户确认星空渲染正确 ⇒ 顶点属性确实能把值送到 fragment stage，`RGBA8_UNORM` 归一化行为符合预期。
 
-**`ALL_LOADED` 是否每次 `/reload` 都触发**，仍未实测。⚠️ 但**同族的另一件事已用字节码确认**：`ModelLoadingPlugin.initialize` 的回调体每次资源重载都会重跑（`ModelLoadingPluginManager.preparePlugins` 由重载监听器驱动），所以 1.6-Dev 把两个 `clear()` 挂在那里，**没有加 Mixin**。见 `REFERENCE.md` 18j-7。
+**`ALL_LOADED` 是否每次 `/reload` 都触发**，仍未实测。⚠️ 但**同族的另一件事已用字节码确认**：`ModelLoadingPlugin.initialize` 的回调体每次资源重载都会重跑（`ModelLoadingPluginManager.preparePlugins` 由重载监听器驱动），所以 1.6-Dev 把两个 `clear()` 挂在那里，**没有加 Mixin**。见 `REFERENCE.md` 18j-7。🔴 **v1.8-Dev-Fix 补上了当年漏掉的那半**：回调**确实**每次重载都跑（结论没错），但它跑在 prepare 阶段、清空与填回之间有一段窗口期，**而渲染线程在那期间没有停** —— 那正是切语言丢星空的成因，见 18j-18 与教训 47。
 
 ### 7.3 已用真实 classpath 实测过约 210 项
 
@@ -705,8 +722,9 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 - ~~**`Z_PLANE` 假设平面物品** ⇒ 3D 物品位置会偏~~ ✅ **1.5-Dev 已解决**（见 4b.8 与 18h）
 - 绿/蓝共用一个颜色（见 4b.4）
 - 遮罩红色通道空着，可作第三种行为
-- `AbyssFallPipelines.clear()` 无人调用，加资源重载支持时记得接上
+- `AbyssFallPipelines.clear()` 无人调用，加资源重载支持时记得接上 ✅ **v1.6-Dev 已接上**（挂在 `ModelLoadingPlugin` 回调体，见 `REFERENCE.md` 18j-7）。⚠️ **但 v1.8-Dev-Fix 查明「接上了」不等于「安全了」**：清空到填回之间有一段窗口期，那期间不许建 pipeline，见 18j-18 与教训 47
 - **`glowing` 对近黑物品几乎不发光** —— 修法涉及数值语义，待用户决定（`REFERENCE.md` 18g）
+- ⏳ **重构这套 14 年前的星空** —— 用户本轮明确提上日程（原话「他妈迟早给这个 14 年前的破东西重构了，这个可以提上日程了」）。四处继承缺陷、首要重构目标（散列输入 35.2% 碰撞）、以及重构前必须知道的约束都记在 `REFERENCE.md` 18j-20。⚠️ **这不是「可以随手改」的许可** —— 星空观感已由用户逐帧验收过，重构需重新验收
 
 - **少数图标仍是占位**（多数已换成自己的美术）：`abyss_gardeners` 图标是向日葵、计数器与窥镜都用原版 `clock_00`（**指针不会转**，原版靠 `range_dispatch` 切 64 个模型才转）、两个精神效果是脚本生成的图。⚠️ **`final_death_omen_mask.png` 是脚本生成的 debug 遮罩**（1.5-Dev 改为按几何分区，见 `REFERENCE.md` 18i-2），等用户美术。✅ **剑本体贴图已由用户重画**（1.5-Dev，经 alpha 二值化后入库）
 - 深渊之花无实际功能；三个药水效果**无获取途径**（「深渊探索者」只被战利品侧读取，另两个只能 `/effect`）
@@ -802,6 +820,8 @@ Get-ChildItem $p -Directory | ForEach-Object { $_.Name }
   - **贴图 alpha 只能是 0 或 255**（1.5-Dev）——`make-death-omen-texture.ps1` 的二值化不是"洁癖"，是让厚度可见的唯一办法（`REFERENCE.md` 18i）
   - **`ShaderVertex` 携带两套 UV**（遮罩 UV + 图集 UV），`UV1` 装遮罩 UV 的定点数 —— 顶点格式只有一个浮点 UV 槽，这不是冗余设计（18h-2）
   - **`ItemHullGeometry` 沿各自法线外推而非固定轴** —— 固定轴对侧壁全错（18h）
+  - **`forEffect` 用显式 `get`/`put` 而不是 `computeIfAbsent`** —— 它必须能「算不出来就不缓存」，这是切语言丢星空那个 bug 的修法本体（`REFERENCE.md` 18j-18、教训 47）
+  - **星空亮度增益 `1.7 → 1.2`，且插值因子取 `light` 不取 `shade`** —— 两个数都是实测甜点，取 `shade` 会让上限永远到不了（`REFERENCE.md` 18j-19、教训 49）
   - **自有稀有度是旁表不是 data component**，且 vanilla `Rarity` 真的不可扩展（`REFERENCE.md` 19）
   - **彩虹的步长/周期与灰阶波浪各一套**——色相绕回自身、灰阶余弦折返，**这两处「不一致」是对的，别统一**（教训 44）
   - **`Mth.positiveModulo` 包住 hue 不是防御性代码**，负 hue 会让 `hsvToArgb` 抛异常（`REFERENCE.md` 20）

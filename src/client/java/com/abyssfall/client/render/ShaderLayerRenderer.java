@@ -26,6 +26,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
 import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.special.NoDataSpecialModelRenderer;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.LightCoordsUtil;
@@ -146,10 +147,19 @@ public final class ShaderLayerRenderer implements NoDataSpecialModelRenderer {
 		int blockLight = LightCoordsUtil.block(lightCoords);
 		int skyLight = LightCoordsUtil.sky(lightCoords);
 
+		// Absent while a resource reload is in flight: the effect's artwork has been forgotten and not yet
+		// resolved again, so no pipeline can be built that is not self-contradictory. Skipping the frame is the
+		// correct response — the alternative is a pipeline that fails to compile and is then cached, which is
+		// the bug this returns null to avoid. See AbyssFallPipelines.forEffect.
+		RenderType renderType = AbyssFallPipelines.forEffect(this.effect, this.atlas);
+
+		if (renderType == null) {
+			return;
+		}
+
 		// Order 1 puts this after the item's ordinary layers, which are submitted at order 0.
 		submitNodeCollector.order(1)
-				.submitCustomGeometry(poseStack,
-						AbyssFallPipelines.forEffect(this.effect, this.atlas), (pose, buffer) -> {
+				.submitCustomGeometry(poseStack, renderType, (pose, buffer) -> {
 					for (ShaderQuad quad : this.geometry) {
 						emit(buffer, pose, quad, state, blockLight, skyLight);
 					}

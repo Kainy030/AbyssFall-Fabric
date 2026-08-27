@@ -341,7 +341,60 @@ void main() {
 	vec2 lightUV = lightLevel * (15.0 / 16.0) + (1.0 / 32.0);
 	vec3 light = texture(Sampler2, lightUV).rgb;
 	const float LIGHT_MIX = 0.2;
-	col.rgb *= light * LIGHT_MIX + vec3(1.0 - LIGHT_MIX);
+	vec3 shade = light * LIGHT_MIX + vec3(1.0 - LIGHT_MIX);
+
+	// 🔴 A gain that reads the light every frame, and is deliberately NOT the reference's behaviour.
+	//
+	// The reference looks brighter than this shader did in every environment, and the cause is not the mix
+	// above — that arithmetic is identical on both sides. It is what gets fed into it. The reference's light
+	// began as gl_Color, which in 1.12.2 carried the fixed-function lighting its vertex program accumulated
+	// (sceneColor plus ambient plus diffuse) before its lightlevel uniform was applied at all; and on the GUI
+	// and fallback paths it did not sample the world's light, it simply asserted full brightness. 26.2 has no
+	// fixed-function lighting to inherit, so this shader's light is the raw lightmap value and nothing else.
+	//
+	// Restoring the reference's constant offset would brighten every environment by the same amount. Instead the
+	// gain is interpolated against the light in real time — strongest in darkness, weakest in daylight.
+	//
+	// ⚠️ Be clear about what this does to the environment response, because it is not a small thing: the gain
+	// falls faster with light than `shade` rises, so the PRODUCT now decreases as the world gets brighter
+	// (1.36x at black, 1.20x at full light). The starfield is therefore brightest in a cave and calmest at noon
+	// — the inverse of what the mix above does on its own. That is the requested behaviour, not an oversight:
+	// the sky is meant to assert itself where there is nothing else to see, and to stop competing with a lit
+	// scene. Anyone "fixing" the direction should know they are changing the intent.
+	//
+	// 🔴 The factor is the luminance of `light`, NOT of `shade`. This is the whole reason the pair of endpoints
+	// can be reached: LIGHT_MIX compresses shade into [1 - LIGHT_MIX, 1], so at 0.2 its luminance never leaves
+	// [0.8, 1.0] and using it here would confine the gain to the top fifth of the range. `light` is the lightmap
+	// sample itself and spans the full 0..1.
+	//
+	// Luminance rather than per channel so that a coloured light source — a redstone torch, lava — cannot tint
+	// the gain. The sky's colours belong to the stars. The three weights sum to exactly 1.0, so a neutral
+	// lightmap sample passes through unchanged and the two endpoints below are reached exactly.
+	const vec3 LUMINANCE_WEIGHTS = vec3(0.2126, 0.7152, 0.0722);
+	const float GAIN_IN_DARK = 1.7;
+	const float GAIN_IN_LIGHT = 1.2;
+
+	float ambient = clamp(dot(light, LUMINANCE_WEIGHTS), 0.0, 1.0);
+	float gain = mix(GAIN_IN_DARK, GAIN_IN_LIGHT, ambient);
+
+	// ⚠️ Above unity everywhere, so the clamp below is reached more often than before — but the two endpoints
+	// were chosen so that it costs headroom rather than colour, which is the failure an earlier pair of values
+	// had. The reference's star colours are cool and pale (red 0.4–0.7, green 0.6–1.0, blue 0.7–1.0), so green
+	// and blue saturate long before red does; a gain of 2.5 in darkness pinned both at 1.0 for every star and
+	// the whole field read as white rather than as the intended cool blue.
+	//
+	// At 1.7 the peak product is 1.36x, which leaves the dimmest star at (0.54, 0.82, 0.95) — every channel
+	// still below the clamp, so the palette survives at both ends. The only fragments that clip are stars whose
+	// artwork is already 1.0 in green or blue, and those are the brightest few by design. Measured, not assumed.
+	//
+	// That is why 1.7 rather than more: it is the largest value in the requested 1.2–1.7 band, and the band
+	// itself sits under the point where the palette starts collapsing. Note 1.2 would have been the wrong end
+	// entirely — it makes the dark product 0.96x, i.e. dimmer than no gain at all.
+	//
+	// Distinct from STAR_BRIGHTNESS, which is also a multiplier: that one is a compile-time define and part of
+	// what identifies a pipeline, so it states a fixed intent per configured effect. This one varies per
+	// fragment from data in the vertex stream and compiles nothing.
+	col.rgb *= shade * gain;
 
 	col.rgb *= STAR_BRIGHTNESS;
 	col = clamp(col, 0.0, 1.0);
