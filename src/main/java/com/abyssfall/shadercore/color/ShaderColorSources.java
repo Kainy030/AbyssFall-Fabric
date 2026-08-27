@@ -30,29 +30,27 @@ import com.abyssfall.shadercore.ShaderColorSource;
 /**
  * Serialisation for colour sources, chosen by a {@code "type"} field.
  *
- * <h2>🔴 Why this exists now and did not before</h2>
+ * <h2>Why the dispatch exists</h2>
  *
- * <p>While {@link FixedColorSource} was the only implementation, {@code MaskedPulseEffect} read colour through
- * a single codec with an {@code xmap} that cast on the way out. That was sound only because the cast could
- * never fail: reading always produced a {@code FixedColorSource}, so writing one back always succeeded. It was
- * recorded at the time as temporary, with the note that <strong>a second implementation would require this
- * dispatch first</strong> — otherwise saving a configuration file holding any other source would throw a
- * {@code ClassCastException}.
- *
- * <p>{@link DerivedColorSource} is that second implementation, so this is that dispatch.
+ * <p>Colour once read through a single codec with an {@code xmap} that cast on the way out. That was sound only
+ * while one implementation existed: reading always produced the same type, so writing one back always
+ * succeeded. A second kind made the cast able to fail, so the dispatch that had been noted as required went in
+ * — otherwise saving a file holding any other source threw a {@code ClassCastException}.
  *
  * <h2>Same shape as the effect dispatch, deliberately</h2>
  *
- * <p>Effects already select their codec by a {@code "type"} field, and colour sources now do it the same way,
- * for the same reason: a kind added later needs no change to the file format and no migration of files already
- * written. {@code partialDispatch} rather than {@code dispatch} because the latter's signature does not accept
- * a {@code DataResult}.
+ * <p>Effects select their codec by a {@code "type"} field and colour sources do it the same way, for the same
+ * reason: a kind added later needs no change to the file format and no migration of files already written.
+ * {@code partialDispatch} rather than {@code dispatch} because the latter's signature does not accept a
+ * {@code DataResult}.
  *
- * <h2>Backwards compatibility</h2>
+ * <h2>An absent type reads as derived</h2>
  *
- * <p>A {@code "color"} object written before this existed has no {@code "type"} field. Rather than treat that
- * as a broken file, an absent type reads as {@code fixed} — which is what such a file meant, since it was the
- * only kind that existed. Files already on disk therefore keep working untouched.
+ * <p>A {@code "color"} object may have been written before this dispatch existed and so carry no
+ * {@code "type"}. Such a file is read as {@code derived} rather than rejected. It will not mean quite what it
+ * said — the kind it was written as was the red-and-blue debug source, which has since been deleted — but a
+ * colour derived from the item's own texture is the sane reading of "some colour was configured here", and it
+ * keeps an old file loading instead of failing the whole entry.
  */
 public final class ShaderColorSources {
 	/**
@@ -60,7 +58,6 @@ public final class ShaderColorSources {
 	 *
 	 * <p>Kept next to the codec map so a kind cannot be registered in one and forgotten in the other.
 	 */
-	private static final String FIXED = "fixed";
 	private static final String DERIVED = "derived";
 
 	private ShaderColorSources() {
@@ -75,10 +72,6 @@ public final class ShaderColorSources {
 					ShaderColorSources::codecFor);
 
 	private static DataResult<String> typeNameOf(final ShaderColorSource source) {
-		if (source instanceof FixedColorSource) {
-			return DataResult.success(FIXED);
-		}
-
 		if (source instanceof DerivedColorSource) {
 			return DataResult.success(DERIVED);
 		}
@@ -90,18 +83,23 @@ public final class ShaderColorSources {
 
 	private static DataResult<MapCodec<? extends ShaderColorSource>> codecFor(final String typeName) {
 		return switch (typeName) {
-			case FIXED -> DataResult.success(FixedColorSource.CODEC.fieldOf("value"));
 			case DERIVED -> DataResult.success(DerivedColorSource.CODEC.fieldOf("value"));
 			default -> DataResult.error(() -> "Unknown colour source type: " + typeName);
 		};
 	}
 
 	/**
-	 * The dispatching codec, falling back to {@code fixed} when no {@code "type"} is present.
+	 * The dispatching codec, falling back to {@code derived} when no {@code "type"} is present.
 	 *
 	 * <p>This is what an effect should use. See the class javadoc for why the fallback exists.
+	 *
+	 * <p>⚠️ The fallback is lenient in the strong sense: {@code DerivedColorSource}'s fields are all optional,
+	 * so <em>any</em> object without a {@code "type"} parses, including one carrying only fields it does not
+	 * know. Those fields are dropped and the defaults used. That is deliberate — the alternative is failing
+	 * the whole entry, which loses the effect as well as the colour — but it means an old file's colour is not
+	 * preserved, only its presence. A file this mod writes always carries a type and is never read this way.
 	 */
-	public static final Codec<ShaderColorSource> LENIENT_CODEC = Codec.either(CODEC, FixedColorSource.CODEC)
+	public static final Codec<ShaderColorSource> LENIENT_CODEC = Codec.either(CODEC, DerivedColorSource.CODEC)
 			.xmap(either -> either.map(Function.identity(), source -> (ShaderColorSource) source),
 					// Written through the dispatching side always, so a file this mod writes always carries a
 					// type. Only reading tolerates its absence.

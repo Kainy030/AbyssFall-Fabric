@@ -27,6 +27,7 @@ import org.jspecify.annotations.Nullable;
 
 import com.abyssfall.AbyssFall;
 import com.abyssfall.shadercore.effect.MaskedPulseEffect;
+import com.abyssfall.shadercore.effect.StarfieldEffect;
 
 /**
  * The second core system: what items look like, as opposed to what the world does.
@@ -82,6 +83,7 @@ public final class AbyssFallShaderCore {
 	 */
 	public static void initialize() {
 		ShaderEffectTypes.register(MaskedPulseEffect.TYPE);
+		ShaderEffectTypes.register(StarfieldEffect.TYPE);
 
 		// Lowest priority, registered first: a file of stated preferences should lose to anything that
 		// is reacting to what is happening in the game.

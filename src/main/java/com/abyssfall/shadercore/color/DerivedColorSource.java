@@ -33,18 +33,19 @@ import com.abyssfall.shadercore.ShaderColorSource;
  *
  * <h2>🔴 Why this matters more than it looks</h2>
  *
- * <p>{@link FixedColorSource} paints a colour <em>over</em> an item. That works, but it means every item that
- * should look wrong needs artwork saying exactly where and in what colour — a mask per item, hand-painted.
- * For a mod whose premise is that <em>ordinary things</em> start looking wrong as San falls, that does not
- * scale: the interesting case is a stone pickaxe the player has carried for hours, and nobody is going to
- * author a mask for every item in the game.
+ * <p>Painting a colour <em>over</em> an item works, but it means every item that should look wrong needs
+ * artwork saying exactly where and in what colour — a mask per item, hand-painted. For a mod whose premise is
+ * that <em>ordinary things</em> start looking wrong as San falls, that does not scale: the interesting case is
+ * a stone pickaxe the player has carried for hours, and nobody is going to author a mask for every item in the
+ * game.
  *
  * <p>This source reads the pixel the effect is covering and derives a colour from it. The item supplies its
  * own detail, so one effect works on anything — and the result keeps the item's shading, which a painted
  * colour cannot.
  *
- * <p>It does not replace {@code FixedColorSource}. Stating a colour outright is still the right answer when an
- * effect is meant to look like itself rather than like the thing it covers.
+ * <p>It is not the only conceivable answer. Stating a colour outright is still right when an effect is meant to
+ * look like itself rather than like the thing it covers — that would be another implementation of the same
+ * interface, not a change here.
  *
  * <h2>What it can and cannot do</h2>
  *

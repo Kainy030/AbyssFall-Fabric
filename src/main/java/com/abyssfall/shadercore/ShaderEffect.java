@@ -19,7 +19,9 @@
 
 package com.abyssfall.shadercore;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.mojang.serialization.MapCodec;
 
@@ -78,6 +80,26 @@ public interface ShaderEffect {
 	}
 
 	/**
+	 * Names of atlas sprites this effect needs resolved before it can be drawn.
+	 *
+	 * <p>Defaults to whatever its {@linkplain #type() kind} declares, which is the right answer for almost
+	 * every effect: artwork belongs to a kind of appearance rather than to one instance of it, and stating it
+	 * on the kind is what lets a provider hand out an instance nobody configured. See
+	 * {@link ShaderEffectType} for why that matters.
+	 *
+	 * <p>An instance may still narrow or extend the list — a starfield configured to draw from three sprites
+	 * rather than ten, say. <strong>The effect names sprites; it does not know where they are.</strong> Where
+	 * the atlas stitcher put them depends on the resource pack, so a coordinate has no place in an effect's
+	 * identity or in a configuration file — the renderer contributes those as additional defines.
+	 *
+	 * <p>This is deliberately a list of names rather than anything richer. An effect stating a dependency is not
+	 * the same as an effect knowing how texture atlases work.
+	 */
+	default List<Identifier> spriteDependencies() {
+		return this.type().sprites();
+	}
+
+	/**
 	 * Values to compile into the shader, as {@code #define NAME value} pairs.
 	 *
 	 * <p>Defines rather than uniforms because a uniform buffer has to be filled by driving a
@@ -98,7 +120,7 @@ public interface ShaderEffect {
 	 * and a shader can leave a branch out of the compiled program entirely rather than testing a value
 	 * at runtime.
 	 */
-	default java.util.Set<String> shaderFlags() {
-		return java.util.Set.of();
+	default Set<String> shaderFlags() {
+		return Set.of();
 	}
 }

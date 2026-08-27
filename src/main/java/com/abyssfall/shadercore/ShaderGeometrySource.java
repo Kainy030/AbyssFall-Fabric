@@ -67,4 +67,25 @@ public interface ShaderGeometrySource {
 	 *         which is a legitimate answer and leaves the item exactly as vanilla rendered it
 	 */
 	List<ShaderQuad> resolve(List<ShaderQuad> itemGeometry);
+
+	/**
+	 * Whether the quads this source produces sit exactly on the item's own surface.
+	 *
+	 * <h2>🔴 Why the source answers this and not the effect</h2>
+	 *
+	 * <p>This decides how the depth test is set up: coplanar geometry needs a depth bias to win the
+	 * comparison against the surface it shares, while geometry already lifted off the item wants the ordinary
+	 * test and would be pushed too far by a bias on top.
+	 *
+	 * <p>Only the source knows the answer, because only the source decides where the vertices go. Asking the
+	 * effect instead — as an earlier version did — created a pair of settings that had to be kept in agreement
+	 * by hand, and getting them out of step means either z-fighting or nothing drawn at all. Here it cannot go
+	 * out of step: the geometry and the statement about it come from the same object.
+	 *
+	 * <p>Defaults to {@code false}, matching a source that offsets its output, which is the safer of the two
+	 * to get wrong: an unnecessary gap is visible, an unnecessary bias is not.
+	 */
+	default boolean isCoplanar() {
+		return false;
+	}
 }

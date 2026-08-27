@@ -843,9 +843,147 @@ $semi=0; for($y=0;$y -lt $b.Height;$y++){for($x=0;$x -lt $b.Width;$x++){
 
 ⚠️ **debug 时把 `sample_density` 调到 0.85、`sample_period_ticks` 调到 20**（默认 0.1 / 10）。**10% 可见率下根本看不出抽样规律** —— 任一瞬间只有一两个像素在亮，形不成可判断的图案。
 
+🔴 **v1.6-Dev 起 18i-2 描述的分区遮罩已不存在**，见 18j-8。那张遮罩改成了「线稿内部纯红」专供星空，G/B 归零 ⇒ `masked_pulse` 在它上面完全透明。要回到分区遮罩得改回生成脚本。
 
 
-## Git / 发布流程（由你负责）
+
+## 18j. 星空效果 `abyssfall:starfield`（v1.6-Dev 新增，第二个效果种类）
+
+**移植自 Avaritia 的 `cosmic.frag`**（Avaritia 3.3.0 / MC 1.12.2，路径 `Avaritia-master/Avaritia-master/src/main/resources/assets/avaritia/shader/cosmic.frag`）。用户明确：**参考思路，不复用代码**。
+
+**用户已在游戏里确认渲染正确。** 算法部分（球面映射、16 层堆叠、`rand2d`、旋转矩阵、颜色公式、`lightmix = 0.2`）与参考实现逐行对应，**不要再动它**。用户原话：「我认为现在的这个星空渲染既然已经实现就不需要乱改」。
+
+### 18j-1. 六个 uniform 怎么在「没有 uniform 路径」的 26.2 里落地
+
+参考实现每帧设六个 uniform（`CosmicShaderHelper.shaderCallback`）。26.2 这条 draw path 拿不到 `RenderPass`（见 4b.5），六个全部另找载体：
+
+| 参考的 uniform | 26.2 的载体 | 理由 |
+|---|---|---|
+| `time` | `GameTime`（`globals.glsl`） | ⚠️ **不是同一个量**：参考是单调上涨的 int，这是每 MC 日归零的 0..1 斜坡。只用于漂移，周期值可接受 |
+| `yaw` / `pitch` | **`UV2` 的 16-bit 对** | 一个字节只有 256 级 ⇒ 每转 1.4° 整片星空跳一次。16 bit 给 32767 级，比鼠标精度细 |
+| `externalScale` | 顶点色 **R 字节** | 近/远两端插值，`1.0 + r * 24.0` |
+| `lightlevel` | 顶点色 **G/B 字节** + `Sampler2` | 两个等级索引 vanilla 自己的 lightmap 贴图 |
+| `opacity` | **丢弃** | 这里没有按数量淡出的东西 |
+| `cosmicuvs[10]` | **编译期 define** | 见下，这条是**简化不是妥协** |
+
+🔴 **`cosmicuvs` 那条是关键差异**：参考每帧重传十个精灵矩形，因为 **MC 1.12 靠移动 UV 来播动画**。26.2 反过来 —— 精灵矩形固定，vanilla 把当前帧**画进**那个矩形。所以坐标是常量，而动画照样播，全程由 vanilla 驱动。
+
+### 18j-2. `ShaderSpriteAtlas`：拿精灵矩形的唯一时机
+
+`ModelBaker` 只在烘焙期给得到 `SpriteGetter`。`ShaderSpriteAtlas` 在那时把每个精灵的 `u0/v0/u1/v1` 存下来，供 pipeline 建 define。
+
+⚠️ **`clear()` 必须有人调用**，否则换资源包后图集重新缝合、UV 全错且不会自愈。挂在 `ModelLoadingPlugin` 回调体首部，见 18j-7。
+
+### 18j-3. 精灵来源：`ShaderEffectType.sprites()` 而非配置文件
+
+**踩过的坑**：第一版 `resolveEffectSprites` 只遍历 `AbyssFallShaderConfig.get().effects()`。但 `AbyssFallShaderCore` 的设计是 **provider 每帧可返回任意效果**（4b.3），不限于配置文件 ⇒ 动态返回的星空效果精灵永远不会被解析，define 缺失，**GLSL 编译失败且静默**（4b.7）。
+
+**这就是 18c 明令禁止的「预筛」换了个形状。**
+
+⇒ `ShaderEffectType` 加 `sprites` 字段（**种类级**声明，与实例无关），`resolveEffectSprites` **先遍历 `ShaderEffectTypes.all()`**、再遍历配置。`ShaderEffect.spriteDependencies()` 默认返回 `type().sprites()`。
+
+### 18j-4. `ItemFacesGeometry`：只要 ±Z 两面
+
+星空**不用** `ItemHullGeometry`（18h 那个沿法线外推的），用只保留 ±Z 面、丢掉侧壁的 `ItemFacesGeometry`。
+
+**理由**：侧壁只有一个像素宽，遮罩 UV 在那个方向退化成一条线 ⇒ 多个重叠侧面采到同一列纹素，星空在厚度上呈斑块状。**这与 18h 的结论不冲突** —— 18h 说的是「物品不是平的，几何要跟随形状」，这里说的是「一像素宽的面上采不出球面映射」。两个不同维度。
+
+⚠️ **`ItemFacesGeometry.isCoplanar()` 返回 `true`**（无外推 ⇒ 与物品表面共面 ⇒ 需要深度偏移），`ItemHullGeometry` 用默认 `false`。
+
+### 18j-5. 🔴 `isCoplanar()` 住在几何源，不住效果
+
+**v1.6-Dev 的接口修正**：原先是 `ShaderEffect.drawsCoplanar()`，javadoc 自己写着「⚠️ 这个和 `geometry()` 必须保持一致」—— **一对约束被拆到接口的两个方法里、由实现者手工维护，是典型的坏接缝**。
+
+### 18j-6. 🔴 深度偏移的符号：正数，不是负数
+
+**这一轮踩得最深的坑之一。** `AbyssFallPipelines` 原来写：
+
+```java
+COPLANAR_DEPTH_BIAS_SCALE = -1.0F;
+COPLANAR_DEPTH_BIAS_CONSTANT = -10.0F;
+```
+
+注释论证「26.2 深度范围反了 ⇒ 符号要反」。**这个推理是错的**：`glPolygonOffset` 作用在**窗口空间**（深度缓冲区），不是 NDC，正数**永远**把片段推向观察者，与深度范围方向无关。
+
+反深度下负 bias 把深度值减小 ⇒ 比物品表面小 ⇒ `GREATER_THAN_OR_EQUAL` 失败 ⇒ **每个片段都被拒绝，什么都不画，全程静默**。
+
+**vanilla 26.2 实证**（`RenderPipelines.java`，同样的反深度、同样的 `GREATER_THAN_OR_EQUAL`、同样「共面图层浮到表面前」）：
+
+| 行 | 用途 | 参数 |
+|---|---|---|
+| 445 | `crumbling`（方块破坏裂纹贴方块面） | `1.0F, 10.0F` |
+| 489 / 498 | `text_polygon_offset`（告示牌文字贴牌面） | `1.0F, 10.0F` |
+| 573 | — | `1.0F, 1.0F` |
+| 618 | — | `3.0F, 3.0F` |
+
+**全部正数。** 且量级与参考实现的 `polygonOffset(-1.0F, -10.0F)` 绝对值一致 —— 那个负号属于 1.12 的正向深度范围。
+
+⇒ 现在是 `1.0F / 10.0F`。**别再"修"回负数。**
+
+### 18j-7. 资源重载：`clear()` 挂在 plugin 回调体里，零 Mixin
+
+`ShaderSpriteAtlas.clear()` 与 `AbyssFallPipelines.clear()` 一度**无人调用** ⇒ `/reload` 或换资源包后 UV 与 pipeline 全部过期且不自愈。
+
+**用 `javap` 读 `ModelLoadingPluginManager` 字节码确认**：`preparePlugins` 由资源重载监听器驱动 ⇒ **`ModelLoadingPlugin.initialize` 的回调体每次重载都会重跑**。所以两个 `clear()` 放在回调体首部就够了，**不需要额外注册 `SimpleSynchronousResourceReloadListener`，也不需要 Mixin**。
+
+### 18j-8. 🔴 遮罩：填线稿**内部**，不是描线稿本身
+
+**用户实测报的现象**：星空只长在黑色线条上。
+
+**根因极其简单**：`final_death_omen.png` 是**纯线稿**（实测：64 个不透明黑像素 + 192 个透明，无中间色）。上一版遮罩脚本把「不透明像素」当成要填红的区域 ⇒ 红色精确覆盖在**轮廓线**上 ⇒ 星空长在线上。
+
+**正解**（用户指定方向）：4 连通 flood fill 从四边灌水、把轮廓当墙，**没被灌到的透明像素就是内部**。内部填纯红 `(255,0,0,255)`，轮廓线与外部全透明。
+
+**实测结果**：轮廓 64 px、内部 **45 px**、外部 147 px。线稿闭合。
+
+⚠️ **物品贴图全程只读**，脚本跑前后 SHA256 一致（`1141828E...`）。
+
+**排查这类问题的一条命令**（并排打印，一眼看出红色在线上还是线内）：
+
+```powershell
+Add-Type -AssemblyName System.Drawing
+$i=New-Object System.Drawing.Bitmap((Resolve-Path 'xxx.png').Path)
+$m=New-Object System.Drawing.Bitmap((Resolve-Path 'xxx_mask.png').Path)
+for($y=0;$y -lt 16;$y++){ $a='';$b='';
+  for($x=0;$x -lt 16;$x++){
+    if($i.GetPixel($x,$y).A -gt 0){$a+='#'}else{$a+='.'}
+    $p=$m.GetPixel($x,$y); if($p.A -gt 0 -and $p.R -gt 0){$b+='R'}else{$b+='.'} }
+  "$a    $b" }
+$i.Dispose(); $m.Dispose()
+```
+
+### 18j-9. 遮罩通道契约：两个效果读的通道不同，且不兼容
+
+| 效果 | 读 | 忽略 |
+|---|---|---|
+| `starfield` | **R**（= 不透明度，`R = 0` 直接 discard） | G / B |
+| `masked_pulse` | **G**（常驻）+ **B**（抽样） | R |
+
+🔴 **当前那张遮罩 G = B = 0** ⇒ `masked_pulse` 在死兆将至上完全透明。**不是坏了，是没数据。** 要恢复得同时：①`ShaderConfigData.DEFAULT` 的 `type` 改回 `abyssfall:masked_pulse`，②遮罩脚本重新写 G/B。
+
+⚠️ **星空遮罩可以超出物品轮廓，这是用户明确的设计意图**（原话：「星空渲染这套逻辑不会覆盖物品原来的材质，只会在空白像素的地方渲染星空」）。shader **不检查物品自身 alpha**，只看 `mask.r`。**别把这当 bug 修掉。**
+
+### 18j-10. 命名：渲染层不许出现效果种类的词汇
+
+`AbyssFallPipelines` 一度把 define 命名成 `STAR_COUNT` / `STAR_n_U0` —— **通用渲染层硬编码了某个效果种类的名字，违反 18d-4 的「渲染层 → 效果种类零引用」**。
+
+现在渲染层只说 `SPRITE_COUNT` / `SPRITE_n_U0`（它确实只知道「有若干精灵」这件事）。而 `STAR_LAYERS` / `STAR_DENSITY` / `STAR_BRIGHTNESS` / `STAR_DRIFT_SPEED` **留在效果自己身上**，那是效果的词汇，本来就该由它拥有。
+
+### 18j-11. 三个已知代价（都是 26.2 逼出来的，不是没想到）
+
+1. **漂移每 MC 日回绕一次**（`GameTime` 归零）。要单调时钟，这条 draw path 没有。把速度锁成整数能把接缝挪到图案重复处，但那会废掉 `drift_speed` 这个设置项 ⇒ **没做**。
+2. **`Sampler2` 强加给所有效果**（`SAMPLER0_SAMPLER1_SAMPLER2` + `useLightmap()`）⇒ `masked_pulse.fsh` 被迫声明一个它从不用的 sampler。换成第二套 layout 就得让 `AbyssFallPipelines` 知道「哪些效果要 lightmap」，**那正是这个类要避免的知识**。取舍：一个空声明比一次架构泄露便宜。
+3. **`externalScale` 的 25 这个数没有出处**。参考实现（1.12.2 与 Re-Avaritia 1.21.1 都查过）是**逐帧 uniform**，不存在固定 25。这里只能取近/远两端插值，注释已改成实话。
+
+### 18j-12. 其他修正（1.6-Dev 一并做掉）
+
+- **`starBounds` 越界**：`density > 1.0` 时 `symbol` 可达 19 而只有 10 个精灵 ⇒ 采到图集原点。加 `mod(symbol, SPRITE_COUNT)`，现在是**复用**精灵
+- **`pow(0,0)` 未定义**：改 `pow(float(tu) + 1.0, float(tv))`，底数恒正，意图（逐格稳定混合）不变
+- **`lightCoords` 被忽略**：原先用 `LocalPlayer.blockPosition()` 算光照 ⇒ 掉落物/展示框/他人手持全用错位置。现在解包 vanilla 递来的 `lightCoords`（`LightCoordsUtil.block()/sky()`）
+- **`ViewerState` 多上下文污染**：renderer 缓存 key 从 `effect` 改成 `Map.entry(effect, viewerRelative)` ⇒ GUI 槽与手持不再共享同一个 renderer
+- **`LENIENT_CODEC` 注释撒谎**：`FixedColorSource` 删除后（用户授意）回落只能是 `derived`，注释改成实话 —— 旧字段会被丢弃，只保留「曾配置过颜色」这个事实
+
+
 
 用户明确授权：**「以后 github 构建都由你来」**。
 

@@ -38,7 +38,12 @@ import net.fabricmc.fabric.api.client.model.loading.v1.ModelLoadingPlugin;
 import net.fabricmc.fabric.api.client.model.loading.v1.ModelModifier;
 
 import com.abyssfall.AbyssFall;
+import com.abyssfall.client.shader.AbyssFallPipelines;
+import com.abyssfall.shadercore.AbyssFallShaderConfig;
 import com.abyssfall.shadercore.AbyssFallShaderCore;
+import com.abyssfall.shadercore.ShaderEffect;
+import com.abyssfall.shadercore.ShaderEffectType;
+import com.abyssfall.shadercore.ShaderEffectTypes;
 import com.abyssfall.shadercore.ShaderQuad;
 import com.abyssfall.shadercore.ShaderVertex;
 
@@ -85,9 +90,28 @@ public final class ShaderLayerModelPlugin {
 			return;
 		}
 
-		ModelLoadingPlugin.register(context -> context.modifyItemModelAfterBake().register((model, modelContext) ->
-				new ShaderLayerItemModel(model, transformsFor(modelContext), modelContext.itemId(),
-						geometryFor(modelContext))));
+		ModelLoadingPlugin.register(context -> {
+			// 🔴 This body re-runs on every resource reload, which is what makes it the right place to
+			// discard cached state.
+			//
+			// Fabric's plugin manager calls preparePlugins from the model manager's reload listener and
+			// then initialises every registered plugin again — so this is reached once per reload, before
+			// anything is baked. Two things must not survive a reload:
+			//
+			//   - resolved sprite coordinates, because the atlas is stitched afresh and the same sprite may
+			//     land somewhere else;
+			//   - built render types, because their pipelines compiled those coordinates in as constants and
+			//     their setups hold textures that are about to be replaced.
+			//
+			// Neither failure is loud. Stale coordinates draw the wrong artwork; a stale texture handle draws
+			// nothing. Both look like the effect being broken rather than like a reload having happened.
+			ShaderSpriteAtlas.clear();
+			AbyssFallPipelines.clear();
+
+			context.modifyItemModelAfterBake().register((model, modelContext) ->
+					new ShaderLayerItemModel(model, transformsFor(modelContext), modelContext.itemId(),
+							geometryFor(modelContext)));
+		});
 
 		AbyssFall.LOGGER.debug("Shader layer installed on all item models");
 	}
@@ -132,6 +156,11 @@ public final class ShaderLayerModelPlugin {
 			ModelBaker baker = context.bakingContext().blockModelBaker();
 			ResolvedModel resolved = baker.getModel(context.itemId().withPrefix("item/"));
 
+			// Resolve the sprites every registered effect names, while a baker is in hand. Done here because
+			// this is the only point at which the atlas is stitched and a baker exists; see ShaderSpriteAtlas
+			// for why the answers stay valid afterwards.
+			resolveEffectSprites(baker, resolved);
+
 			QuadCollection baked = resolved.bakeTopGeometry(
 					resolved.getTopTextureSlots(), baker, BlockModelRotation.IDENTITY);
 
@@ -145,6 +174,41 @@ public final class ShaderLayerModelPlugin {
 			return new ItemGeometry(List.copyOf(result), atlasOf(baked));
 		} catch (RuntimeException exception) {
 			return ItemGeometry.EMPTY;
+		}
+	}
+
+	/**
+	 * Resolves the atlas sprites every registered kind of effect may draw from.
+	 *
+	 * <h2>🔴 Why registered kinds and not the configuration file</h2>
+	 *
+	 * <p>Driven from the registry because the configuration file is only one of the places an effect can come
+	 * from, and the least interesting one. A provider may hand out any registered kind on any frame — that is
+	 * the whole point of {@code ShaderEffectProvider} — and such an effect was never named in a file. Resolving
+	 * only what the file mentions is the same mistake as installing the layer only on configured items:
+	 * it fixes at bake time an answer that is meant to be decided per frame.
+	 *
+	 * <p>The consequence of getting it wrong is silent. An unresolved sprite means its {@code SPRITE_n_*}
+	 * defines are missing, the shader fails to compile, and a custom pipeline's compilation failure is not
+	 * reported anywhere — the effect simply never appears.
+	 *
+	 * <p>Instances still contribute their own names on top, since an instance may draw from artwork its kind
+	 * did not anticipate.
+	 *
+	 * <p>Runs per item model, which repeats the work — but resolving is a map lookup after the first time, and
+	 * the alternative is another hook whose only job is to run once.
+	 */
+	private static void resolveEffectSprites(final ModelBaker baker, final ResolvedModel resolved) {
+		for (ShaderEffectType<?> type : ShaderEffectTypes.all()) {
+			for (Identifier spriteId : type.sprites()) {
+				ShaderSpriteAtlas.resolve(baker, spriteId, resolved);
+			}
+		}
+
+		for (ShaderEffect effect : AbyssFallShaderConfig.get().effects().values()) {
+			for (Identifier spriteId : effect.spriteDependencies()) {
+				ShaderSpriteAtlas.resolve(baker, spriteId, resolved);
+			}
 		}
 	}
 

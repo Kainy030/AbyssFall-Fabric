@@ -23,7 +23,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.item.ItemModel;
 import net.minecraft.client.renderer.item.ItemModelResolver;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
@@ -106,12 +108,19 @@ public final class ShaderLayerItemModel implements ItemModel {
 	private final @Nullable Identifier atlas;
 
 	/**
-	 * One renderer per effect seen so far.
+	 * One renderer per (effect, GUI-or-world) pair seen so far.
 	 *
 	 * <p>Keyed by value, like the pipeline cache, so the small set of effects a provider cycles through
 	 * costs a handful of objects in total rather than one per frame.
+	 *
+	 * <p>The GUI-or-world distinction exists because the viewer state differs between the two: a GUI slot
+	 * has no viewing angle and the field pushed to its far end, while a hand-held item follows the player's
+	 * head. Without this split, the two would share a renderer and overwrite each other's viewer state,
+	 * because both are set on the same object before either is submitted.
+	 *
+	 * <p>{@link Map#entry} serves as a cheap, comparable key without a dedicated record.
 	 */
-	private final Map<ShaderEffect, ShaderLayerRenderer> renderers = new HashMap<>();
+	private final Map<Map.Entry<ShaderEffect, Boolean>, ShaderLayerRenderer> renderers = new HashMap<>();
 
 	public ShaderLayerItemModel(final ItemModel delegate, final ItemTransforms transforms,
 			final Identifier itemId, final ShaderLayerModelPlugin.ItemGeometry itemGeometry) {
@@ -145,14 +154,67 @@ public final class ShaderLayerItemModel implements ItemModel {
 
 		ItemStackRenderState.LayerRenderState layer = output.newLayer();
 		layer.setItemTransform(this.transforms.getTransform(displayContext));
-		layer.setupSpecialModel(
-				this.renderers.computeIfAbsent(effect,
-						key -> new ShaderLayerRenderer(key, this.itemGeometry, this.atlas)),
-				null);
+
+		boolean viewerRelative = isViewerRelative(displayContext);
+
+		ShaderLayerRenderer renderer = this.renderers.computeIfAbsent(
+				Map.entry(effect, viewerRelative),
+				key -> new ShaderLayerRenderer(key.getKey(), this.itemGeometry, this.atlas));
+
+		renderer.setViewerState(viewerStateFor(viewerRelative));
+		layer.setupSpecialModel(renderer, null);
 
 		// Marks the result as time-varying so the GUI does not serve a stale first frame forever, and
 		// includes the effect in the identity so a change of effect is itself a cache miss.
 		output.setAnimated();
 		output.appendModelIdentityElement(effect);
+	}
+
+	/**
+	 * Whether this display context has a meaningful relationship to where the player is looking.
+	 *
+	 * <p>The hand and head positions do: the item is held by someone whose facing the effect should follow.
+	 * A GUI slot, an item frame and the ground do not — an item in an inventory is not being looked at from
+	 * anywhere, and feeding an angle in makes every slot churn as the player turns around.
+	 */
+	private static boolean isViewerRelative(final ItemDisplayContext displayContext) {
+		return displayContext == ItemDisplayContext.FIRST_PERSON_RIGHT_HAND
+				|| displayContext == ItemDisplayContext.FIRST_PERSON_LEFT_HAND
+				|| displayContext == ItemDisplayContext.THIRD_PERSON_RIGHT_HAND
+				|| displayContext == ItemDisplayContext.THIRD_PERSON_LEFT_HAND
+				|| displayContext == ItemDisplayContext.HEAD;
+	}
+
+	/**
+	 * The per-frame values for this frame: where the viewer is facing, and how far off the effect should sit.
+	 *
+	 * <p>Computed here rather than in the effect or the renderer because this is the only place that knows both
+	 * the display context and that a client player exists. An effect stating what it wants done with a viewing
+	 * angle is a different thing from an effect knowing how to find one.
+	 *
+	 * <h2>Why a GUI gets no angle and maximum depth</h2>
+	 *
+	 * <p>Pushing the depth to its far end is the trick the reference implementation used for inventories:
+	 * whatever the effect draws ends up far away, so it reads as fine still detail rather than as motion.
+	 *
+	 * <p>Light is deliberately absent: vanilla supplies it per draw, correct for whatever is being drawn. See
+	 * {@link ViewerState} and {@link ShaderLayerRenderer#submit}.
+	 */
+	private static ViewerState viewerStateFor(final boolean viewerRelative) {
+		LocalPlayer player = Minecraft.getInstance().player;
+
+		if (!viewerRelative || player == null) {
+			// A GUI slot, an item frame, or the ground: no viewing angle, and the field pushed to its far end
+			// so it reads as fine still grain rather than as churn.
+			return new ViewerState(0.0F, 0.5F, 1.0F);
+		}
+
+		// Pitch runs -90..90 and is negated: vanilla counts downwards as positive, while an effect treating
+		// this as a viewing direction wants the opposite. Biased to put level at the middle of the range.
+		float pitchTurns = 0.5F - (player.getXRot() / 360.0F);
+
+		// Depth 0.0: the field stays at the reference's world scale. Only the GUI pushes it away, which is the
+		// reference's own choice, so it is reproduced as is rather than "improved".
+		return new ViewerState(ViewerState.degreesToTurns(player.getYRot()), pitchTurns, 0.0F);
 	}
 }

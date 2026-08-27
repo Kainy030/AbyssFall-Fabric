@@ -24,6 +24,10 @@
 
 uniform sampler2D Sampler0;   // the item's own texture, as an atlas. Read when colour is derived from it
 uniform sampler2D Sampler1;   // the mask: green = continuous, blue = sampled
+// Sampler2 is declared only because the shared pipeline carries it (SAMPLER0_SAMPLER1_SAMPLER2 +
+// useLightmap, which every effect's render setup uses). This shader never reads it; the layout and the
+// program have to agree or the program will not link.
+uniform sampler2D Sampler2;   // the lightmap, unused here
 
 in vec2 texCoord0;
 in vec2 atlasCoord;
@@ -43,11 +47,13 @@ const float PI = 3.14159265359;
 //   PULSE_CYCLES_PER_DAY   pulse cycles per Minecraft day
 //   SAMPLE_FADE            flag: ease sampled pixels in and out
 //
-// COLOR_A_* and COLOR_B_* come from a ShaderColorSource rather than from this effect. Where a colour is
-// decided is deliberately not settled yet, so this shader states only what it needs — two colours to
-// sweep between — and does not care whether they were configured, computed, or sampled from something
-// else. A source that supplied colour differently would come with its own shader.
-
+// The derivation parameters (DERIVE_*) come from a ShaderColorSource rather than from this effect. Where a
+// colour is decided is deliberately not this shader's business: it states only that it needs a colour for
+// each covered fragment, and does not care whether that colour was configured, computed, or read from the
+// item's own texture. A source that supplied colour differently would come with its own shader.
+//
+// COLOR_FROM_TEXTURE guards the whole of that path. With no source contributing it, nothing is drawn at
+// all — see the end of main() for why that is a discard rather than an invented colour.
 // Hash of three integers, deciding whether a pixel is lit this round. Keyed on the round number as
 // well as the position, so each round is an independent draw while staying constant within itself —
 // which is what makes a chosen pixel hold for its whole round and then vanish.
@@ -168,9 +174,10 @@ void main() {
 	// alternating.
 	fragColor = vec4(mix(itemColor.rgb, shaded, pulse * 0.5 + 0.5), opacity * itemColor.a);
 #else
-	vec3 colorA = vec3(COLOR_A_R, COLOR_A_G, COLOR_A_B);
-	vec3 colorB = vec3(COLOR_B_R, COLOR_B_G, COLOR_B_B);
-
-	fragColor = vec4(mix(colorB, colorA, pulse), opacity);
+	// No colour source contributed anything. Nothing is invented here — an effect drawing a colour this
+	// shader made up would be a debug affordance, and the red-and-blue one that used to live here was
+	// deleted once the art was settled. Discarding keeps a misconfigured effect visibly absent rather
+	// than visibly wrong.
+	discard;
 #endif
 }

@@ -28,7 +28,7 @@ import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.Nullable;
 
 import com.abyssfall.AbyssFall;
-import com.abyssfall.shadercore.effect.MaskedPulseEffect;
+import com.abyssfall.shadercore.effect.StarfieldEffect;
 
 /**
  * The contents of {@code AbyssFallShader.json}: which items have a stated appearance.
@@ -53,10 +53,22 @@ public record ShaderConfigData(Map<Identifier, ShaderEffect> effects) {
 	 *
 	 * <p>Written out as an ordinary entry rather than special-cased, so the shipped file is an example
 	 * of the format as much as it is a setting.
+	 *
+	 * <p>🔴 The mask must be the <em>mask</em>, not the item's texture. The starfield reads the mask's red
+	 * channel as its opacity, and the item's artwork has none — its red is zero everywhere, so the whole effect
+	 * is discarded and the item renders untouched, which is indistinguishable from the effect not existing at
+	 * all. This bit the default configuration once already.
+	 *
+	 * <p>⚠️ <strong>This entry is a starfield, so {@code masked_pulse} has no default consumer.</strong> That
+	 * kind is still registered and still readable from a file — it is simply not what the shipped default asks
+	 * for. Anyone changing this entry back should know that the two kinds read the mask differently:
+	 * {@code masked_pulse} assigns a behaviour to each of green and blue and ignores red, while the starfield
+	 * reads red alone. The mask this points at is red-only, so it drives the starfield and would leave
+	 * {@code masked_pulse} entirely transparent.
 	 */
 	public static final ShaderConfigData DEFAULT = new ShaderConfigData(Map.of(
 			Identifier.fromNamespaceAndPath(AbyssFall.MOD_ID, "final_death_omen"),
-			MaskedPulseEffect.of(Identifier.fromNamespaceAndPath(
+			StarfieldEffect.of(Identifier.fromNamespaceAndPath(
 					AbyssFall.MOD_ID, "textures/item/final_death_omen_mask.png"))));
 
 	public static final Codec<ShaderConfigData> CODEC = RecordCodecBuilder.create(instance -> instance.group(
