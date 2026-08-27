@@ -74,8 +74,10 @@ public enum AbyssFallRarity {
 	 * way says something different: an Abyssal item is not a prize, and a name that is hard to read is
 	 * the point.
 	 *
-	 * <p>Falls back to {@code DARK_GRAY}, the closest fixed colour to the middle of its range, so the
-	 * name still reads as Abyssal where the animation cannot run.
+	 * <p>⚠️ There is no fallback colour <em>here</em>: this enum holds no colour at all, and neither
+	 * constant does. Where the wave cannot run, the name is drawn from whatever vanilla {@code Rarity}
+	 * the item declared alongside this one — for both current holders that is {@code EPIC}, so light
+	 * purple. Choosing that vanilla rarity is how a fallback gets chosen.
 	 */
 	ABYSSAL,
 
@@ -86,6 +88,9 @@ public enum AbyssFallRarity {
 	 * something that moves and cannot be pinned down, and Infinity simply is. A red above
 	 * {@code EPIC}'s light purple also reads as "past the end of the scale" in the way players
 	 * already expect from every game that has ever done this.
+	 *
+	 * <p>⚠️ The red is not stored here either — see {@link #ABYSSAL}. It lives with the rest of the
+	 * name colouring, in {@code AbyssFallTooltips}.
 	 */
 	INFINITY;
 
