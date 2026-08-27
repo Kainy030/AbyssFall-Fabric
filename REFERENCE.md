@@ -24,6 +24,7 @@ src/main/java/com/abyssfall/
 ├── effect/AbyssExplorerEffect  AbyssFallEffects  SanBreakdownEffect  SanSpiritedEffect
 ├── item/AbyssFallDevInventory  AbyssFallItemGroups  AbyssFallItems
 │        SanCounterItem  SanLensItem  FinalDeathOmen                  见 17
+├── item/AbyssFallRarity.java            自有稀有度（两级），见 19
 ├── loot/AbyssFallLootTables.java
 ├── shadercore/  (11 个：AbyssFallShaderCore  AbyssFallShaderConfig  ShaderConfigData
 │                 ShaderConfigProvider  ShaderEffect  ShaderEffectProvider
@@ -43,12 +44,14 @@ src/client/java/com/abyssfall/client/
 ├── hud/SanHudDispatchElement.java    按模式转发（唯一注册的元素）
 ├── hud/SanIconHudElement.java        图标行
 ├── hud/SanBarHudElement.java         进度条
-├── tooltip/AbyssFallTooltips.java    tooltip 逐字波浪染色，见 17
+├── tooltip/AbyssFallTooltips.java    tooltip 逐字波浪染色 + 物品名，见 17g / 19
+├── tooltip/SwordOfTheCosmosTribute.java  致敬碑文（Shift 展开），见 19b
 ├── render/ShaderLayerItemModel.java      包装物品模型 + 每帧决策，见 18c
 ├── render/ShaderLayerModelPlugin.java    装到所有物品 + 取几何，见 18c / 18h
 ├── render/ShaderLayerRenderer.java       画 source 给的几何，见 18c
 ├── shader/AbyssFallPipelines.java        effect → RenderType，见 18b
 ├── mixin/RenderTypeInvoker.java          取 package-private 的 create，见 18b
+├── mixin/HudSelectedItemNameMixin.java   手持提示的物品名上色，见 19a
 └── mixin/HudStatusBarHeightRegistryImplMixin.java   见 15a
 
 src/main/resources/assets/abyssfall/shaders/core/
@@ -57,7 +60,7 @@ src/main/resources/assets/abyssfall/shaders/core/
 
 **美术脚本**（见 11）：`make-death-omen-texture.ps1`（alpha 二值化，见 18i）+ `make-death-omen-mask.ps1`（debug 遮罩，见 18i）。
 
-**Mixin 现在有三个**（`main` 一个 + `client` 两个），配置两份。`src/main` 下的 `mixin/` 包在 26.2 迁移时曾被删除（`WitherRoseBlockMixin` 改成数据文件，见 4），v1.3-Dev 为毕业武器**重新建立**——那次删除是因为不再需要，不是因为禁止。
+**Mixin 现在有四个**（`main` 一个 + `client` 三个），配置两份。`src/main` 下的 `mixin/` 包在 26.2 迁移时曾被删除（`WitherRoseBlockMixin` 改成数据文件，见 4），v1.3-Dev 为毕业武器**重新建立**——那次删除是因为不再需要，不是因为禁止。
 
 `onInitialize()` 调用顺序**有依赖关系，勿随意调整**：
 ```java
@@ -1184,6 +1187,78 @@ cosmic_6: [f0=60]  [f1=72]  ... [f5=72]
 **用户结论（已认可）**：我们的实现是"真正的星空"，原版更像雪花。差异来自素材量级失衡 + 我们规避了两处未定义行为（`pow(0,0)`、`asin` 域外加了 `clamp`）+ 26.2 没有 1.12.2 固定管线光照的干扰。
 
 **`layer_1.png` 已查明**（16×448、28 帧、仅 28 个不透明像素 = 每帧 1 像素）：剑柄底部单像素的渐变，走普通 layer 路径，与 cosmic shader 无关，**无需移植**（用户判断，已复核）。
+
+
+## 19. 自有稀有度：Abyssal / Infinity（v1.8-Dev 新增）
+
+`item/AbyssFallRarity`，两级：**`ABYSSAL`**（物品名灰阶逐字波浪）+ **`INFINITY`**（固定 `§c` 红）。**当前只改物品名颜色，无其它作用** —— 用户明确要求本轮只做这个，别自行加掉率/排序/tooltip 行等语义。
+
+🔴 **不是新增 `Rarity` 枚举值，做不到**：vanilla `Rarity` 是 enum、四值、构造器 private（26.2 源码实证）；且它是网络与存档格式（`STREAM_CODEC` 传 ordinal、`CODEC` 读 name），加值会让不认识它的客户端/存档误读每个物品栈。
+
+⇒ **旁表 + 覆盖显示**：`IdentityHashMap<Item, AbyssFallRarity>`，`assign()` 声明 / `of()` 查询。**不做 data component**（那会让稀有度进每个栈、上网络、写存档，而它只是给名字上色且同物品恒定）。物品**仍声明 vanilla rarity**，那是回落色。
+
+**颜色常量都在 `AbyssFallTooltips`**，与「深渊」那行的四个常量**完全独立**（用户明确要求以后能分开调）：`RARITY_CYCLE_MILLIS=3500` / `RARITY_STEP_PER_CHARACTER=-0.045` / `RARITY_DARKEST=0x1F1F1F` / `RARITY_LIGHTEST=0xB4B4B4` / `INFINITY_NAME_COLOR=ChatFormatting.RED`。
+
+- **步长比属性词小得多**（-0.045 vs -0.2）：物品名可长达二十字，用属性词的步长会绕好几圈、碎成不相干的色块。
+- **灰阶比 `DARKEST`/`LIGHTEST` 宽**：那两个刻意压在 vanilla `GRAY` 以下以免和名字抢，而这**就是**名字。最亮 180 已略高于 `GRAY`(170)。
+- ⚠️ **`ABYSSAL` 曾叫 `ABYSS`**（v1.8-Dev 当轮改名）。改名时只动了枚举值，`ABYSS_WORD_KEY` / `ABYSS_FLOWER` / `abyss_dirt` 是无关的同名物，**别一起改**。
+
+**当前归属**：死兆将至 = `ABYSSAL`，寰宇支配之剑 = `INFINITY`。
+
+### 19a. 🔴 手持提示要 Mixin，tooltip 不要（第四个 Mixin）
+
+**同一个需求在两处的答案不同，这是关键。**
+
+| | tooltip | 快捷栏上方手持提示 |
+|---|---|---|
+| 入口 | `ItemTooltipCallback` 交出 `List<Component>` | **无** |
+| 做法 | 改 line 0（`getStyledHoverName()` 就是它） | `client/mixin/HudSelectedItemNameMixin` |
+
+**为什么非注入不可**：`Hud.extractSelectedItemName` 是 **private**、组件建在局部变量、读两个 private 字段（`toolHighlightTimer`/`lastToolHighlight`）、算完直接送 `textWithBackdrop`，全程零暴露。`fabric-rendering-v1` 只能加/换**整个** HUD 元素，而这段文字属于 vanilla 元素 ⇒ 换掉它等于为一个颜色重写 vanilla 的计时、淡出与定位。
+
+**注入点是字节码选的**（26.2 实证）：
+```
+24: ItemStack.getHoverName()      <- @WrapOperation 包这里
+27: MutableComponent.append(...)      名字成为 sibling
+40: MutableComponent.withStyle(...)   rarity 颜色只作用于【根】
+```
+⇒ **只需让 `getHoverName()` 返回带色组件，sibling 的颜色胜过根**。这正是创造标签双色标题依赖的既有机制（见 1），复用而非重新发现。**vanilla 的计时/淡出/宽度/定位一行未改。**
+
+- `@WrapOperation` 包**一个调用点**，不是整个方法 ⇒ 全游戏其它成千处 `getHoverName()` 不受影响。
+- 两处共用 `AbyssFallTooltips.rarityName()` + `nameClock()`（都 public），**波浪在两处永不失步**。
+- `analyze_mixin` 报 `isValid: true`、零 error 零 warning。
+
+### 19b. 致敬碑文（`SwordOfTheCosmosTribute`）
+
+寰宇支配之剑的 tooltip 追加用户亲笔的十五行致敬（Avaritia / Morpheus1101）。🔴 **文案是用户的，一字不能改**；这个类只管排版与配色。
+
+**默认收起**，只显示一行 `按住 Shift 阅读碑文`（lang key `...tribute.hint`）；按住 Shift 铺开 25 行。**`Minecraft.hasShiftDown()`** 直接查两个 Shift 键的物理状态（340/344），不存状态、下一帧即生效，vanilla 自己在 tooltip 期间也读它（`ExtendedView`）。
+
+**排版**：空行分五段；`§7` 灰=叙述、`§8` 斜体=引语、**`§c` 红只给三句**（两个转折 + 收束句，用剑名同一个红）、Avaritia 引文缩进两格（tooltip 无边距，缩进只能进文本）。
+
+🔴 **排版不写进 lang 文件**：`§` 代码能用，但那会把排版塞进可翻译文本 —— 翻译者得原样保留 `§7`/`§o`，漏一个就静默变样。**lang 只承载文字。**
+
+⚠️ **没用 `appendHoverText`**（26.2 **已 `@Deprecated`**）、**没用 `ItemLore`**（它强制套 `DARK_PURPLE`+斜体，见 `ItemLore.LORE_STYLE`）⇒ 走已有的 `ItemTooltipCallback`，**零新增 Mixin**。
+
+**追加在染色 pass 之后**：碑文样式已终、无可被匹配的词，放前面等于让全游戏每个 tooltip 白走二十多行。
+
+## 20. 寰宇支配之剑 `abyssfall:fake_infinity_sword`（v1.8-Dev 新增）
+
+**Shader 系统的第二个消费者，纯外观剑。** 星空渲染与死兆将至同构（配置里第二条 `starfield` entry）。
+
+**属性只有一条**：`ATTACK_DAMAGE` modifier = **0.0**（tooltip 显示 `1`，即玩家空手值）；**`ATTACK_SPEED` 整条不加**（不是设 0 —— 设 0 会显示「4 攻击速度」，比 1.6 更难看）。与死兆将至同一做法（见 17f）。
+
+🔴 **属性必须显式替换，不能靠 `sword()` 的 baseline 凑**：`sword(material, dmg, spd)` 会把材质的 `attackDamageBonus` 加到伤害 baseline 上（NETHERITE = +4.0）⇒ 传 `0.0F` 实测得 modifier 4.0、tooltip 显示 5.0。**实测过**（真实 classpath）：显式写 modifier 才得 1.0/1.6，而原版下界合金剑同法算得 8.0/1.6（对照正确）。
+
+⚠️ **`sword(...)` 那两个参数因此是死的**，留着只为它顺带给的耐久/修复/附魔/横扫/蛛网规则 —— 没有不带 baseline 的重载。
+
+**tooltip 那行是 `+无限 攻击伤害`**，机制照抄 17g（`Display.override` + 逐字波浪），只有两处不同：
+- 走 `INFINITY_WORD_KEY`，客户端按 key 分派到**彩虹**调色板（`Mth.hsvToRgb`）
+- 🔴 **彩虹的步长与周期都不能与灰阶共用**：灰阶由余弦驱动**会折返**，相位差一整圈看起来只是「波过去了」；**色相不折返，它绕回自身** ⇒ `-0.2 × 8` 字母跨 1.4 圈，实测第 6 个字母与第 1 个**字节完全相同**。故 `HUE_STEP_PER_CHARACTER = -0.1`（跨 0.7 圈、最近一对 RGB 距 91）、`RAINBOW_CYCLE_MILLIS = 500`（**用户实测后自己定的值**）。
+
+🔴 **`Mth.hsvToArgb` 对负 hue 会抛异常**（首行 `(int)(hue*6)%6` 得负数 → 落进 `default` → throw，已实测）。而负相位是**常态**（步长为负）⇒ 必须 `Mth.positiveModulo(phase, 1.0F)`，**这不是防御性代码**。
+
+**贴图与遮罩是死兆将至的独立副本**（同像素、两套文件）：effect 身份含 mask，共享会把两把剑的美术永久绑死。代价是多编译一条 pipeline。
 
 
 

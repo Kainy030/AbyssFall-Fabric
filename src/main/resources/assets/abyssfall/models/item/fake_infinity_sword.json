@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/handheld",
+  "textures": {
+    "layer0": "abyssfall:item/fake_infinity_sword"
+  }
+}

@@ -31,7 +31,7 @@
 
 > 「原则是尽量不使用 mixin，因为我以前是写外挂的，我的思考方式就是遇事不决用钩子，所以需要你来最大程度地不用 mixin，用 Fabric API 事件。但凡是有例外，有时候不得不用钩子的时候就要放心大胆地用钩子，**你在代码中看到的钩子就是不得不用的情况**。」
 
-⇒ 目前**三个** Mixin：`client/mixin/HudStatusBarHeightRegistryImplMixin`（HUD 高度，`REFERENCE.md` 15a）+ `mixin/PlayerAttackMixin`（毕业武器接管，`REFERENCE.md` 17）+ `client/mixin/RenderTypeInvoker`（Shader 系统造 RenderType，`REFERENCE.md` 18b）。**都不要当技术债清理、不要试图用 API 重写**——前两个的理由见各自那节，第三个是 `RenderType.create` 为 package-private 且 Fabric API 未提供替代（已逐个核实 `api` 包）。写新功能时优先找 API 事件，找不到再注入并说明理由。
+⇒ 目前**四个** Mixin：`client/mixin/HudStatusBarHeightRegistryImplMixin`（HUD 高度，`REFERENCE.md` 15a）+ `mixin/PlayerAttackMixin`（毕业武器接管，`REFERENCE.md` 17）+ `client/mixin/RenderTypeInvoker`（Shader 系统造 RenderType，`REFERENCE.md` 18b）+ `client/mixin/HudSelectedItemNameMixin`（手持提示的物品名上色，`REFERENCE.md` 19a）。**都不要当技术债清理、不要试图用 API 重写**——前两个的理由见各自那节，第三个是 `RenderType.create` 为 package-private 且 Fabric API 未提供替代（已逐个核实 `api` 包），第四个是 `Hud.extractSelectedItemName` 全程零暴露且 Fabric 只能换整个 HUD 元素。写新功能时优先找 API 事件，找不到再注入并说明理由。
 
 **其他相处方式**：
 - 他问「这两个功能有什么区别」是真想搞清语义边界 → 直接答区别 + 什么情况下才看得出差异。说「简单回复即可」时别长篇大论。
@@ -507,6 +507,13 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 43. 🔴 **统计指标要选对，均匀 ≠ 随机。** 修星星朝向散列时，线性形式 `tu*7 + tv*13 + i*29` 的卡方是**完美的 0**，任何"追求均匀分布"的标准都会选它。但把它的空间分布打印出来是**完美的对角条纹**，渲染成天空会是斜向的规则纹理，比原来的不均匀更难看。真正合用的方案卡方 11.2（不完美但通过检验），空间无可见规律。
 
     **⚠️ 同一轮还栽在工具语义上**：我用 PowerShell 的 `[int]` 模拟 GLSL 的 `int()`，但**`[int]` 是四舍五入、`int()` 是截断**（`[int]7.58 = 8`，`Truncate(7.58) = 7`）。这让我上一轮报的所有分布数据都偏了，结论方向没错但数字全要重算。**跨语言模拟数值行为时，取整/截断/舍入的语义必须逐个核对**，别假设同名操作同义。
+44. 🔴 **同一个技术决定在「会折返的量」和「会绕回的量」上是相反的答案。** 灰阶波浪由余弦驱动，**折返**：相位差一整圈看起来只是「波过去了」，所以步长跨几圈都无所谓（`Abyss` 五个字母里实测就有两个同色，无害）。把同一个步长套到**色相**上却是灾难 —— 色相**绕回自身**，`-0.2 × 8` 字母跨 1.4 圈，第 6 个字母与第 1 个**字节完全相同**，`Infinity` 会长出重复色带。**这是教训 35 的同族**（那条说「参数走编译期常量」有作用域），但更隐蔽：那条的分界是数据**频率**，这条的分界是值域**拓扑**。抄一套现成的动画参数到新的色彩空间之前，先问它的值域是折返的还是循环的。
+
+45. **写 API 名之前 `javap` 列一遍，26.2 精简掉的东西比想象的多。** 本轮 `ChatFormatting` 上栽了：它现在**只剩 `code` 字段和 `toString()`**，`getChar()` 和 `getColor()` **都不存在**（教训 31 只记了 `getColor()` 那半）。同轮还写错 `ItemAttributeModifiers.compute` 的参数序（实际是 `(attribute, baseValue, slot)`）。**两次都是编译器抓住的，成本很低 —— 但都可以靠先看一眼签名避免。**
+
+46. **报「这是死代码」之前先确认是不是自己刚造的。** 本轮我先在调用点写了字面量 `"hint"`，让刚定义的 `HINT_KEY` 常量闲置；随后又留了个没人调的 `line(String, Style)` 重载。**两处都是我这一次自己造出来的**，不是历史妥协。收尾前扫一遍本轮新增的常量与方法有没有被真正引用，比事后被人问「这个为什么没用」要好。
+
+
 
 
 
@@ -574,7 +581,7 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 ## 7. 当前状态
 
 - **编译已验证**：`build` 与 `releaseJars` 都 `BUILD SUCCESSFUL`。产物 `build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`
-- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.5-Dev`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）
+- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.8-Dev`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）
 
 ### 7.1 已实测通过（用户在真实环境验证，**别再列成待确认项去催他测**）
 
@@ -632,6 +639,18 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 - 顺带修掉 `TextureAtlas.LOCATION_*` 的 deprecation 警告
 
 ⚠️ **1.5-Dev 的渲染观感尚未经用户完整实测**：贴图二值化与 debug 遮罩刚做完就收尾了。**待测项见 7.2。**
+**1.8-Dev 新增内容（寰宇支配之剑 + 自有稀有度 + 致敬碑文）**：
+
+- **寰宇支配之剑** `fake_infinity_sword`（`REFERENCE.md` 20）：纯外观剑，Shader 系统第二个消费者。伤害 modifier = 0、**不加攻速条目**；tooltip `+无限 攻击伤害` 走**彩虹**逐字波浪。贴图与遮罩是死兆将至的独立副本
+- **自有稀有度两级**（`REFERENCE.md` 19）：`ABYSSAL`（灰阶波浪）/ `INFINITY`（固定 `§c`）。vanilla `Rarity` 不可扩展 ⇒ 旁表 + 覆盖显示。**当前只改物品名颜色，无其它作用**（用户明确限定）。死兆将至 = ABYSSAL，寰宇支配之剑 = INFINITY
+- **第四个 Mixin** `HudSelectedItemNameMixin`（`REFERENCE.md` 19a）：手持提示的物品名上色。**已事先报告并获同意**，本轮唯一架构变动
+- **致敬碑文**（`REFERENCE.md` 19b）：寰宇支配之剑 tooltip 追加用户亲笔十五行，默认收起、按 Shift 展开。🔴 **文案是用户的，一字不能改**
+
+🟢 **用户已实测通过**：星空渲染在新剑上正确、tooltip 正常、彩虹速度（他自己把 `RAINBOW_CYCLE_MILLIS` 定为 **500**）。
+
+⚠️ **1.8-Dev 待测**：Abyssal 灰阶提亮后的观感（`0x1F1F1F`~`0xB4B4B4`，最亮 180 已略高于 vanilla `GRAY` 170）、手持提示里的波浪与 tooltip 是否观感一致、碑文展开后 25 行的实际高度与配色、中文提示语「按住 Shift 阅读碑文」的措辞。
+
+
 
 ### 7.2 仍未验证的项
 
@@ -674,6 +693,8 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 **内容**
 - **毕业武器（死兆将至）待定项**：横扫附带目标是否也秒杀未定；`stabAttack` 那条路是剑就不需要覆盖
+- **自有稀有度目前只改名字颜色** —— 用户明确限定本轮只做这个。掉率、排序、tooltip 上标注稀有度名称等语义**全未设计，别自作主张加**（`REFERENCE.md` 19）
+- **寰宇支配之剑无配方、无战利品途径**，只能创造栏取
 
 **Shader 渲染系统（地基三，1.4-Dev 建立，1.5-Dev 升级）**
 - ~~🔴 **颜色系统未设计**~~ ✅ **1.5-Dev 兑现了第一步**：`DerivedColorSource` + 四种推导，从物品自己的贴图推色（`REFERENCE.md` 18g）。⚠️ **这不等于「颜色系统设计完了」** —— 用户当初要的「颜色来源、计算方式、Provider 怎么决定效果」中，**「Provider 怎么决定」仍未设计**（那属于 game core）
@@ -781,6 +802,10 @@ Get-ChildItem $p -Directory | ForEach-Object { $_.Name }
   - **贴图 alpha 只能是 0 或 255**（1.5-Dev）——`make-death-omen-texture.ps1` 的二值化不是"洁癖"，是让厚度可见的唯一办法（`REFERENCE.md` 18i）
   - **`ShaderVertex` 携带两套 UV**（遮罩 UV + 图集 UV），`UV1` 装遮罩 UV 的定点数 —— 顶点格式只有一个浮点 UV 槽，这不是冗余设计（18h-2）
   - **`ItemHullGeometry` 沿各自法线外推而非固定轴** —— 固定轴对侧壁全错（18h）
+  - **自有稀有度是旁表不是 data component**，且 vanilla `Rarity` 真的不可扩展（`REFERENCE.md` 19）
+  - **彩虹的步长/周期与灰阶波浪各一套**——色相绕回自身、灰阶余弦折返，**这两处「不一致」是对的，别统一**（教训 44）
+  - **`Mth.positiveModulo` 包住 hue 不是防御性代码**，负 hue 会让 `hsvToArgb` 抛异常（`REFERENCE.md` 20）
+  - **手持提示要 Mixin 而 tooltip 不要**——同一需求两个答案（`REFERENCE.md` 19a）
 
   他要求过「最大程度按 HANDOFF 执行，有矛盾随时通知我」——照做，但矛盾要先自己核实过再报。
 - **能跑就跑一遍**（教训 13）。他不要你跑 runClient，但**不禁止你跑纯 Java 验证**，成本极低且他很认这种证据。

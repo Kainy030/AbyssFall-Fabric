@@ -49,24 +49,30 @@ import com.abyssfall.shadercore.effect.StarfieldEffect;
  */
 public record ShaderConfigData(Map<Identifier, ShaderEffect> effects) {
 	/**
-	 * A fresh install: the blade, with everything at its defaults.
+	 * A fresh install: the two items that ship with a stated appearance.
 	 *
-	 * <p>Written out as an ordinary entry rather than special-cased, so the shipped file is an example
-	 * of the format as much as it is a setting.
+	 * <p>Written out as ordinary entries rather than special-cased, so the shipped file is an example
+	 * of the format as much as it is a setting. Two entries rather than one also make the shape of the
+	 * file plain — it is a map, and the second entry is what a reader adding a third copies.
+	 *
+	 * <p>Each names its own mask, and the two masks are separate files even though they currently hold
+	 * the same pixels. An effect's identity includes its mask, so sharing one would tie the two items'
+	 * artwork together permanently: repainting one blade would silently repaint the other. The cost of
+	 * keeping them apart is one more compiled pipeline, since the mask's atlas rectangle differs.
 	 *
 	 * <p>🔴 The mask must be the <em>mask</em>, not the item's texture. The starfield reads the mask's red
 	 * channel as its opacity, and the item's artwork has none — its red is zero everywhere, so the whole effect
 	 * is discarded and the item renders untouched, which is indistinguishable from the effect not existing at
 	 * all. This bit the default configuration once already.
 	 *
-	 * <p>⚠️ <strong>This entry is a starfield, so {@code masked_pulse} has no default consumer.</strong> That
+	 * <p>⚠️ <strong>Both entries are starfields, so {@code masked_pulse} has no default consumer.</strong> That
 	 * kind is still registered and still readable from a file — it is simply not what the shipped default asks
-	 * for. Anyone changing this entry back should know that the two kinds read the mask differently:
+	 * for. Anyone changing an entry back should know that the two kinds read the mask differently:
 	 * {@code masked_pulse} assigns a behaviour to each of green and blue and ignores red, while the starfield
-	 * reads red alone. The mask this points at is red-only, so it drives the starfield and would leave
+	 * reads red alone. The masks these point at are red-only, so they drive the starfield and would leave
 	 * {@code masked_pulse} entirely transparent.
 	 *
-	 * <p>🔴 The mask is named as an <strong>atlas sprite</strong> — {@code abyssfall:item/…}, with no
+	 * <p>🔴 A mask is named as an <strong>atlas sprite</strong> — {@code abyssfall:item/…}, with no
 	 * {@code textures/} prefix and no {@code .png} — because that is what makes an animated mask work. See
 	 * {@code ShaderEffect#mask}. Writing the old texture-path form fails to resolve, which is logged as an
 	 * error and draws nothing.
@@ -74,7 +80,10 @@ public record ShaderConfigData(Map<Identifier, ShaderEffect> effects) {
 	public static final ShaderConfigData DEFAULT = new ShaderConfigData(Map.of(
 			Identifier.fromNamespaceAndPath(AbyssFall.MOD_ID, "final_death_omen"),
 			StarfieldEffect.of(Identifier.fromNamespaceAndPath(
-					AbyssFall.MOD_ID, "item/final_death_omen_mask"))));
+					AbyssFall.MOD_ID, "item/final_death_omen_mask")),
+			Identifier.fromNamespaceAndPath(AbyssFall.MOD_ID, "fake_infinity_sword"),
+			StarfieldEffect.of(Identifier.fromNamespaceAndPath(
+					AbyssFall.MOD_ID, "item/fake_infinity_sword_mask"))));
 
 	public static final Codec<ShaderConfigData> CODEC = RecordCodecBuilder.create(instance -> instance.group(
 			Codec.unboundedMap(Identifier.CODEC, ShaderEffectTypes.CODEC)

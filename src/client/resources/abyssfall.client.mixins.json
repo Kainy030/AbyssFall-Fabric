@@ -3,6 +3,7 @@
 	"package": "com.abyssfall.client.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
+		"HudSelectedItemNameMixin",
 		"HudStatusBarHeightRegistryImplMixin",
 		"RenderTypeInvoker"
 	],
