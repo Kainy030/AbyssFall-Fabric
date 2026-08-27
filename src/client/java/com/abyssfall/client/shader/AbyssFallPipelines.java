@@ -190,6 +190,10 @@ public final class AbyssFallPipelines {
 		// behind them are what change. See ShaderSpriteAtlas.
 		addSpriteDefines(builder, effect);
 
+		// Where the mask ended up in the atlas. Separate from the SPRITE_n_* chain because every effect has
+		// exactly one mask and the shader reads it by name, not by index.
+		addMaskDefines(builder, effect);
+
 		return RenderTypeInvoker.abyssfall$create(
 				AbyssFall.MOD_ID + ":" + effect.type().id().getPath() + "/" + effect.mask(),
 				RenderSetup.builder(builder.build())
@@ -203,10 +207,22 @@ public final class AbyssFallPipelines {
 						// derivation would then faithfully amplify.
 						.withTexture("Sampler0", key.atlas(),
 								() -> RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST))
-						// Sampler1 stays the mask. NEAREST because the mask is read as data, not as a picture:
-						// linear filtering would blend one channel into another along their shared edges and
-						// invent pixels that belong to neither effect.
-						.withTexture("Sampler1", effect.mask(),
+						// 🔴 Sampler1 is the mask, and it is now bound to an ATLAS rather than to the mask's
+						// own texture file.
+						//
+						// That is what lets a mask animate. Only TextureAtlas implements TickableTexture in
+						// 26.2, so a standalone mask sat on frame zero forever and its .mcmeta was never read.
+						// The atlas ticks, so the mask breathes — see ShaderEffect#mask.
+						//
+						// The shader can no longer treat its mask coordinate as 0..1 over a whole texture,
+						// because 0..1 now spans the entire sheet. It maps through MASK_U0..MASK_V1 instead,
+						// which addMaskDefines supplies.
+						//
+						// NEAREST because the mask is read as data, not as a picture: linear filtering would
+						// blend one channel into another along their shared edges and invent pixels that
+						// belong to neither effect. On an atlas it would also bleed in the neighbouring
+						// sprite, which is a second reason the answer is the same.
+						.withTexture("Sampler1", maskAtlasOf(effect, key.atlas()),
 								() -> RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST))
 						// Sampler2 is the lightmap texture, bound by vanilla because this setup asks for it.
 						// LINEAR is what vanilla's own shaders use for the lightmap — it is a gradient, not
@@ -262,6 +278,62 @@ public final class AbyssFallPipelines {
 			builder.withShaderDefine(prefix + "U1", bounds.u1());
 			builder.withShaderDefine(prefix + "V1", bounds.v1());
 		}
+	}
+
+	/**
+	 * Adds the {@code MASK_U0} .. {@code MASK_V1} defines locating the mask within its atlas.
+	 *
+	 * <h2>Why the mask needs these at all now</h2>
+	 *
+	 * <p>While the mask was its own texture, a {@code 0..1} coordinate meant "across the mask", and the shader
+	 * could sample it directly. Bound to an atlas, {@code 0..1} means "across the whole sheet" — so the shader
+	 * has to be told which rectangle of that sheet is its mask, and map into it.
+	 *
+	 * <p>The trade is worth it: this is what makes an animated mask possible at all (see
+	 * {@code ShaderEffect#mask}), and the coordinates are stable for exactly the same reason the star sprites'
+	 * are — vanilla animates by replacing pixels inside a fixed rectangle.
+	 *
+	 * <p>⚠️ <strong>An unresolved mask is not skipped quietly.</strong> Unlike one missing sprite among ten,
+	 * a missing mask means the effect has no idea where it may draw; the whole-sheet fallback would have it
+	 * sample another item's artwork as coverage data. So this logs an error and emits the degenerate rectangle,
+	 * which discards every fragment — nothing drawn, rather than nonsense drawn.
+	 */
+	private static void addMaskDefines(final RenderPipeline.Builder builder, final ShaderEffect effect) {
+		ShaderSpriteAtlas.SpriteBounds bounds = ShaderSpriteAtlas.get(effect.mask());
+
+		if (bounds == null) {
+			AbyssFall.LOGGER.error(
+					"Mask {} for effect {} was never resolved; the effect will draw nothing. Is it in an atlas?",
+					effect.mask(), effect.type().id());
+
+			builder.withShaderDefine("MASK_U0", 0.0F);
+			builder.withShaderDefine("MASK_V0", 0.0F);
+			builder.withShaderDefine("MASK_U1", 0.0F);
+			builder.withShaderDefine("MASK_V1", 0.0F);
+			return;
+		}
+
+		builder.withShaderDefine("MASK_U0", bounds.u0());
+		builder.withShaderDefine("MASK_V0", bounds.v0());
+		builder.withShaderDefine("MASK_U1", bounds.u1());
+		builder.withShaderDefine("MASK_V1", bounds.v1());
+	}
+
+	/**
+	 * The atlas the mask was stitched into, falling back to the item's own atlas.
+	 *
+	 * <p>Read from the resolved sprite rather than assumed, because nothing here decides which sheet a mask
+	 * lands on — that is the resource pack's business, and a pack is free to put a mask somewhere other than
+	 * where the item is.
+	 *
+	 * <p>The fallback only matters when the mask never resolved, in which case
+	 * {@link #addMaskDefines} has already emitted a rectangle that discards everything and logged why. Binding
+	 * the item atlas keeps the render setup valid so that failure stays a blank effect rather than a crash.
+	 */
+	private static Identifier maskAtlasOf(final ShaderEffect effect, final Identifier itemAtlas) {
+		ShaderSpriteAtlas.SpriteBounds bounds = ShaderSpriteAtlas.get(effect.mask());
+
+		return bounds != null ? bounds.atlas() : itemAtlas;
 	}
 
 	/**

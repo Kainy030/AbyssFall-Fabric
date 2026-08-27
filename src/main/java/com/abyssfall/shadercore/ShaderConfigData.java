@@ -65,11 +65,16 @@ public record ShaderConfigData(Map<Identifier, ShaderEffect> effects) {
 	 * {@code masked_pulse} assigns a behaviour to each of green and blue and ignores red, while the starfield
 	 * reads red alone. The mask this points at is red-only, so it drives the starfield and would leave
 	 * {@code masked_pulse} entirely transparent.
+	 *
+	 * <p>🔴 The mask is named as an <strong>atlas sprite</strong> — {@code abyssfall:item/…}, with no
+	 * {@code textures/} prefix and no {@code .png} — because that is what makes an animated mask work. See
+	 * {@code ShaderEffect#mask}. Writing the old texture-path form fails to resolve, which is logged as an
+	 * error and draws nothing.
 	 */
 	public static final ShaderConfigData DEFAULT = new ShaderConfigData(Map.of(
 			Identifier.fromNamespaceAndPath(AbyssFall.MOD_ID, "final_death_omen"),
 			StarfieldEffect.of(Identifier.fromNamespaceAndPath(
-					AbyssFall.MOD_ID, "textures/item/final_death_omen_mask.png"))));
+					AbyssFall.MOD_ID, "item/final_death_omen_mask"))));
 
 	public static final Codec<ShaderConfigData> CODEC = RecordCodecBuilder.create(instance -> instance.group(
 			Codec.unboundedMap(Identifier.CODEC, ShaderEffectTypes.CODEC)

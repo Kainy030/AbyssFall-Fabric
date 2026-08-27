@@ -37,14 +37,22 @@
 # exactly that reason. It was replaced deliberately, to isolate the starfield while it is being brought up.
 # Restoring masked_pulse means writing green and blue again.
 #
-# WHY IT IS NOT ANIMATED, THOUGH THE REFERENCE'S IS
-# -------------------------------------------------
-# The reference's mask is 16x144 -- nine frames -- and breathes. Ours cannot, yet: a mask is bound as a
-# standalone texture by the render setup, and in 26.2 only TextureAtlas implements TickableTexture. A .mcmeta
-# beside a standalone texture is simply never read, so an animated mask would sit permanently on frame 0.
+# ✅ IT IS ANIMATED NOW — 9 frames, as the reference's is
+# ------------------------------------------------------
+# This once said an animated mask was impossible in 26.2. That was wrong, and the reasoning is worth keeping
+# because it was a good trap: only TextureAtlas implements TickableTexture, so a mask bound as its OWN texture
+# does sit on frame zero forever and its .mcmeta is never read.
 #
-# The stars themselves DO animate, because they live in the item atlas -- which is the animation that matters,
-# and the one the effect's shimmer comes from.
+# The mistake was concluding "therefore a mask cannot animate". A mask does not have to be a standalone
+# texture. Bound as an ATLAS SPRITE it ticks like any other sprite — which is exactly how the star sprites
+# have been animating all along. Nothing had to be added either: vanilla's items.json already stitches
+# `item/`, and same-named atlas definitions across packs are concatenated rather than overridden, so a mask
+# under textures/item/ was in the atlas the entire time.
+#
+# The cost is one indirection: 0..1 now spans the whole sheet, so the shader maps through MASK_U0..MASK_V1
+# defines that the renderer resolves at bake time.
+#
+# ⇒ This script may write a multi-frame strip. A .mcmeta beside it is read and honoured.
 
 Add-Type -AssemblyName System.Drawing
 
@@ -157,9 +165,12 @@ $result.Save($target, [System.Drawing.Imaging.ImageFormat]::Png)
 $result.Dispose()
 
 # Any .mcmeta left over from an earlier animated version would be dead weight -- see the note at the top.
+# ⚠️ A .mcmeta beside the mask is now MEANINGFUL — it drives the animation (see the note at the top). This
+# script writes a single frame, so it does not write one; but it must not delete an existing one either,
+# because that would silently turn an animated mask into a still one.
 if (Test-Path $metaPath) {
-	Remove-Item $metaPath -Force
-	Write-Output "Removed stale $metaPath"
+	Write-Output "Left existing $metaPath alone (it drives the mask's animation)"
+	Write-Output "  -> this script wrote ONE frame; if that .mcmeta names more, the mask will be wrong"
 }
 
 Write-Output "Outline (line art, transparent): $outlineCount px"

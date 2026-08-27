@@ -206,6 +206,10 @@ public final class ShaderLayerModelPlugin {
 		}
 
 		for (ShaderEffect effect : AbyssFallShaderConfig.get().effects().values()) {
+			// The mask, unconditionally: every effect has one, and it is a sprite like any other since it
+			// stopped being bound as a standalone texture. See ShaderEffect#mask for why that changed.
+			ShaderSpriteAtlas.resolve(baker, effect.mask(), resolved);
+
 			for (Identifier spriteId : effect.spriteDependencies()) {
 				ShaderSpriteAtlas.resolve(baker, spriteId, resolved);
 			}
@@ -218,13 +222,17 @@ public final class ShaderLayerModelPlugin {
 	 * <h2>🔴 Atlas coordinates are converted back to sprite-local ones</h2>
 	 *
 	 * <p>A baked quad's UVs address the item atlas — a position within one large sheet of every item texture.
-	 * A mask is not in that atlas; it is a standalone texture bound directly, and reads {@code 0..1} across its
-	 * own width. Handing atlas coordinates to a mask sampler would read whatever else happened to be packed at
-	 * those coordinates, which is to say a different item's artwork.
+	 * Both coordinates are kept: the atlas one for reading the item's own artwork, and a sprite-local
+	 * {@code 0..1} one derived from it.
 	 *
-	 * <p>So each UV is mapped back through its own sprite's extent, giving the position within the item's own
-	 * texture. The consequence is the useful one: mask artwork lines up with item artwork pixel for pixel, so a
-	 * mask can be painted by tracing the item.
+	 * <p>The local pair is what a mask is read with. It has to exist separately because a mask's artwork is
+	 * authored against the item's own texture — pixel {@code (3, 7)} of the mask means pixel {@code (3, 7)} of
+	 * the item — and that correspondence is only expressible in coordinates local to the sprite. The useful
+	 * consequence is that a mask can be painted by tracing the item.
+	 *
+	 * <p>⚠️ The mask is itself an atlas sprite now (see {@code ShaderEffect#mask}), so the shader maps this
+	 * local pair into the mask's own rectangle before sampling. That mapping belongs to the shader, which knows
+	 * the rectangle as a define; nothing here needs to.
 	 */
 	private static ShaderQuad convert(final BakedQuad quad) {
 		TextureAtlasSprite sprite = quad.materialInfo().sprite();

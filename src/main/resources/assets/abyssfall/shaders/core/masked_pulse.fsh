@@ -37,6 +37,21 @@ out vec4 fragColor;
 const float TAU = 6.28318530718;
 const float PI = 3.14159265359;
 
+// The mask's rectangle within its atlas, contributed by the renderer at bake time.
+//
+// 🔴 The mask lives in an atlas rather than in its own texture, which is what lets it animate: only
+// TextureAtlas implements TickableTexture in 26.2, so a standalone mask would sit on frame zero forever and its
+// .mcmeta would never even be read. The cost is this indirection — texCoord0 is 0..1 over the mask's own
+// artwork, so it has to be mapped into the sheet before sampling.
+//
+// ⚠️ Only SAMPLING goes through here. Anything reasoning about mask pixels — the sampled-flicker cell index
+// below — must keep using texCoord0, because that is the coordinate whose 0..1 spans the artwork. Atlas
+// coordinates would quantise against the whole sheet and produce cells that do not line up with pixels.
+vec2 maskCoord(vec2 local) {
+	return vec2(mix(MASK_U0, MASK_U1, local.x),
+	            mix(MASK_V0, MASK_V1, local.y));
+}
+
 // Every value below arrives as a #define from MaskedPulseEffect. Nothing about the item, its size or
 // its colours is written here — MASK_RESOLUTION in particular must come from configuration, since a
 // mask is not necessarily 16 pixels and this project already ships a 16x48 item texture.
@@ -115,7 +130,7 @@ vec3 deriveColor(vec3 original) {
 #endif
 
 void main() {
-	vec4 mask = texture(Sampler1, texCoord0);
+	vec4 mask = texture(Sampler1, maskCoord(texCoord0));
 
 	// One shared pulse. GameTime is a 0..1 ramp over a Minecraft day, so a rate is expressed as
 	// cycles per day rather than in ticks.

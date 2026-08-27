@@ -48,7 +48,7 @@
 | Minecraft | **26.2**；**无映射**（26.1 起不再混淆，Fabric 停止维护第三方映射） |
 | Loader / Loom / Fabric API | 0.19.3 / 1.17.19（插件 id **`net.fabricmc.fabric-loom`**）/ 0.158.0+26.2 |
 | Gradle / JDK | 9.7.0 / **25**（`java-runtime-epsilon`），toolchain 与 `release` 都是 25 |
-| 版本 / 许可 | `1.6-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**） |
+| 版本 / 许可 | `1.7-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**） |
 | 源集 | `splitEnvironmentSourceSets()`：`src/main` + `src/client` |
 | Git | `https://github.com/Kainy030/AbyssFall-Fabric.git`，分支 `main` |
 
@@ -285,12 +285,14 @@ float intensity = f(change.current().ratio());   // 随 San 连续变化，无�
 
 - ~~**`Z_PLANE = 8.5/16` 假设平面物品** ⇒ 3D 模型物品（盾牌、方块物品）位置会偏。需从 baked quads 推真实包围盒~~
   ✅ **v1.5-Dev 已解决，并且这条旧表述是错的**：受影响的不是「3D 物品」这个子集，而是**全部物品** —— vanilla 给每个生成型物品都造了 1/16 厚度 + 逐像素侧壁，**没有一个物品是平的**。现在几何跟随物品真实外壳（`ShaderGeometrySource` / `ItemHullGeometry`，见 `REFERENCE.md` 18h），`Z_PLANE` 已删除
-- **bind group / 顶点格式固定**：所有效果 shader 必须 import 同一套 uniform。⚠️ **v1.5-Dev 起 `Sampler0` 是物品图集、`Sampler1` 是遮罩**（原先两个都绑遮罩且 `Sampler0` 从不读）；**v1.6-Dev 起 `Sampler2` 是 vanilla lightmap**（星空需要，见 `REFERENCE.md` 18j-6）。新种类若需第四张贴图，得给 `AbyssFallPipelines` 加选项
+- **bind group / 顶点格式固定**：所有效果 shader 必须 import 同一套 uniform。⚠️ **v1.5-Dev 起 `Sampler0` 是物品图集、`Sampler1` 是遮罩**（原先两个都绑遮罩且 `Sampler0` 从不读）；**v1.6-Dev 起 `Sampler2` 是 vanilla lightmap**（星空需要，见 `REFERENCE.md` 18j-6）；**v1.7-Dev 起 `Sampler1` 绑的是图集而非遮罩自己的纹理文件**（这样遮罩才能播动画，见 `REFERENCE.md` 18j-15）。新种类若需第四张贴图，得给 `AbyssFallPipelines` 加选项
 - 绿/蓝共色（见 4b.4）
 - **`glowing` 推导对近黑物品等于不发光**（公式与底层亮度成正比，实测增量仅 +3.5/255，见 `REFERENCE.md` 18g）
 - ~~**`masked_pulse` 之外仍无第二个效果种类**（星空未做）~~
   ✅ **v1.6-Dev 已解决**：`StarfieldEffect`（`abyssfall:starfield`）落地，移植自 Avaritia 的 `cosmic.frag`，**用户已在游戏里确认渲染正确**。见 `REFERENCE.md` 18j
-- 🔴 **`masked_pulse` 当前无默认配置消费者**：`ShaderConfigData.DEFAULT` 里死兆将至改用 `starfield`，且 debug 遮罩的 G/B 通道被清零 ⇒ 那条路径这一轮完全没走过。**不是坏了，是没人调用。**恢复它要同时改配置与遮罩生成脚本，见 `REFERENCE.md` 18j-9
+- 🔴 **`masked_pulse` 当前无默认配置消费者**：`ShaderConfigData.DEFAULT` 里死兆将至改用 `starfield` ⇒ 那条路径这一轮完全没走过。**不是坏了，是没人调用。**⚠️ **v1.7-Dev 起当前遮罩是原版寰宇支配之剑的遮罩（只有红通道有数据）**，所以 `masked_pulse` 在它上面依然完全透明。恢复它要同时改配置与遮罩，见 `REFERENCE.md` 18j-9
+- ~~**遮罩无法播动画**（26.2 只有 `TextureAtlas` 实现 `TickableTexture`）~~
+  ✅ **v1.7-Dev 已解决，且原结论是错的**：遮罩不必是独立纹理，绑成**图集精灵**就跟着图集 tick。vanilla 的 `items.json` 本来就收 `item/` 目录，同名 atlas 定义是叠加不是覆盖 ⇒ 遮罩一直都在图集里。代价是 shader 要经 `MASK_U0..V1` 映射。见 `REFERENCE.md` 18j-15
 
 ---
 
@@ -498,6 +500,14 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
     这条与教训 32（方法名对≠签名对）同族，但更隐蔽：我核实了「`pipelineCache` 用 `computeIfAbsent`」这个**事实**，却没核实「键类型的 `equals` 语义」这个**前提**。`Map` 的行为由键的 `equals` 决定，而那是另一个类的事。**看到 `computeIfAbsent` 就要去看键类有没有 `equals`。** 更普遍的教训：**审查时报出的 bug 与实现时写下的代码，需要同等强度的证据** —— 我对自己写的代码要求实测，对自己报的 bug 却只要求推理，这个不对称浪费了用户一轮注意力。
 
+42. 🔴 **「A 不成立」不等于「目标做不到」——别把一条实现路径的失败当成能力边界。** v1.6-Dev 我断言「26.2 只有 `TextureAtlas` 实现 `TickableTexture` ⇒ 遮罩永远不会律动」，并把它写进了 REFERENCE 和脚本注释。前半句是实测的事实，**后半句是我自己加的推论，而且错了**：遮罩不必是独立纹理，绑成图集精灵它就跟着图集 tick。**反例当时就在项目里** —— 星星素材一直在这么做，我甚至亲手写过「动画由 vanilla 驱动」的注释。
+
+    **代价**：用户为此专门问了一轮「是不是没办法绕过」，而正确答案是「一行绑定的事」。**下次给出「做不到」这类结论前，先把已经能工作的同类功能数一遍** —— 如果项目里有东西已经做到了类似的事，那"做不到"几乎肯定是错的。
+
+43. 🔴 **统计指标要选对，均匀 ≠ 随机。** 修星星朝向散列时，线性形式 `tu*7 + tv*13 + i*29` 的卡方是**完美的 0**，任何"追求均匀分布"的标准都会选它。但把它的空间分布打印出来是**完美的对角条纹**，渲染成天空会是斜向的规则纹理，比原来的不均匀更难看。真正合用的方案卡方 11.2（不完美但通过检验），空间无可见规律。
+
+    **⚠️ 同一轮还栽在工具语义上**：我用 PowerShell 的 `[int]` 模拟 GLSL 的 `int()`，但**`[int]` 是四舍五入、`int()` 是截断**（`[int]7.58 = 8`，`Truncate(7.58) = 7`）。这让我上一轮报的所有分布数据都偏了，结论方向没错但数字全要重算。**跨语言模拟数值行为时，取整/截断/舍入的语义必须逐个核对**，别假设同名操作同义。
+
 
 
 ⚠️ `blockstates/*.json` 用 `ConvertFrom-Json` 会**误报**（空字符串作属性名是合法 blockstate 写法），别据此改文件；**含中文的 `.ps1` 必须存成带 BOM 的 UTF-8**。
@@ -629,12 +639,14 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 **Shader 性能**：渲染层包装**所有**物品模型（理由见 4b.3）。开满物品的创造栏 / 大量掉落物场景是否掉帧 —— 唯一有性能风险的地方，用户未报告问题但也未专门压测。⚠️ **v1.5-Dev 起单个物品的 quad 数从 1 涨到「2 + 侧壁数」**（死兆将至实测 98 个）；**v1.6-Dev 的星空改用 `ItemFacesGeometry`（只 ±Z 两面，死兆将至 = 2 quad）**，所以星空这条路径反而比 `masked_pulse` 轻。压测仍未做。
 
-**🔴 1.5-Dev 渲染观感（部分已在 1.6-Dev 解决）**：
-- **厚度是否终于可见** —— 贴图二值化后侧壁 100% 长在可见像素上，但**没有进游戏确认过**
-- ~~**debug 遮罩的分区是否清晰**~~ ⚠️ **1.6-Dev 起这张遮罩不再分区**：改成「线稿内部填纯红、轮廓线与外部全透明」，专供星空。G/B 归零 ⇒ `masked_pulse` 在它上面完全透明
-- **四种推导各自的观感** —— `tinted`/`drained`/`inverted`/`glowing` 全部实现且 codec 验证通过，但**一个都没在游戏里看过**。改 `run/config/AbyssFallShader.json` 的 `derivation` 字段即可切换。⚠️ 现在默认配置是 `starfield`，看推导得先把 `type` 改回 `abyssfall:masked_pulse` **并且**重新生成带 G/B 的遮罩
+**🔴 1.5-Dev 渲染观感（部分已在 1.6/1.7-Dev 解决）**：
+- **厚度是否终于可见** —— 贴图二值化后侧壁 100% 长在可见像素上，但**没有进游戏确认过**。⚠️ 1.7-Dev 起物品贴图换成了原版寰宇支配之剑的（实心、756 个不透明像素），这条待测项的前提已变
+- ~~**debug 遮罩的分区是否清晰**~~ ⚠️ **1.7-Dev 起遮罩是原版那张**（只覆盖剑刃中段、三档渐变、9 帧呼吸），不再有分区
+- **四种推导各自的观感** —— `tinted`/`drained`/`inverted`/`glowing` 全部实现且 codec 验证通过，但**一个都没在游戏里看过**。要看得先把 `type` 改回 `abyssfall:masked_pulse` **并且**换一张带 G/B 的遮罩
 - **`glowing` 对近黑物品的缺陷**已算清（+3.5/255，见 `REFERENCE.md` 18g），但修法涉及数值语义，**未动、待用户决定**
-- ~~当前配置刻意是**红蓝 + 高抽样密度**用于 debug~~ —— `FixedColorSource` 已在 1.6-Dev 删除（用户授意），红蓝对照色不再存在
+- ~~当前配置刻意是**红蓝 + 高抽样密度**用于 debug~~ —— `FixedColorSource` 已在 1.6-Dev 删除（用户授意）
+
+**✅ 星空已实测通过（1.6/1.7-Dev，用户逐帧对比原版确认）**：用户原话「效果喜人，我逐帧对比和原版相差无几，我甚至认为我们复刻出来的东西要比原版还好」、修完散列后「很好看，宇宙像是有生命」。**这条路径不要再动**，除非用户提出。
 
 **顶点颜色通路（4d 提出的方案）**：✅ **1.6-Dev 已在游戏里验证** —— 星空的 `depth` / 两个光照等级全部走顶点颜色的 R/G/B 字节，yaw/pitch 走 `UV2` 的 16-bit 对，用户确认星空渲染正确 ⇒ 顶点属性确实能把值送到 fragment stage，`RGBA8_UNORM` 归一化行为符合预期。
 

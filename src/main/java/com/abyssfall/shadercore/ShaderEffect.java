@@ -59,10 +59,30 @@ public interface ShaderEffect {
 	ShaderEffectType<?> type();
 
 	/**
-	 * The mask texture, whose channels decide which fragments this effect may cover.
+	 * The mask sprite, whose channels decide which fragments this effect may cover.
 	 *
 	 * <p>Every effect has one: an effect that covered an item edge to edge would have no way to leave
 	 * the item recognisable. What the individual channels mean is the effect's own business.
+	 *
+	 * <h2>🔴 This is an atlas sprite name, not a texture path</h2>
+	 *
+	 * <p>So {@code abyssfall:item/my_mask} rather than {@code abyssfall:textures/item/my_mask.png} — the same
+	 * form {@link #spriteDependencies()} uses, and for the same reason.
+	 *
+	 * <p>It was a standalone texture path once, and that quietly cost the mask its animation. In 26.2 only
+	 * {@code TextureAtlas} implements {@code TickableTexture}, so a mask bound as its own texture sits on frame
+	 * zero forever no matter what its {@code .mcmeta} says — the file is never even read. A mask in the atlas
+	 * animates, because the atlas ticks and vanilla blits the current frame into the sprite's fixed rectangle.
+	 *
+	 * <p>Nothing had to be added to make this possible: vanilla's own {@code items.json} already stitches
+	 * {@code item/}, and same-named atlas definitions across packs are <em>concatenated</em> rather than
+	 * overridden ({@code SpriteSourceList.load} walks the whole resource stack). A mask under
+	 * {@code textures/item/} was therefore in the atlas the entire time; the old path form simply declined to
+	 * look for it there.
+	 *
+	 * <p>⚠️ Because the sprite's place in the atlas depends on the resource pack, <strong>the coordinates are
+	 * not part of this name and must not be</strong>. The renderer resolves them at bake time and contributes
+	 * them as defines, exactly as it does for {@link #spriteDependencies()}.
 	 */
 	Identifier mask();
 
@@ -91,6 +111,11 @@ public interface ShaderEffect {
 	 * rather than ten, say. <strong>The effect names sprites; it does not know where they are.</strong> Where
 	 * the atlas stitcher put them depends on the resource pack, so a coordinate has no place in an effect's
 	 * identity or in a configuration file — the renderer contributes those as additional defines.
+	 *
+	 * <p>⚠️ The {@linkplain #mask() mask} is <em>not</em> listed here and must not be. It is resolved
+	 * unconditionally by the renderer, since every effect has one and the shader reads it through its own
+	 * {@code MASK_*} defines rather than through the positional {@code SPRITE_n_*} chain. Listing it would give
+	 * it a second, meaningless index.
 	 *
 	 * <p>This is deliberately a list of names rather than anything richer. An effect stating a dependency is not
 	 * the same as an effect knowing how texture atlases work.
