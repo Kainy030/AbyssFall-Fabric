@@ -28,7 +28,8 @@ import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.Nullable;
 
 import com.abyssfall.AbyssFall;
-import com.abyssfall.shadercore.effect.StarfieldEffect;
+import com.abyssfall.shadercore.effect.AbyssEffect;
+import com.abyssfall.shadercore.effect.CosmicEffect;
 
 /**
  * The contents of {@code AbyssFallShader.json}: which items have a stated appearance.
@@ -60,17 +61,22 @@ public record ShaderConfigData(Map<Identifier, ShaderEffect> effects) {
 	 * artwork together permanently: repainting one blade would silently repaint the other. The cost of
 	 * keeping them apart is one more compiled pipeline, since the mask's atlas rectangle differs.
 	 *
-	 * <p>🔴 The mask must be the <em>mask</em>, not the item's texture. The starfield reads the mask's red
+	 * <p>🔴 The mask must be the <em>mask</em>, not the item's texture. Both shipped kinds read the mask's red
 	 * channel as its opacity, and the item's artwork has none — its red is zero everywhere, so the whole effect
 	 * is discarded and the item renders untouched, which is indistinguishable from the effect not existing at
 	 * all. This bit the default configuration once already.
 	 *
-	 * <p>⚠️ <strong>Both entries are starfields, so {@code masked_pulse} has no default consumer.</strong> That
-	 * kind is still registered and still readable from a file — it is simply not what the shipped default asks
-	 * for. Anyone changing an entry back should know that the two kinds read the mask differently:
-	 * {@code masked_pulse} assigns a behaviour to each of green and blue and ignores red, while the starfield
-	 * reads red alone. The masks these point at are red-only, so they drive the starfield and would leave
-	 * {@code masked_pulse} entirely transparent.
+	 * <p>⚠️ <strong>The two entries are different kinds, and that is the point.</strong> The Final Death Omen uses
+	 * {@code abysseffect} and the Sword of the Cosmos uses {@code cosmic}. The abyss kind began as a copy of the
+	 * cosmic one — same program, same artwork — so the two currently look alike; they are separate so that the
+	 * abyss can be developed without disturbing an effect already accepted frame by frame. See
+	 * {@code AbyssEffect}.
+	 *
+	 * <p>⚠️ <strong>{@code masked_pulse} therefore still has no default consumer.</strong> That kind remains
+	 * registered and readable from a file — it is simply not what the shipped default asks for. Anyone changing
+	 * an entry to it should know the kinds read the mask differently: {@code masked_pulse} assigns a behaviour to
+	 * each of green and blue and ignores red, while both other kinds read red alone. The masks these point at are
+	 * red-only, so they drive those two and would leave {@code masked_pulse} entirely transparent.
 	 *
 	 * <p>🔴 A mask is named as an <strong>atlas sprite</strong> — {@code abyssfall:item/…}, with no
 	 * {@code textures/} prefix and no {@code .png} — because that is what makes an animated mask work. See
@@ -79,11 +85,11 @@ public record ShaderConfigData(Map<Identifier, ShaderEffect> effects) {
 	 */
 	public static final ShaderConfigData DEFAULT = new ShaderConfigData(Map.of(
 			Identifier.fromNamespaceAndPath(AbyssFall.MOD_ID, "final_death_omen"),
-			StarfieldEffect.of(Identifier.fromNamespaceAndPath(
-					AbyssFall.MOD_ID, "item/final_death_omen_mask")),
+			AbyssEffect.of(Identifier.fromNamespaceAndPath(
+					AbyssFall.MOD_ID, "item/final_death_omen/final_death_omen_mask")),
 			Identifier.fromNamespaceAndPath(AbyssFall.MOD_ID, "fake_infinity_sword"),
-			StarfieldEffect.of(Identifier.fromNamespaceAndPath(
-					AbyssFall.MOD_ID, "item/fake_infinity_sword_mask"))));
+			CosmicEffect.of(Identifier.fromNamespaceAndPath(
+					AbyssFall.MOD_ID, "item/fake_infinity_sword/fake_infinity_sword_mask"))));
 
 	public static final Codec<ShaderConfigData> CODEC = RecordCodecBuilder.create(instance -> instance.group(
 			Codec.unboundedMap(Identifier.CODEC, ShaderEffectTypes.CODEC)

@@ -1,6 +1,9 @@
 #version 330
 
-// Vertex stage for the starfield effect.
+// Vertex stage for the abyss effect.
+//
+// 🔴 A COPY of cosmic.vsh, deliberately kept separate. Edits here must not be folded back into that program,
+// whose appearance has already been accepted; the whole point of the copy is that the two can diverge.
 //
 // Differs from masked_pulse.vsh in one substantive way: it forwards the fragment's position in view space,
 // because the fragment stage treats each fragment as a ray leaving the camera and needs somewhere for that ray
@@ -41,7 +44,7 @@ void main() {
 	texCoord0 = vec2(UV1) / FIXED_POINT_SCALE;
 
 	// yaw and pitch travel in UV2, the sixteen-bit pair that used to carry the lightmap. A byte gave 256 steps
-	// per full turn — every 1.4° of head movement made the whole starfield jump at once. Sixteen bits give
+	// per full turn — every 1.4° of head movement made the whole field jump at once. Sixteen bits give
 	// 32767 steps, far finer than a mouse. Depth stays in the colour channel's red byte, a coarse near/far
 	// selector. The block and sky light levels sit in that channel's green and blue bytes, unpacked by the
 	// renderer from the lightCoords vanilla hands it — so they describe where the item is, not where the

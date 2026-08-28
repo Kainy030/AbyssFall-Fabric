@@ -233,6 +233,18 @@ public final class ShaderLayerModelPlugin {
 	 * <p>⚠️ The mask is itself an atlas sprite now (see {@code ShaderEffect#mask}), so the shader maps this
 	 * local pair into the mask's own rectangle before sampling. That mapping belongs to the shader, which knows
 	 * the rectangle as a define; nothing here needs to.
+	 *
+	 * <h2>🔴 Where the layer comes from</h2>
+	 *
+	 * <p>{@code tintIndex} — because that is where vanilla's generated-item baker puts the layer number.
+	 * {@code ItemModelGenerator.ItemLayerKey.compute} passes its {@code layerIndex} as the {@code tintIndex}
+	 * argument of {@code MaterialInfo.of} (26.2 source), so a face from {@code layer1} arrives carrying
+	 * {@code 1}. See {@code ShaderQuad#UNKNOWN_LAYER} for why a source needs to know this at all.
+	 *
+	 * <p>⚠️ <strong>That reuse is vanilla's, not a convention.</strong> For a model built from cuboids rather
+	 * than extruded from a sprite, {@code tintIndex} is the author's {@code tintindex} — a colour index,
+	 * defaulting to {@code -1}. Reading it as a layer there would be meaningless, which is exactly what
+	 * {@code -1} is mapped to: such a model has no layer stacking to disambiguate.
 	 */
 	private static ShaderQuad convert(final BakedQuad quad) {
 		TextureAtlasSprite sprite = quad.materialInfo().sprite();
@@ -249,7 +261,20 @@ public final class ShaderLayerModelPlugin {
 				vertexOf(quad.position0(), quad.packedUV0(), sprite, uScale, vScale),
 				vertexOf(quad.position1(), quad.packedUV1(), sprite, uScale, vScale),
 				vertexOf(quad.position2(), quad.packedUV2(), sprite, uScale, vScale),
-				vertexOf(quad.position3(), quad.packedUV3(), sprite, uScale, vScale));
+				vertexOf(quad.position3(), quad.packedUV3(), sprite, uScale, vScale),
+				layerOf(quad));
+	}
+
+	/**
+	 * The model texture layer a baked face came from, or {@link ShaderQuad#UNKNOWN_LAYER}.
+	 *
+	 * <p>Vanilla's own {@code isTinted()} draws the same line at the same place — {@code tintIndex != -1} — so
+	 * this is testing the value the way vanilla tests it, rather than inventing a validity rule.
+	 */
+	private static int layerOf(final BakedQuad quad) {
+		int tintIndex = quad.materialInfo().tintIndex();
+
+		return tintIndex >= 0 ? tintIndex : ShaderQuad.UNKNOWN_LAYER;
 	}
 
 	/**

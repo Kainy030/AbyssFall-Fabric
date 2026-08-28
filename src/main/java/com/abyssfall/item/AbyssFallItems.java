@@ -169,7 +169,7 @@ public final class AbyssFallItems {
 	 *
 	 * <p>The first item to exist purely as a consumer of the shader system. It contributes nothing
 	 * to a fight: its attack damage modifier is zero and it declares no attack speed at all. What it
-	 * has is the starfield, stated for it in {@code AbyssFallShader.json} exactly as the Final Death
+	 * has is the cosmic effect, stated for it in {@code AbyssFallShader.json} exactly as the Final Death
 	 * Omen's is. The registry name says {@code fake} because that is what it is — the appearance of a
 	 * legendary weapon with none of the weapon behind it.
 	 *

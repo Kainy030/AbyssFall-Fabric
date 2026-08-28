@@ -48,7 +48,7 @@
 | Minecraft | **26.2**；**无映射**（26.1 起不再混淆，Fabric 停止维护第三方映射） |
 | Loader / Loom / Fabric API | 0.19.3 / 1.17.19（插件 id **`net.fabricmc.fabric-loom`**）/ 0.158.0+26.2 |
 | Gradle / JDK | 9.7.0 / **25**（`java-runtime-epsilon`），toolchain 与 `release` 都是 25 |
-| 版本 / 许可 | `1.8-Dev-Fix` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**）。⚠️ **`gradle.properties` 的 `version` 是唯一事实来源，这一行易过时，现场核一遍** |
+| 版本 / 许可 | `2.0-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**）。⚠️ **`gradle.properties` 的 `version` 是唯一事实来源，这一行易过时，现场核一遍** |
 | 源集 | `splitEnvironmentSourceSets()`：`src/main` + `src/client` |
 | Git | `https://github.com/Kainy030/AbyssFall-Fabric.git`，分支 `main` |
 
@@ -154,7 +154,13 @@ float intensity = f(change.current().ratio());   // 随 San 连续变化，无�
 
 ### 4.1 格式与结构
 
-`config/abyssfall.json`。**是 JSON 不是 properties**（结构化配置需要数组；代价是不能写注释，已接受。旧 `.properties` 实现已删，别复活）。
+🔴 **全部配置文件住 `config/abyssfall/` 子目录**（v1.9-Dev-Fix 起，用户明确要求）：主配置是 `config/abyssfall/abyssfall.json`。用户原话：「以后我们项目所有的 config 都要生成在 `config\abyssfall\abyssfall.json` 等等等等。不要像现在这样直接生成在 config 里，不然以后不好管理，以后我也不知道会出现多少个 config 文件」。
+
+⇒ **新增任何配置文件一律走 `AbyssFall.configPath(fileName)`**，不要自己 `getConfigDir().resolve(...)`。那个方法是唯一的拼路径处，理由与禁忌写在它的 javadoc 里。⚠️ 它**不建目录**——两个写入方都已有 `Files.createDirectories(path.getParent())`，而那个 parent 现在就是这个子目录，所以目录是写文件时顺带建的。**别再加一次创建。**
+
+⚠️ **改这个子目录名 = 孤立用户的存量配置**（不迁移、静默回落默认、无报错），与改键名同族，见 4.2。
+
+`config/abyssfall/abyssfall.json`。**是 JSON 不是 properties**（结构化配置需要数组；代价是不能写注释，已接受。旧 `.properties` 实现已删，别复活）。
 
 `config/` 七个文件：`AbyssFallConfig`（静态门面 `load()`/`save()`/`get()` + 便捷访问器）、`AbyssFallConfigData`（根 record）、`DeveloperSettings` / `HudSettings` / `LootSettings` / `SanSettings` / `VisualSettings`。每块是 `record` + 三件套 `DEFAULT` / `CODEC` / `LENIENT_CODEC`。
 
@@ -172,7 +178,7 @@ float intensity = f(change.current().ratio());   // 随 San 连续变化，无�
 
 **副作用是好的**：加字段永不破坏旧文件 ⇒ **不需要任何迁移代码**。
 
-⚠️ **但改键名会破坏旧文件**：旧键无人认领、新键缺失 → **整块**回落默认，用户的设置静默失效。⇒ ①**改键名前必须告知用户手改本机 `run/config/abyssfall.json`**（教训 19）；②**块是原子单元**（一块里任何字段缺失/不合法则整块回落，这是 `CODEC.orElse(DEFAULT)` 的固有行为不是 bug）。
+⚠️ **但改键名会破坏旧文件**：旧键无人认领、新键缺失 → **整块**回落默认，用户的设置静默失效。⇒ ①**改键名前必须告知用户手改本机 `run/config/abyssfall/abyssfall.json`**（教训 19）；②**块是原子单元**（一块里任何字段缺失/不合法则整块回落，这是 `CODEC.orElse(DEFAULT)` 的固有行为不是 bug）。
 
 ⚠️ `Codec.orElse`/`MapCodec.orElse` 有两个重载，**直接传 lambda 编译不过（引用不明确）**，必须显式 `(Consumer<String>)` 强转。**代码里那些 cast 是必需的。**
 
@@ -267,9 +273,9 @@ float intensity = f(change.current().ratio());   // 随 San 连续变化，无�
 
 ⚠️ `withShaderDefine` 只有 `(String)` / `(String,int)` / `(String,float)` 三个重载，**没有 String 值**。故 `shaderDefines()` 返回 `Map<String, Float>`——顺带避开了 GLSL「整数除法」陷阱。
 
-### 4b.6 独立配置文件 `config/AbyssFallShader.json`
+### 4b.6 独立配置文件 `config/abyssfall/AbyssFallShader.json`
 
-与 `abyssfall.json` **分开**（用户明确要求单独文件）：那个是玩法，这个是外观。容错逻辑刻意与主配置**同构**（同样的三种失败、同样的时间戳备份、同样不抛异常）。
+与 `abyssfall.json` **分开**（用户明确要求单独文件）：那个是玩法，这个是外观。**但同住 `config/abyssfall/`**（见 4.1），路径同样走 `AbyssFall.configPath`。容错逻辑刻意与主配置**同构**（同样的三种失败、同样的时间戳备份、同样不抛异常）。
 
 **`"type"` 字段是可扩展的关键** —— dispatch codec 按它选 codec，新种类无需改文件格式。用 `partialDispatch`（不是 `dispatch`，后者签名不收 `DataResult`）。
 
@@ -285,14 +291,32 @@ float intensity = f(change.current().ratio());   // 随 San 连续变化，无�
 
 - ~~**`Z_PLANE = 8.5/16` 假设平面物品** ⇒ 3D 模型物品（盾牌、方块物品）位置会偏。需从 baked quads 推真实包围盒~~
   ✅ **v1.5-Dev 已解决，并且这条旧表述是错的**：受影响的不是「3D 物品」这个子集，而是**全部物品** —— vanilla 给每个生成型物品都造了 1/16 厚度 + 逐像素侧壁，**没有一个物品是平的**。现在几何跟随物品真实外壳（`ShaderGeometrySource` / `ItemHullGeometry`，见 `REFERENCE.md` 18h），`Z_PLANE` 已删除
-- **bind group / 顶点格式固定**：所有效果 shader 必须 import 同一套 uniform。⚠️ **v1.5-Dev 起 `Sampler0` 是物品图集、`Sampler1` 是遮罩**（原先两个都绑遮罩且 `Sampler0` 从不读）；**v1.6-Dev 起 `Sampler2` 是 vanilla lightmap**（星空需要，见 `REFERENCE.md` 18j-6）；**v1.7-Dev 起 `Sampler1` 绑的是图集而非遮罩自己的纹理文件**（这样遮罩才能播动画，见 `REFERENCE.md` 18j-15）。新种类若需第四张贴图，得给 `AbyssFallPipelines` 加选项
+- **bind group / 顶点格式固定**：所有效果 shader 必须 import 同一套 uniform。**v1.5 起 `Sampler0` 是物品图集、`Sampler1` 是遮罩（也是图集精灵，故遮罩能播动画）、`Sampler2` 是 vanilla lightmap**。新种类若需第四张贴图，得给 `AbyssFallPipelines` 加选项
 - 绿/蓝共色（见 4b.4）
 - **`glowing` 推导对近黑物品等于不发光**（公式与底层亮度成正比，实测增量仅 +3.5/255，见 `REFERENCE.md` 18g）
-- ~~**`masked_pulse` 之外仍无第二个效果种类**（星空未做）~~
-  ✅ **v1.6-Dev 已解决**：`StarfieldEffect`（`abyssfall:starfield`）落地，移植自 Avaritia 的 `cosmic.frag`，**用户已在游戏里确认渲染正确**。见 `REFERENCE.md` 18j
-- 🔴 **`masked_pulse` 当前无默认配置消费者**：`ShaderConfigData.DEFAULT` 里死兆将至改用 `starfield` ⇒ 那条路径这一轮完全没走过。**不是坏了，是没人调用。**⚠️ **v1.7-Dev 起当前遮罩是原版寰宇支配之剑的遮罩（只有红通道有数据）**，所以 `masked_pulse` 在它上面依然完全透明。恢复它要同时改配置与遮罩，见 `REFERENCE.md` 18j-9
+- **效果种类现状**：`masked_pulse`（第一个）+ `cosmic` + `abysseffect`（后两个跑的是同一套**旧移植星空算法**，见 4b.9 与 `REFERENCE.md` 18j）
+- 🔴 **`masked_pulse` 无默认配置消费者**：默认配置里两把剑都用 `cosmic`/`abysseffect`。**不是坏了，是没人调用。** 当前遮罩只有红通道有数据，`masked_pulse` 在它上面完全透明。恢复它要同时改配置与遮罩
 - ~~**遮罩无法播动画**（26.2 只有 `TextureAtlas` 实现 `TickableTexture`）~~
-  ✅ **v1.7-Dev 已解决，且原结论是错的**：遮罩不必是独立纹理，绑成**图集精灵**就跟着图集 tick。vanilla 的 `items.json` 本来就收 `item/` 目录，同名 atlas 定义是叠加不是覆盖 ⇒ 遮罩一直都在图集里。代价是 shader 要经 `MASK_U0..V1` 映射。见 `REFERENCE.md` 18j-15
+  ✅ **已解决，且原结论是错的**：遮罩不必是独立纹理，绑成**图集精灵**就跟着图集 tick。vanilla 的 `items.json` 本来就收 `item/` 目录，同名 atlas 定义是叠加不是覆盖。代价是 shader 要经 `MASK_U0..V1` 映射。
+
+### 4b.9 🔴 星空算法是一具移植来的「尸体」，思想才是要留下的（v2.0-Dev，立项以来最大教训）
+
+用户原话（v2.0 收尾）：
+
+> 我们像傻逼一样把一坨 14 年前的尸体移植到了 2026 年。实际上我们要的根本不是这坨尸体，我们要的是「如何在一个有限的二维平面渲染出看似无限大的三维空间」这个想法……结果我们却把尸体复活了。这是立项以来最大的教训。
+
+**要留下的，只有两条数学思想**（其余全是尸体）：
+
+1. **在有限二维平面上渲染看似无限大的三维空间**；
+2. **把每个 fragment 当作球面射线去模拟无限空间**（射线→按朝向旋转→球面映射→网格伪随机→多层堆叠造视差）。
+
+**结论与处置**：
+
+- **`cosmic`（寰宇支配之剑）与 `abysseffect`（死兆将至）现在都跑这套旧移植算法。它们留在仓库里不管、不重构、不验收**——能跑、无害、bug 全继承自 14 年前的参考实现，不挡路。两个类是故意分开的副本（不是屎山，是为了能互不影响地演进）。
+- 旧的 `REFERENCE.md` 18j-1～18j-20 那套移植细节**已从文档删除**，只留 18j 新写的思想 + 落地框架。
+- **下一步（不是现在）**：只带这两条思想，用 26.2 的框架**从零写我们自己的 shader**，完全不看旧工程结构。
+- **以后参考任何「尸体」前，先回答教训 50 里那七个问题。**
+- **素材分辨率不再是限制**（用户实测）：2048×2048 × 10 张一起渲染，帧率代价不到 10 fps。旧实现用低分辨率素材纯粹是 2012 年的极限，不是我们的约束。
 
 ---
 
@@ -490,7 +514,7 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 39. 🔴 **遮罩类资源出问题时，先把遮罩本身逐像素打印出来看，别去查渲染管线。** v1.6-Dev 星空「只在黑色线条上渲染」，我依次去查了 PNG 字节、图集 UV、`polygonOffset` 符号、GLSL 数学 —— 全是白费。真正的原因极其简单：**上一版遮罩生成脚本把物品的「不透明像素」当成了要填充的区域，而那个物品贴图是线稿，不透明像素就是黑色轮廓线本身**。星空于是精确地长在了线上。改成 flood fill 填线稿**内部**，一次就对。
 
-    **判断方法一条命令**（把遮罩和物品并排按字符打印，见 `REFERENCE.md` 18j-8）。**这条是教训 37 的同族**：37 说「先问要画的东西存在吗」，这条说「先问要画的**位置**对吗」——两者都在管线上游，都能用一条 PowerShell 定位，都因为我从下游往上查而浪费了整轮。
+    **判断方法一条命令**（把遮罩和物品并排按字符打印）。**这条是教训 37 的同族**：37 说「先问要画的东西存在吗」，这条说「先问要画的**位置**对吗」——两者都在管线上游，都能用一条 PowerShell 定位，都因为我从下游往上查而浪费了整轮。
 
 40. **注释里写「实测过」「参考实现如此」的断言，也可能是错的 —— 尤其当它紧挨着描述自己造成的 bug 时。** `AbyssFallPipelines` 的 `COPLANAR_DEPTH_BIAS_*` 是负数，注释论证「26.2 深度范围反了 ⇒ 符号要反」，而**紧接着的下一句就写着「符号搞反会把图层推进物品里，被拒绝，什么都不画」** —— 它准确描述了自己造成的现象却没意识到。`glPolygonOffset` 作用在窗口空间，与深度范围方向无关；vanilla 26.2 的 `crumbling` / `text_polygon_offset` 在同样的反深度 + `GREATER_THAN_OR_EQUAL` 下**全部用正数**（`RenderPipelines.java:445/489/498`）。**看到「已实测」的注释可以省一次验证，但看到「注释的推理链」时要读得懂它 —— 推理是可以错的，实测数据不会。**
 
@@ -515,11 +539,24 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 47. 🔴 **一个缓存被清空之后、被填回之前，是一段真实存在的时间 —— 那期间的读者会读到空值，而它可能把空值当答案记下来。** 本轮的严重 bug：`ShaderSpriteAtlas` 在资源重载的 prepare 阶段被 `clear()`，模型烘焙完才填回；这两点之间渲染线程**没有停**（26.2 的 `GameRenderer.render` 只把 `renderLevel` 挡在 `isGameLoadFinished()` 后面，**GUI 那段无条件执行** —— LoadingOverlay 本身就靠它画）。于是窗口期内建出的 pipeline 一半 define 来自常量、一半来自空缓存，自相矛盾，**而 `computeIfAbsent` 把它记进了缓存**，下一次重载才清 ⇒ 切一次语言换来永久性损坏。
 
-    **三条可复用的东西**：①**给「清空」找到调用点只是第一步，还要问「清空到填回之间谁在读」** —— 18j-7 当年只验证了前者，注释里写得很有信心，缺的正是后者；②**当一个值有两个来源、可信度不同（一个是常量、一个是可变缓存），就必须校验它们一致**，不一致时放弃比凑出一个残废结果好；③**`computeIfAbsent` 无法表达「算不出来就别记」** —— 需要「有条件缓存」时它是错的工具，得退回显式 `get`/`put`。这条与教训 41 互补：那条说「看到 `computeIfAbsent` 要去看键类有没有 `equals`」，这条说「还要看值算不出来时会不会被记下」。
+    **三条可复用的东西**：①**给「清空」找到调用点只是第一步，还要问「清空到填回之间谁在读」** —— 早期只验证了前者，注释里写得很有信心，缺的正是后者；②**当一个值有两个来源、可信度不同（一个是常量、一个是可变缓存），就必须校验它们一致**，不一致时放弃比凑出一个残废结果好；③**`computeIfAbsent` 无法表达「算不出来就别记」** —— 需要「有条件缓存」时它是错的工具，得退回显式 `get`/`put`。这条与教训 41 互补：那条说「看到 `computeIfAbsent` 要去看键类有没有 `equals`」，这条说「还要看值算不出来时会不会被记下」。
 
 48. **「参考实现看起来更亮」这类观感差异，先去数它依赖了什么平台隐式量，别去比对它的公式。** 本轮查星空亮度：两边的光照公式**逐字相同**（连 `lightmix = 0.2` 都一样），差异全在喂进去的 `light` —— 参考的起点是 `gl_Color`，携带 1.12.2 **固定管线**累加的 `sceneColor + Ambient + Diffuse`，而且它在 GUI 与兜底路径上根本不采样世界光、直接 `setLightLevel(1.0F)` 断言全亮。26.2 两样都没有。**这是教训 33 的延伸**：跨版本移植时腐烂的不只是类名和签名，还有**平台曾经免费提供、新版本不再提供的量** —— 那种缺失不会报错，只会让观感对不上，而公式比对永远查不出来。
 
 49. **给一个倍率选数值前，先算它在整条链路末端的实际结果，别只看这一步。** 用户给的区间是 1.2~1.7，而**下限 1.2 是错的那一端**：`shade` 在全黑处是 0.8，`0.8 × 1.2 = 0.96` ⇒ 比不加增益还暗。同理上一版试的 2.5 会让总倍率到 2.0，而星星配色 G/B 最低只有 0.6/0.7、**在 1.43× 就削顶** ⇒ 整片星空褪成白色。**一个乘数的合理范围由它前后所有环节共同决定**，孤立地看「1.2 到 1.7 是温和的」会选错端点。做法很便宜：把链路算式写成十行 Java 跑一遍端点与单调性（教训 13）。
+
+50. 🔴 **移植一套旧实现前，先分清「思想」和「尸体」——立项以来最大教训。** v1.6~v2.0 我们把 Avaritia 那套 14 年前的 `cosmic.frag`（2012，MC 1.12.2）逐行移植到 26.2，花了好几轮修它自带的散列缺陷、补它缺失的固定管线光照、迁就它的低分辨率素材——结果用户一针见血：**我们要的从来是「如何在有限二维平面渲染看似无限大的三维空间」这个思想（球面射线模拟无限空间），不是那坨代码。我们却把尸体复活了。**
+
+以后参考任何「尸体」前，逐条回答这七个问题：
+1. 这个实现最终解决什么问题？
+2. 哪些数学关系是不可替代的？（这才是要抄的）
+3. 哪些代码只是历史 API 适配？（旧平台的免费量，新版本没有，见教训 33/48）
+4. 哪些参数只是视觉设计？（可丢可调）
+5. 哪些数据结构是旧架构遗产？
+6. 哪些地方有明显 bug？（是尸体的病，不是你的）
+7. 完全不管原工程结构，现代环境该怎么重写？
+
+三条具体判据：①**旧实现能跑就留着当参考产物，别去重构/验收一具尸体**（我们的 `cosmic`/`abysseffect` 现在就是这个定位）；②**不可替代的通常是数学题，不是工程结构**——这次就是「fragment 当射线→球面映射→网格伪随机→多层视差」；③**旧环境的限制（素材分辨率、贴图数、性能）到新环境大多消失**——用户实测 2048²×10 张素材帧率代价不到 10fps，我们却一度建议素材只用 64²，那是被 2012 年的极限禁锢了。这条是教训 33/48（跨版本腐烂的不只是名字）的上游：**先问「这个限制现在还成立吗」，再尊重它。**
 
 
 
@@ -590,7 +627,7 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 ## 7. 当前状态
 
 - **编译已验证**：`build` 与 `releaseJars` 都 `BUILD SUCCESSFUL`。产物 `build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`
-- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.9-Dev-Fix`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）。⚠️ **tag 名与 `version` 本轮起不再对应**：`version=1.8-Dev-Fix` 而 tag 是 `v1.9-Dev-Fix`，这是用户指定的，不是笔误（`REFERENCE.md` 的发布流程一节早就写了两者不必一致）
+- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.9-Dev-Fix`（本轮将打 `v2.0-Dev`；26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）。tag 名与 `gradle.properties` 的 `version` **本轮起对应**（都是 `v2.0-Dev`/`2.0-Dev`），但两者本不必一致（`REFERENCE.md` 发布流程一节）
 
 ### 7.1 已实测通过（用户在真实环境验证，**别再列成待确认项去催他测**）
 
@@ -623,7 +660,7 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 **1.4-Dev 新增内容（Shader 渲染系统，见 4b 与 `REFERENCE.md` 18）**：
 
 - **地基三 `shadercore`**：物品渲染框架。两条正交扩展轴（效果种类 / 决策来源），每帧决策，不绑定任何颜色来源
-- **独立配置** `config/AbyssFallShader.json`（dispatch codec，`"type"` 可扩展）
+- **独立配置** `config/AbyssFallShader.json`（dispatch codec，`"type"` 可扩展）⚠️ **v1.9-Dev-Fix 起已移到 `config/abyssfall/AbyssFallShader.json`**
 - **第一个效果种类** `abyssfall:masked_pulse`：遮罩绿=常驻、蓝=随机抽样，共用脉动
 - **第三个 Mixin** `RenderTypeInvoker`（`@Invoker` 取 package-private 的 `RenderType.create`）
 - **死兆将至贴图定稿**，并成为 Shader 系统的第一个消费者
@@ -659,11 +696,11 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 ⚠️ **1.8-Dev 待测**：Abyssal 灰阶提亮后的观感（`0x1F1F1F`~`0xB4B4B4`，最亮 180 已略高于 vanilla `GRAY` 170）、手持提示里的波浪与 tooltip 是否观感一致、碑文展开后 25 行的实际高度与配色、中文提示语「按住 Shift 阅读碑文」的措辞。
 
-**1.8-Dev-Fix 内容（本轮，星空渲染两处修复，用户已全部实测通过）**：
+**1.8-Dev-Fix 内容（本轮，旧移植星空两处修复；该算法属尸体，保留仅作历史，见 4b.9）**：
 
-- 🔴 **切语言导致星空永久丢失（严重 bug）已修** —— 根因是 `SPRITE_COUNT`（常量）与 `SPRITE_n_*`（可变缓存）在重载窗口期不同步，产出自相矛盾的 pipeline 并被永久缓存。`forEffect` 现在建之前先查、缺任何精灵就返回 `null` 且**不缓存**，下一帧重试。见 `REFERENCE.md` 18j-18
-- **星空亮度环境增益** —— 查明「原版更亮」的根因是参考实现继承了 1.12.2 固定管线光照、且 GUI/兜底路径直接断言全亮，26.2 均无。改为按环境光实时插值 `1.7 → 1.2`，山洞最亮、正午最淡。`1.7` 是实测甜点（用户原话「正好是甜点数值」），见 `REFERENCE.md` 18j-19
-- ⏳ **用户已把「重构这套 14 年前的星空」提上日程** —— 四处继承缺陷与首要重构目标记在 `REFERENCE.md` 18j-20
+- 🔴 **切语言导致效果永久丢失（严重 bug）已修** —— 根因是 `SPRITE_COUNT`（常量）与 `SPRITE_n_*`（可变缓存）在重载窗口期不同步，产出自相矛盾的 pipeline 并被永久缓存。`forEffect` 现在建之前先查、缺任何精灵就返回 `null` 且**不缓存**，下一帧重试（教训 47）
+- **亮度环境增益 `1.7 → 1.2`** —— 按环境光实时插值，山洞最亮、正午最淡。`1.7` 是实测甜点（用户原话「正好是甜点数值」）。⚠️ 这是对尸体做的补偿，**新 shader 重写时不必沿用**（教训 49/50）
+- ❌ ~~用户已把「重构这套 14 年前的星空」提上日程~~ → **v2.0 取消**：不重构尸体，见 4b.9
 
 🟢 **用户已实测通过**：切语言后星空仍在、亮度观感认可（原话「实现效果不错」）。**本轮全部事项验证完毕。**
 
@@ -716,15 +753,15 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 **Shader 渲染系统（地基三，1.4-Dev 建立，1.5-Dev 升级）**
 - ~~🔴 **颜色系统未设计**~~ ✅ **1.5-Dev 兑现了第一步**：`DerivedColorSource` + 四种推导，从物品自己的贴图推色（`REFERENCE.md` 18g）。⚠️ **这不等于「颜色系统设计完了」** —— 用户当初要的「颜色来源、计算方式、Provider 怎么决定效果」中，**「Provider 怎么决定」仍未设计**（那属于 game core）
 - ~~🔴 **遮罩定稿后要删掉整套 debug 配色**~~ ⏸ **用户明确改为「暂不删」**：新美术定稿前，红蓝是对比最强的 debug 工具（`REFERENCE.md` 18d-2）。那行危险的 xmap 已在 1.5-Dev 换成 dispatch codec
-- **星空效果种类未做** —— 无尽贪婪那套程序化生成（球面射线 + 伪随机撒点）已调研完（`REFERENCE.md` 18f），素材问题因此消失，但没实现。⚠️ 它**不需要遮罩**，会撞上 `ShaderEffect.mask()` 的强制约束（见 `REFERENCE.md` 18d-4）。✅ **但几何那一半的路已经铺好** —— 加一个 `ShaderGeometrySource` 实现即可，不必改渲染器（18h）
-- **用户点名的下一个想法：用丁的机制程序化生成一只眼睛贴到物品上。** ⚠️ **它不属于颜色轴而属于效果种类轴**（`ShaderEffectTypes.register()`）——写一个 record + 一个 GLSL（SDF 画圆与竖缝），零系统改动。**已跟用户说明过这个归属**
+- ~~**星空效果种类未做**~~ ✅ 已落地，但走了弯路——做出来的是**移植的旧算法**（`cosmic`/`abysseffect`），那是 14 年前的尸体（见 4b.9）。✅ **方向已纠偏（v2.0）**：旧效果留着不管；下一步是带「球面射线模拟无限空间」思想**从零写我们自己的 shader**（不是现在）
+- **用户点名的下一个想法：用程序化方式生成一只眼睛贴到物品上。** ⚠️ **它不属于颜色轴而属于效果种类轴**（`ShaderEffectTypes.register()`）——写一个 record + 一个 GLSL（SDF 画圆与竖缝），零系统改动。**已跟用户说明过这个归属**。⚠️ 真做时按 4b.9 的七问来，别再抄尸体
 - **San 联动 provider 未做** —— 这是这套系统存在的理由，但**它属于 game core**（见 4c.4），不该直接塞进 shadercore
-- ~~**`Z_PLANE` 假设平面物品** ⇒ 3D 物品位置会偏~~ ✅ **1.5-Dev 已解决**（见 4b.8 与 18h）
+- ~~**`Z_PLANE` 假设平面物品** ⇒ 3D 物品位置会偏~~ ✅ **已解决**（见 4b.8 与 18h）
 - 绿/蓝共用一个颜色（见 4b.4）
 - 遮罩红色通道空着，可作第三种行为
-- `AbyssFallPipelines.clear()` 无人调用，加资源重载支持时记得接上 ✅ **v1.6-Dev 已接上**（挂在 `ModelLoadingPlugin` 回调体，见 `REFERENCE.md` 18j-7）。⚠️ **但 v1.8-Dev-Fix 查明「接上了」不等于「安全了」**：清空到填回之间有一段窗口期，那期间不许建 pipeline，见 18j-18 与教训 47
+- `AbyssFallPipelines.clear()` 已接上资源重载（挂在 `ModelLoadingPlugin` 回调体）。⚠️ 但清空到填回之间有一段窗口期，那期间不许建 pipeline，见教训 47
 - **`glowing` 对近黑物品几乎不发光** —— 修法涉及数值语义，待用户决定（`REFERENCE.md` 18g）
-- ⏳ **重构这套 14 年前的星空** —— 用户本轮明确提上日程（原话「他妈迟早给这个 14 年前的破东西重构了，这个可以提上日程了」）。四处继承缺陷、首要重构目标（散列输入 35.2% 碰撞）、以及重构前必须知道的约束都记在 `REFERENCE.md` 18j-20。⚠️ **这不是「可以随手改」的许可** —— 星空观感已由用户逐帧验收过，重构需重新验收
+- ~~⏳ **重构这套 14 年前的星空**~~ ❌ **v2.0 取消此计划**：不重构尸体、也不验收它。旧 `cosmic`/`abysseffect` 留着不管；要的是带思想从零重写，见 4b.9
 
 - **少数图标仍是占位**（多数已换成自己的美术）：`abyss_gardeners` 图标是向日葵、计数器与窥镜都用原版 `clock_00`（**指针不会转**，原版靠 `range_dispatch` 切 64 个模型才转）、两个精神效果是脚本生成的图。⚠️ **`final_death_omen_mask.png` 是脚本生成的 debug 遮罩**（1.5-Dev 改为按几何分区，见 `REFERENCE.md` 18i-2），等用户美术。✅ **剑本体贴图已由用户重画**（1.5-Dev，经 alpha 二值化后入库）
 - 深渊之花无实际功能；三个药水效果**无获取途径**（「深渊探索者」只被战利品侧读取，另两个只能 `/effect`）
@@ -818,10 +855,10 @@ Get-ChildItem $p -Directory | ForEach-Object { $_.Name }
   - 那个 `+` 是正确的 ASCII `U+002B`，字形像「十」是 MC 字体所致，别换字符（`REFERENCE.md` 17g）
   - `final_death_omen` 的红蓝配色**是 debug 产物**，~~遮罩定稿时连带 `FixedColorSource` 一起删~~ ⏸ **用户已改主意：暂不删**，新美术定稿前红蓝是最强对照色（`REFERENCE.md` 18d-2）；那行 xmap 的强转已于 1.5-Dev 换成 dispatch codec（18g-3）
   - **贴图 alpha 只能是 0 或 255**（1.5-Dev）——`make-death-omen-texture.ps1` 的二值化不是"洁癖"，是让厚度可见的唯一办法（`REFERENCE.md` 18i）
-  - **`ShaderVertex` 携带两套 UV**（遮罩 UV + 图集 UV），`UV1` 装遮罩 UV 的定点数 —— 顶点格式只有一个浮点 UV 槽，这不是冗余设计（18h-2）
+  - **`ShaderVertex` 携带两套 UV**（遮罩 UV + 图集 UV），`UV1` 装遮罩 UV 的定点数 —— 顶点格式只有一个浮点 UV 槽，这不是冗余设计（`REFERENCE.md` 18h-2）
   - **`ItemHullGeometry` 沿各自法线外推而非固定轴** —— 固定轴对侧壁全错（18h）
-  - **`forEffect` 用显式 `get`/`put` 而不是 `computeIfAbsent`** —— 它必须能「算不出来就不缓存」，这是切语言丢星空那个 bug 的修法本体（`REFERENCE.md` 18j-18、教训 47）
-  - **星空亮度增益 `1.7 → 1.2`，且插值因子取 `light` 不取 `shade`** —— 两个数都是实测甜点，取 `shade` 会让上限永远到不了（`REFERENCE.md` 18j-19、教训 49）
+  - **`forEffect` 用显式 `get`/`put` 而不是 `computeIfAbsent`** —— 它必须能「算不出来就不缓存」，这是切语言丢效果那个 bug 的修法本体（教训 47）
+  - **旧星空亮度增益 `1.7 → 1.2`** —— 那是对尸体的补偿，新 shader 重写时不必沿用（教训 49/50）
   - **自有稀有度是旁表不是 data component**，且 vanilla `Rarity` 真的不可扩展（`REFERENCE.md` 19）
   - **彩虹的步长/周期与灰阶波浪各一套**——色相绕回自身、灰阶余弦折返，**这两处「不一致」是对的，别统一**（教训 44）
   - **`Mth.positiveModulo` 包住 hue 不是防御性代码**，负 hue 会让 `hsvToArgb` 抛异常（`REFERENCE.md` 20）

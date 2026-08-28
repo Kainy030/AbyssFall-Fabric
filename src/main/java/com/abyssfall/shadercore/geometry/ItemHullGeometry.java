@@ -41,6 +41,18 @@ import com.abyssfall.shadercore.ShaderQuad;
  * about what an item looks like, which is why the old {@code Z_PLANE} constant and its "assumes a flat item"
  * caveat are gone rather than adjusted.
  *
+ * <p>⚠️ <strong>Unlike {@link ItemFacesGeometry}, this does not collapse a model's texture layers.</strong>
+ * That is deliberate but it is a trade, not a free choice, so it is worth stating. Each layer has its own
+ * silhouette and therefore its own wall of side faces, and a source whose job is to <em>coat the whole hull</em>
+ * has a real claim to coating all of them. The cost is that the front and back faces, which every layer bakes at
+ * identical coordinates, are drawn once per layer — and repeated {@code SRC_ALPHA} blending over one patch of
+ * screen saturates the mask's faint values while leaving its bright ones untouched. See
+ * {@code ShaderQuad#UNKNOWN_LAYER} for the measured shape of that.
+ *
+ * <p>It has not been changed because no shipped effect currently uses this source, so the trade has never been
+ * looked at on screen. An effect that coats a multi-layer item and finds its mask edges hardening should filter
+ * on {@code ShaderQuad#layer()} the way {@code ItemFacesGeometry} does.
+ *
  * <h2>The offset, and why it is along the normal</h2>
  *
  * <p>Each face is moved outward along its own normal rather than along a fixed axis. A fixed axis would work

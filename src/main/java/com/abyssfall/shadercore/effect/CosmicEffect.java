@@ -47,7 +47,7 @@ import com.abyssfall.shadercore.geometry.ItemFacesGeometry;
  *
  * <p>The consequence is the point: <strong>there is no texture to author and nothing to tile</strong>. Density
  * is a constant, the field never repeats, it has no seams, and it costs the same at any resolution. The
- * alternative — a painted starfield — needs an enormous seamless image and still repeats.
+ * alternative — painted artwork — needs an enormous seamless image and still repeats.
  *
  * <p>The technique is taken from Avaritia's cosmic shader, which solves exactly this problem and solves it
  * well. The arithmetic is that shader's, restated for this project's draw path; the differences are all forced
@@ -56,7 +56,7 @@ import com.abyssfall.shadercore.geometry.ItemFacesGeometry;
  * <h2>How this kind uses its mask</h2>
  *
  * <p>Every other effect so far covers part of an item and leaves the rest recognisable, which is what a mask is
- * for. A starfield does the opposite: it replaces what the item is made of.
+ * for. This kind does the opposite: it replaces what the item is made of.
  *
  * <p>The mask is nevertheless read, and read as the reference implementation reads it: its <strong>red
  * channel is the effect's opacity</strong>, so it decides both where the sky shows and how strongly. A red of
@@ -78,7 +78,7 @@ import com.abyssfall.shadercore.geometry.ItemFacesGeometry;
  *                   doubles how many cells hold a star
  * @param debugSolid diagnostic paint, see {@link #DEFAULT_DEBUG_SOLID}
  */
-public record StarfieldEffect(Identifier mask, List<Identifier> stars, int layers,
+public record CosmicEffect(Identifier mask, List<Identifier> stars, int layers,
 		float driftSpeed, float brightness, float density, boolean debugSolid) implements ShaderEffect {
 	/**
 	 * The ten sprites the reference implementation uses, in its own order.
@@ -91,7 +91,7 @@ public record StarfieldEffect(Identifier mask, List<Identifier> stars, int layer
 			star(0), star(1), star(2), star(3), star(4), star(5), star(6), star(7), star(8), star(9));
 
 	/**
-	 * Upper bound on how many sprites a starfield may draw from.
+	 * Upper bound on how many sprites this effect may draw from.
 	 *
 	 * <p>Ten is what the shader has branches for. More would need the branch chain extended, and past a hundred
 	 * and one every cell holds a star and the sky is solid.
@@ -99,7 +99,7 @@ public record StarfieldEffect(Identifier mask, List<Identifier> stars, int layer
 	public static final int MAX_STARS = 10;
 
 	private static Identifier star(final int index) {
-		return Identifier.fromNamespaceAndPath(AbyssFall.MOD_ID, "shader/cosmic_" + index);
+		return Identifier.fromNamespaceAndPath(AbyssFall.MOD_ID, "shader/cosmic/cosmic_" + index);
 	}
 
 	/**
@@ -150,48 +150,48 @@ public record StarfieldEffect(Identifier mask, List<Identifier> stars, int layer
 	 *
 	 * <p>⚠️ The {@code core/} prefix is not decoration. {@code ShaderManager} builds a shader's id with
 	 * {@code FileToIdConverter("shaders", ".vsh")}, which strips only {@code shaders/} and the extension — so
-	 * the file at {@code assets/abyssfall/shaders/core/starfield.vsh} is known as
-	 * {@code abyssfall:core/starfield}. Naming it without the prefix produces "Couldn't find source for VERTEX
+	 * the file at {@code assets/abyssfall/shaders/core/cosmic.vsh} is known as
+	 * {@code abyssfall:core/cosmic}. Naming it without the prefix produces "Couldn't find source for VERTEX
 	 * shader", the pipeline never compiles, and nothing is drawn.
 	 */
 	public static final Identifier SHADER =
-			Identifier.fromNamespaceAndPath(AbyssFall.MOD_ID, "core/starfield");
+			Identifier.fromNamespaceAndPath(AbyssFall.MOD_ID, "core/cosmic");
 
-	public static final MapCodec<StarfieldEffect> MAP_CODEC =
+	public static final MapCodec<CosmicEffect> MAP_CODEC =
 			RecordCodecBuilder.mapCodec(instance -> instance.group(
-					Identifier.CODEC.fieldOf("mask").forGetter(StarfieldEffect::mask),
+					Identifier.CODEC.fieldOf("mask").forGetter(CosmicEffect::mask),
 					Identifier.CODEC.listOf(1, MAX_STARS).optionalFieldOf("stars", DEFAULT_STARS)
-							.forGetter(StarfieldEffect::stars),
+							.forGetter(CosmicEffect::stars),
 					Codec.intRange(MIN_LAYERS, MAX_LAYERS).optionalFieldOf("layers", DEFAULT_LAYERS)
-							.forGetter(StarfieldEffect::layers),
+							.forGetter(CosmicEffect::layers),
 					Codec.floatRange(0.0F, 1000.0F).optionalFieldOf("drift_speed", DEFAULT_DRIFT_SPEED)
-							.forGetter(StarfieldEffect::driftSpeed),
+							.forGetter(CosmicEffect::driftSpeed),
 					Codec.floatRange(0.0F, 4.0F).optionalFieldOf("brightness", DEFAULT_BRIGHTNESS)
-							.forGetter(StarfieldEffect::brightness),
-					// 10.0 keeps a dense-but-not-solid sky: at STAR_COUNT = 10 the reference's 101-cell test
+							.forGetter(CosmicEffect::brightness),
+					// 10.0 keeps a dense-but-not-solid sky: at SPRITE_COUNT = 10 the reference's 101-cell test
 					// saturates at a density of 10.1, past which every cell holds a star.
 					Codec.floatRange(0.0F, 10.0F).optionalFieldOf("density", DEFAULT_DENSITY)
-							.forGetter(StarfieldEffect::density),
+							.forGetter(CosmicEffect::density),
 					Codec.BOOL.optionalFieldOf("debug_solid", DEFAULT_DEBUG_SOLID)
-							.forGetter(StarfieldEffect::debugSolid)
-			).apply(instance, StarfieldEffect::new));
+							.forGetter(CosmicEffect::debugSolid)
+			).apply(instance, CosmicEffect::new));
 
 	/**
 	 * Registered in {@code AbyssFallShaderCore} rather than here, so that registration order is visible in one
 	 * place.
 	 */
-	public static final ShaderEffectType<StarfieldEffect> TYPE = new ShaderEffectType<>(
-			Identifier.fromNamespaceAndPath(AbyssFall.MOD_ID, "starfield"), SHADER, MAP_CODEC,
+	public static final ShaderEffectType<CosmicEffect> TYPE = new ShaderEffectType<>(
+			Identifier.fromNamespaceAndPath(AbyssFall.MOD_ID, "cosmic"), SHADER, MAP_CODEC,
 			DEFAULT_STARS);
 
 	/**
-	 * A starfield with every value left at its default.
+	 * A cosmic field with every value left at its default.
 	 *
 	 * @param mask where the sky shows through — its red channel is the opacity, so a mask with no red draws
 	 *             nothing at all
 	 */
-	public static StarfieldEffect of(final Identifier mask) {
-		return new StarfieldEffect(mask, DEFAULT_STARS, DEFAULT_LAYERS, DEFAULT_DRIFT_SPEED,
+	public static CosmicEffect of(final Identifier mask) {
+		return new CosmicEffect(mask, DEFAULT_STARS, DEFAULT_LAYERS, DEFAULT_DRIFT_SPEED,
 				DEFAULT_BRIGHTNESS, DEFAULT_DENSITY, DEFAULT_DEBUG_SOLID);
 	}
 
@@ -213,7 +213,7 @@ public record StarfieldEffect(Identifier mask, List<Identifier> stars, int layer
 
 	@Override
 	public Map<String, Float> shaderDefines() {
-		// STAR_LAYERS is a define rather than a uniform for a reason beyond the usual one: the shader's main
+		// COSMIC_LAYERS is a define rather than a uniform for a reason beyond the usual one: the shader's main
 		// loop runs over it, and a loop with a compile-time bound is unrolled. As a uniform it would be a real
 		// loop with a real branch, evaluated per fragment.
 		//
@@ -227,10 +227,10 @@ public record StarfieldEffect(Identifier mask, List<Identifier> stars, int layer
 		// UVs alone. That is what makes this whole approach possible: the reference implementation re-uploaded
 		// its sprite rectangles as a uniform every frame, which on this draw path is not available at all.
 		return Map.of(
-				"STAR_LAYERS", (float) this.layers,
-				"STAR_DRIFT_SPEED", this.driftSpeed,
-				"STAR_BRIGHTNESS", this.brightness,
-				"STAR_DENSITY", this.density);
+				"COSMIC_LAYERS", (float) this.layers,
+				"COSMIC_DRIFT_SPEED", this.driftSpeed,
+				"COSMIC_BRIGHTNESS", this.brightness,
+				"COSMIC_DENSITY", this.density);
 	}
 
 	@Override
@@ -241,7 +241,7 @@ public record StarfieldEffect(Identifier mask, List<Identifier> stars, int layer
 	@Override
 	public Set<String> shaderFlags() {
 		// No colour source: the field invents a colour per star, which is the whole of what makes it a
-		// starfield rather than a tint. A source contributing DERIVE_* here would have nothing to act on.
-		return this.debugSolid ? Set.of("STARFIELD_DEBUG_SOLID") : Set.of();
+		// field rather than a tint. A source contributing DERIVE_* here would have nothing to act on.
+		return this.debugSolid ? Set.of("COSMIC_DEBUG_SOLID") : Set.of();
 	}
 }

@@ -1,6 +1,6 @@
 #version 330
 
-// Fragment stage for the starfield effect: a depth of sky seen through the item's outline.
+// Fragment stage for the cosmic effect: a depth of sky seen through the item's outline.
 //
 // PORTED FROM AVARITIA'S cosmic.frag (Avaritia 3.3.0, MC 1.12.2)
 // --------------------------------------------------------------
@@ -143,7 +143,7 @@ void main() {
 		discard;
 	}
 
-#ifdef STARFIELD_DEBUG_SOLID
+#ifdef COSMIC_DEBUG_SOLID
 	// ⚠️ DIAGNOSTIC ONLY. Paints the masked area a flat, unmistakable colour and returns before any of the
 	// sky arithmetic runs.
 	//
@@ -153,7 +153,7 @@ void main() {
 	//
 	// Magenta blade  => geometry, depth state, mask and blend are all correct; any faintness is the field's
 	//                   own arithmetic and tuning it is worthwhile.
-	// Unchanged blade => the fault is upstream of the starfield. Tuning the field is pointless. Look at the
+	// Unchanged blade => the fault is upstream of the field. Tuning the field is pointless. Look at the
 	//                   depth state first: a coplanar layer biased the wrong way is rejected silently.
 	fragColor = vec4(1.0, 0.0, 1.0, mask.r);
 	return;
@@ -195,7 +195,7 @@ void main() {
 
 	// Drift. The reference multiplied its raw tick count by 0.0002, over a counter that never reset.
 	// GameTime is a 0..1 ramp that returns to zero once per Minecraft day, so expressing the same rate
-	// against it means the value here is the drift over a whole day — that is what STAR_DRIFT_SPEED states,
+	// against it means the value here is the drift over a whole day — that is what COSMIC_DRIFT_SPEED states,
 	// and it is applied directly, without the reference's 0.0002 on top.
 	//
 	// ⚠️ The field therefore returns to its starting position once per Minecraft day rather than drifting
@@ -203,10 +203,10 @@ void main() {
 	// (see the header). Rounding the speed to a whole number of cells per day would at least put the seam
 	// where the pattern repeats — but it is not done, because the seam is only visible if one is watching a
 	// single star, and pinning the speed to integers would take away the setting's usefulness.
-	float drift = GameTime * STAR_DRIFT_SPEED;
+	float drift = GameTime * COSMIC_DRIFT_SPEED;
 
-	for (int i = 0; i < int(STAR_LAYERS); i++) {
-		int mult = int(STAR_LAYERS) - i;
+	for (int i = 0; i < int(COSMIC_LAYERS); i++) {
+		int mult = int(COSMIC_LAYERS) - i;
 
 		// The reference's semi-random constants, unchanged. Arbitrary, but they are what give each layer an axis
 		// unrelated to its neighbours' — which is what stops the stack reading as one sphere.
@@ -235,12 +235,12 @@ void main() {
 		int tv = int(mod(floor(v * cells), cells));
 
 		// Does this cell hold a star? The reference's own test, hash % 101 < spriteCount, scaled by
-		// STAR_DENSITY: 1.0 is the reference exactly, 2.0 doubles how many cells hold a star.
+		// COSMIC_DENSITY: 1.0 is the reference exactly, 2.0 doubles how many cells hold a star.
 		int symbol = int(rand2d(vec2(float(tu), float(tv) + float(i) * 10.0)) * CELL_OUT_OF);
 
-		if (symbol >= 0 && float(symbol) < float(SPRITE_COUNT) * STAR_DENSITY) {
+		if (symbol >= 0 && float(symbol) < float(SPRITE_COUNT) * COSMIC_DENSITY) {
 			// 🔴 Which sprite this cell draws. Taken modulo SPRITE_COUNT because the test above admits
-			// indices up to SPRITE_COUNT * STAR_DENSITY, and STAR_DENSITY may exceed 1.0 — a density of
+			// indices up to SPRITE_COUNT * COSMIC_DENSITY, and COSMIC_DENSITY may exceed 1.0 — a density of
 			// 2.0 admits an index of 19 while only ten sprites exist. Without the modulo those cells
 			// asked starBounds for an index it has no branch for and sampled the atlas origin instead,
 			// which drew whatever unrelated artwork the packer left there.
@@ -310,7 +310,7 @@ void main() {
 			// 🔴 The star's artwork, sampled from the item atlas. This is what replaces the procedural shape a
 			// previous version of this shader invented: these sprites are animated by vanilla, and that
 			// animation is where the field's shimmer comes from. Drawing the shape arithmetically produced a
-			// starfield that was completely static.
+			// field that was completely static.
 			vec4 tcol = texture(Sampler0, starCoord);
 
 			// Brightness from the sprite's red channel, faded towards the poles where the sphere mapping bunches
@@ -357,7 +357,7 @@ void main() {
 	//
 	// ⚠️ Be clear about what this does to the environment response, because it is not a small thing: the gain
 	// falls faster with light than `shade` rises, so the PRODUCT now decreases as the world gets brighter
-	// (1.36x at black, 1.20x at full light). The starfield is therefore brightest in a cave and calmest at noon
+	// (1.36x at black, 1.20x at full light). The field is therefore brightest in a cave and calmest at noon
 	// — the inverse of what the mix above does on its own. That is the requested behaviour, not an oversight:
 	// the sky is meant to assert itself where there is nothing else to see, and to stop competing with a lit
 	// scene. Anyone "fixing" the direction should know they are changing the intent.
@@ -391,12 +391,12 @@ void main() {
 	// itself sits under the point where the palette starts collapsing. Note 1.2 would have been the wrong end
 	// entirely — it makes the dark product 0.96x, i.e. dimmer than no gain at all.
 	//
-	// Distinct from STAR_BRIGHTNESS, which is also a multiplier: that one is a compile-time define and part of
+	// Distinct from COSMIC_BRIGHTNESS, which is also a multiplier: that one is a compile-time define and part of
 	// what identifies a pipeline, so it states a fixed intent per configured effect. This one varies per
 	// fragment from data in the vertex stream and compiles nothing.
 	col.rgb *= shade * gain;
 
-	col.rgb *= STAR_BRIGHTNESS;
+	col.rgb *= COSMIC_BRIGHTNESS;
 	col = clamp(col, 0.0, 1.0);
 
 	// The mask's red channel as opacity, exactly as the reference does.

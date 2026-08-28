@@ -56,8 +56,8 @@
 
 Add-Type -AssemblyName System.Drawing
 
-$itemPath = Join-Path $PSScriptRoot 'src\main\resources\assets\abyssfall\textures\item\final_death_omen.png'
-$target   = Join-Path $PSScriptRoot 'src\main\resources\assets\abyssfall\textures\item\final_death_omen_mask.png'
+$itemPath = Join-Path $PSScriptRoot 'src\main\resources\assets\abyssfall\textures\item\final_death_omen\final_death_omen.png'
+$target   = Join-Path $PSScriptRoot 'src\main\resources\assets\abyssfall\textures\item\final_death_omen\final_death_omen_mask.png'
 $metaPath = "$target.mcmeta"
 
 if (-not (Test-Path $itemPath)) {

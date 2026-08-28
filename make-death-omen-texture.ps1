@@ -38,7 +38,7 @@ param(
 Add-Type -AssemblyName System.Drawing
 
 $source = Join-Path $PSScriptRoot 'sword_NEW.png'
-$target = Join-Path $PSScriptRoot 'src\main\resources\assets\abyssfall\textures\item\final_death_omen.png'
+$target = Join-Path $PSScriptRoot 'src\main\resources\assets\abyssfall\textures\item\final_death_omen\final_death_omen.png'
 
 if (-not (Test-Path $source)) {
 	throw "Not found: $source"

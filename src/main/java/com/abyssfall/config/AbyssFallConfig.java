@@ -36,12 +36,14 @@ import com.mojang.serialization.JsonOps;
 
 import net.minecraft.util.StrictJsonParser;
 
-import net.fabricmc.loader.api.FabricLoader;
-
 import com.abyssfall.AbyssFall;
 
 /**
- * Loads and saves {@code config/abyssfall.json}.
+ * Loads and saves {@code config/abyssfall/abyssfall.json}.
+ *
+ * <p>The path comes from {@link AbyssFall#configPath}, which puts every one of this mod's
+ * configuration files in one directory of its own rather than loose in the shared {@code config/}
+ * folder. See that method for why.
  *
  * <p>Read exactly once, before anything is registered. That ordering is not incidental: some
  * settings decide whether content enters the registries at all, and a registry cannot be
@@ -288,6 +290,6 @@ public final class AbyssFallConfig {
 	}
 
 	private static Path path() {
-		return FabricLoader.getInstance().getConfigDir().resolve(FILE_NAME);
+		return AbyssFall.configPath(FILE_NAME);
 	}
 }

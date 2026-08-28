@@ -12,7 +12,7 @@
 
 ```
 src/main/java/com/abyssfall/
-├── AbyssFall.java                      主入口：MOD_ID + LOGGER + id(String)
+├── AbyssFall.java                      主入口：MOD_ID + LOGGER + id(String) + configPath(String)
 ├── advancement/AbyssFallAdvancements.java
 ├── agreement/AgreementText.java        测试协议文案（双语，硬编码）
 ├── agreement/TestAgreement.java        preLaunch 入口点，见 16
@@ -36,7 +36,10 @@ src/main/java/com/abyssfall/
 ├── shadercore/color/DerivedColorSource.java    从物品贴图推色，见 18g
 ├── shadercore/color/ShaderColorSources.java    dispatch codec，见 18g
 ├── shadercore/geometry/ItemHullGeometry.java   跟随物品外壳，见 18h
+├── shadercore/geometry/ItemFacesGeometry.java  只 ±Z 两面+基础层，见 18h / 18j
 ├── shadercore/effect/MaskedPulseEffect.java    第一个效果种类，见 18e
+├── shadercore/effect/CosmicEffect.java         旧移植星空（寰宇支配之剑），见 18j
+├── shadercore/effect/AbyssEffect.java          cosmic 的独立副本（死兆将至），见 18j
 └── mixin/PlayerAttackMixin.java        毕业武器接管点，见 17
 src/client/java/com/abyssfall/client/
 ├── AbyssFallClient.java
@@ -56,10 +59,47 @@ src/client/java/com/abyssfall/client/
 
 src/main/resources/assets/abyssfall/shaders/core/
 ├── masked_pulse.vsh / .fsh            见 18e / 18g
-└── starfield.vsh / .fsh               见 18j（亮度增益见 18j-19）
+├── cosmic.vsh / .fsh                  旧移植「星空」，跑 18j 说的旧算法
+└── abyss.vsh / .fsh                   同上的独立副本（深渊效果），见 18j
+
+src/main/resources/assets/abyssfall/textures/shader/
+├── cosmic/cosmic_0..9.png (+.mcmeta)  旧算法素材，18j
+└── abyss/abyss_0..9.png (+.mcmeta)    旧算法素材，18j
 ```
 
 **美术脚本**（见 11）：`make-death-omen-texture.ps1`（alpha 二值化，见 18i）+ `make-death-omen-mask.ps1`（debug 遮罩，见 18i）。
+
+### 🔴 贴图目录约定：材质多的物品各占一个同名子目录（v1.9-Dev-Fix）
+
+```
+textures/item/
+├── abyss_flower.png                     单张贴图的物品：留在 item/ 根下，不动
+├── san_lens.png + .mcmeta               两份也算少，同样留在根下
+├── final_death_omen/                    ← 四份文件的物品分出来
+│   ├── final_death_omen.png / .mcmeta
+│   └── final_death_omen_mask.png / .mcmeta
+└── fake_infinity_sword/
+    ├── fake_infinity_sword.png / .mcmeta
+    └── fake_infinity_sword_mask.png / .mcmeta
+```
+
+**目录名 = 物品名，文件名保持全名不缩写**（用户选定的方案 A）：这样在 IDE 里按全名搜索仍能命中，代价是名字重复一次。
+
+🔴 **子目录会进 sprite 名，一并进图集**：`item/final_death_omen/final_death_omen_mask` 就是完整的 sprite id。这不是巧合而是 vanilla 的既有能力 —— `DirectoryLister` 经 `PathPackResources.listPath` 的 `Files.find(path, Integer.MAX_VALUE, ...)` **递归**列举，jar 侧的 `FilePackResources.listResources` 也只做前缀判断（26.2 源码实证）。vanilla 自己就依赖这点：`atlases/gui.json` 的 source 是 `gui/sprites`，而其下有 207 个深度 ≥2 的文件（`hud/heart/*`）。
+
+⇒ **遮罩/素材作为图集精灵才能播动画、才能被递归收录**这条在子目录下依然成立（机制见 18j 的「落地框架」），无需给 `items.json` 加任何 source。
+
+⚠️ **只能是 `.png`**：`DirectoryLister` 的 converter 扩展名写死 `".png"`（不是 png 根本不进图集），且 `NativeImage.read` 会 `PngInfo.validateHeader` 后抛 `Bad PNG Signature`。**jpg 在这两道门上都过不去**，也没有 alpha 通道可供 18i 那条二值化约定使用。
+
+⚠️ **`.mcmeta` 必须与 `.png` 同目录同名**。它不是 `.png` 故不会被当成精灵收录，只作为伴生元数据被 `resource.metadata()` 读到。
+
+**改这类路径要同步四类引用**（v1.9-Dev-Fix 迁移两把剑时实际动了这些）：
+1. `models/item/*.json` 的 `layer0`
+2. `ShaderConfigData.DEFAULT` 里的 mask sprite 名
+3. 写这些文件的美术脚本（`make-death-omen-texture.ps1` / `make-death-omen-mask.ps1`）
+4. 🔴 **玩家本机已生成的 `config/abyssfall/AbyssFallShader.json`** —— 那是**存量文件**，不热加载也不自动迁移，仍写着旧 sprite 名 ⇒ `resolve` 报 WARN、`forEffect` 返回 null、**星空完全不画**。改完必须提醒用户删掉重新生成（同族问题见 `HANDOFF.md` 教训 19）
+
+⚠️ 改名会让精灵在图集里换位置 ⇒ 编译进 shader 的 `SPRITE_n_U0..V1` / `MASK_*` 常量全部变化。功能上无害（每次重载本来就重算），但**必须进游戏复看渲染**，编译通过不能作为证据。
 
 **Mixin 现在有四个**（`main` 一个 + `client` 三个），配置两份。`src/main` 下的 `mixin/` 包在 26.2 迁移时曾被删除（`WitherRoseBlockMixin` 改成数据文件，见 4），v1.3-Dev 为毕业武器**重新建立**——那次删除是因为不再需要，不是因为禁止。
 
@@ -508,7 +548,7 @@ lang key `death.attack.death_omen.1/2/3`，数量由 `DEATH_MESSAGE_VARIANTS` �
 
 ⚠️ 曾计划用 Mixin 替换铁砧「过于昂贵」提示，**已放弃**：`TOO_EXPENSIVE_TEXT` 是 `AnvilScreen` 的 `private static final` 全局字段、不区分物品，替换会影响所有物品。
 
-**贴图 `abyssfall:item/final_death_omen`**（16×16，`parent: item/handheld`）。进常规创造栏，无 config 门禁。
+**贴图 `abyssfall:item/final_death_omen/final_death_omen`**（16×16，`parent: item/handheld`）。进常规创造栏，无 config 门禁。⚠️ **贴图与遮罩住在同名子目录里**，见「目录结构」末尾那条约定。
 
 ### 17g. tooltip 逐字波浪染色（`client/tooltip/AbyssFallTooltips`）
 
@@ -683,22 +723,6 @@ FixedColorSource.CODEC.optionalFieldOf("color", FixedColorSource.DEFAULT)
 
 **参数走编译期 define 的原因与代价**见 HANDOFF 4b.5。⚠️ `withShaderDefine` 只有 `int`/`float`/flag 三个重载（教训 32）。
 
-### 18f. 无尽贪婪（Re-Avaritia）调研结论
-
-用户提供 1.21.1 NeoForge 源码作参考。**最重要的发现：它的星空不是贴图，是着色器程序化生成的。**
-
-实测其全部贴图分辨率：`infinity_sword_mask.png` **16×32**、`cosmic_0..9.png` **16×48~16×112**。**没有一张高清图。** `layer0` 只当遮罩用（`col.a *= mask.r`）。
-
-`cosmic.fsh` 的做法：把每个片元当一条射线 → 按玩家 yaw/pitch 旋转 → 球面映射取 UV → **叠 16 层，每层随机旋转轴** → 每层切 16×16 格、伪随机决定该格放不放星（`cosmiccount/cosmicoutof = 10/101` ≈ 10%）。
-
-⇒ **素材问题因此消失**：密度是常数、视野无限、永不重复、无需无缝平铺。我们纠结过的 1254² 素材根本不需要。
-
-**GUI 处理值得抄**：它不关动画，而是把 `externalScale` 设成 **100**（把星空"拉远"，视觉上成为细密静止的深空）。
-
-**移植障碍**（若要做星空种类）：它用 `ShaderInstance` + `AbstractUniform.set()` 逐个设标量，**26.2 全没了**；`UniformType` 只有 `UNIFORM_BUFFER`/`TEXEL_BUFFER`，`RenderPass.setUniform` 只收 buffer ⇒ 要么打包 UBO（但 `submitCustomGeometry` 内拿不到 `RenderPass`），要么走 define（值固定）。**这是星空种类还没做的真正原因。**
-
-它自己也用 Mixin（`ItemRendererMixin`/`PlayerRendererMixin`），且专门做了 Iris 兼容（`CosmicRenderQueue` 延迟渲染）—— 说明与光影包冲突是真实问题，我们也会遇到。
-
 ### 18g. 🔴 颜色来源之二：`DerivedColorSource`（从物品自己的贴图推色，v1.5-Dev）
 
 **这条是 18d 那道接缝第一次被真正用上**，也是「以后不必逐物品画遮罩」的技术前提。
@@ -777,7 +801,7 @@ ShaderGeometrySource         接口：收物品真实 quads，产出要画的几
 ItemHullGeometry             唯一实现：跟随全部面，沿【各自法线】外推 0.002
 ```
 
-**为什么是接缝而不是直接写死跟随外壳**：星空那类效果**不贴合物品**（18f），它要的是投影面。若把「总是跟随外壳」写进渲染器，星空来时又得改渲染器。**加种类 = 加实现，不动渲染器。**
+**为什么是接缝而不是直接写死跟随外壳**：程序化「无限空间」那类效果**不贴合物品**（思想见 18j），它要的是投影面。若把「总是跟随外壳」写进渲染器，那种效果来时又得改渲染器。**加种类 = 加实现，不动渲染器。**
 
 **沿各自法线外推，不沿固定轴**：固定轴对前面对、对侧壁全错（侧壁朝侧向，往镜头推等于沿物品滑动而非离开表面）。退化面（侧壁可能塌成线）法线为零 ⇒ 原地不动，**这是正确的省略**，无面积的面本来什么都不画。
 
@@ -847,432 +871,57 @@ $semi=0; for($y=0;$y -lt $b.Height;$y++){for($x=0;$x -lt $b.Width;$x++){
 
 ⚠️ **debug 时把 `sample_density` 调到 0.85、`sample_period_ticks` 调到 20**（默认 0.1 / 10）。**10% 可见率下根本看不出抽样规律** —— 任一瞬间只有一两个像素在亮，形不成可判断的图案。
 
-🔴 **v1.6-Dev 起 18i-2 描述的分区遮罩已不存在**，见 18j-8。那张遮罩改成了「线稿内部纯红」专供星空，G/B 归零 ⇒ `masked_pulse` 在它上面完全透明。要回到分区遮罩得改回生成脚本。
+🔴 **v1.6 起 18i-2 描述的分区遮罩已不存在**。当前遮罩是「线稿内部纯红」，G/B 归零 ⇒ `masked_pulse` 在它上面完全透明。要回到分区遮罩得改回生成脚本。
 
 
 
-## 18j. 星空效果 `abyssfall:starfield`（v1.6-Dev 新增，第二个效果种类）
+## 18j. 「有限平面上的无限空间」——下一版 Shader 的核心思想（v2.0-Dev 重写）
 
-**移植自 Avaritia 的 `cosmic.frag`**（Avaritia 3.3.0 / MC 1.12.2，路径 `Avaritia-master/Avaritia-master/src/main/resources/assets/avaritia/shader/cosmic.frag`）。用户明确：**参考思路，不复用代码**。
+> 🔴 **这一节取代了旧的「星空效果」全部内容。** 旧的 18j-1～18j-20（移植自 Avaritia `cosmic.frag` 的那套）**已从本文档删除**。原因见 `HANDOFF.md` 教训 50：那段东西是把一具 14 年前的尸体移植到 26.2，我们要的不是尸体，是它的思想。
 
-**用户已在游戏里确认渲染正确。** 算法部分（球面映射、16 层堆叠、`rand2d`、旋转矩阵、颜色公式、`lightmix = 0.2`）与参考实现逐行对应，**不要再动它**。用户原话：「我认为现在的这个星空渲染既然已经实现就不需要乱改」。
+### 我们真正继承的东西：一个思想，不是一套代码
 
-### 18j-1. 六个 uniform 怎么在「没有 uniform 路径」的 26.2 里落地
+参考实现唯一不可替代的贡献，是这个问题本身：**「如何在一个有限的二维平面上，渲染出看似无限大的三维空间。」**
 
-参考实现每帧设六个 uniform（`CosmicShaderHelper.shaderCallback`）。26.2 这条 draw path 拿不到 `RenderPass`（见 4b.5），六个全部另找载体：
+答案是一道数学题：**把每个 fragment 当作一条从观察者射出的射线（球面射线），用它去模拟一个无限空间。** 步骤——
 
-| 参考的 uniform | 26.2 的载体 | 理由 |
-|---|---|---|
-| `time` | `GameTime`（`globals.glsl`） | ⚠️ **不是同一个量**：参考是单调上涨的 int，这是每 MC 日归零的 0..1 斜坡。只用于漂移，周期值可接受 |
-| `yaw` / `pitch` | **`UV2` 的 16-bit 对** | 一个字节只有 256 级 ⇒ 每转 1.4° 整片星空跳一次。16 bit 给 32767 级，比鼠标精度细 |
-| `externalScale` | 顶点色 **R 字节** | 近/远两端插值，`1.0 + r * 24.0` |
-| `lightlevel` | 顶点色 **G/B 字节** + `Sampler2` | 两个等级索引 vanilla 自己的 lightmap 贴图 |
-| `opacity` | **丢弃** | 这里没有按数量淡出的东西 |
-| `cosmicuvs[10]` | **编译期 define** | 见下，这条是**简化不是妥协** |
+1. 把 fragment 的屏幕坐标当作一条射线的方向；
+2. 随观察者朝向旋转，映射到一个**球面**上（球面自封闭，永远走不到边）；
+3. 把球面划成网格，用伪随机决定哪些格子里有东西；
+4. 多层网格沿各自轴堆叠，制造**视差**（近处层掠过得快、远处层慢）。
 
-🔴 **`cosmicuvs` 那条是关键差异**：参考每帧重传十个精灵矩形。26.2 里精灵矩形固定不动，vanilla 把当前帧**画进**那个矩形（`TextureAtlasSprite` 的 `u0/v0/u1/v1` 是 `final`）。所以坐标可以当常量，而动画照样播，全程由 vanilla 驱动。
+⇒ **没有贴图要拼接、不会重复、没有接缝、任意分辨率代价相同。** 这就是「无限感」的全部来源，也是下一版效果必须实现的核心。**这几条数学关系不可替代（教训 50 的第 2 问）。**
 
-⚠️ **不要把这条写成「1.12 靠移动 UV 播动画」** —— 参考实现每帧重传这个事实，并不能证明它的 UV 会动（`CosmicShaderHelper` 里就写着 `//TODO, This can be optimized.`）。**我们能证明的是 26.2 的坐标稳定**，这就够了：这条 draw path 根本没有 per-frame uniform，坐标稳定不是便利而是前提。
+### 🔴 参考「尸体」前必须回答的七个问题（教训 50）
 
-### 18j-2. `ShaderSpriteAtlas`：拿精灵矩形的唯一时机
+1. 这个实现最终解决什么问题？
+2. 哪些数学关系是不可替代的？（= 上面那几条射线/球面/网格/多层）
+3. 哪些代码只是历史 API 适配？（1.12.2 固定管线光照、`ShaderInstance`/`AbstractUniform` 等——26.2 全没了，见教训 33/48）
+4. 哪些参数只是视觉设计？（`lightmix=0.2`、16 层、101 格测试、十张素材——都可调可丢）
+5. 哪些数据结构是旧架构遗产？（独立纹理遮罩、每帧上传 uniform 矩形等）
+6. 哪些地方有明显 bug？（旧散列 `rand2d` 对 π 取模、`pow` 溢出 float32、层步长碰撞 35.2% 等——**全是尸体自带的，不是我们的 bug**）
+7. 完全不管原工程结构，现代环境该怎么重写？
 
-`ModelBaker` 只在烘焙期给得到 `SpriteGetter`。`ShaderSpriteAtlas` 在那时把每个精灵的 `u0/v0/u1/v1` 存下来，供 pipeline 建 define。
+### 26.2 下这套思想的落地框架（已建好，照用）
 
-⚠️ **`clear()` 必须有人调用**，否则换资源包后图集重新缝合、UV 全错且不会自愈。挂在 `ModelLoadingPlugin` 回调体首部，见 18j-7。
+旧实现能跑，已验证下面这些**框架事实**——它们与旧算法无关，下一版直接用：
 
-### 18j-3. 精灵来源：`ShaderEffectType.sprites()` 而非配置文件
+- **效果 = 一个 record + 一个 GLSL + 注册**（见 18a–18c）；每帧决策、几何来源、颜色来源、遮罩机制全部现成。
+- **每帧变化的值走顶点属性，不走 define/uniform**（`HANDOFF.md` 4d / 教训 35）；配置态常量才走 define。
+- **遮罩当图集精灵**而非独立纹理，才能播动画、才能被递归收录。
+- **几何取 ±Z 两面 + 只取基础层**（`ItemFacesGeometry`，v1.9 加了图层去重，见 `ShaderQuad#BASE_LAYER`），不取侧壁。
+- **深度偏移用正数**（coplanar 几何）；**资源重载窗口期不许建 pipeline**。
+- **只有遮罩红通道决定不透明度**（`mask.r <= 0 → discard`）。
 
-**踩过的坑**：第一版 `resolveEffectSprites` 只遍历 `AbyssFallShaderConfig.get().effects()`。但 `AbyssFallShaderCore` 的设计是 **provider 每帧可返回任意效果**（4b.3），不限于配置文件 ⇒ 动态返回的星空效果精灵永远不会被解析，define 缺失，**GLSL 编译失败且静默**（4b.7）。
+### 🔴 素材分辨率不再是限制（v2.0 用户实测）
 
-**这就是 18c 明令禁止的「预筛」换了个形状。**
+旧文档里「素材建议 64×64、警惕图集爆掉」**作废**。用户实测：**素材多大都无所谓，2048×2048 × 10 张一起渲染，帧率代价不到 10 fps。** 旧实现用低分辨率纯粹因为 2012 年那是极限。⚠️ 仍要守的硬约束只有：**`.png`、正方形帧、总高是帧高整数倍、数量与 shader 分支数一致**；图集 `GL_MAX_TEXTURE_SIZE` 仍是物理上限（现代卡 16384+）。
 
-⇒ `ShaderEffectType` 加 `sprites` 字段（**种类级**声明，与实例无关），`resolveEffectSprites` **先遍历 `ShaderEffectTypes.all()`**、再遍历配置。`ShaderEffect.spriteDependencies()` 默认返回 `type().sprites()`。
+### 现状与下一步
 
-### 18j-4. `ItemFacesGeometry`：只要 ±Z 两面
+- **`abysseffect`（死兆将至）与 `cosmic`（寰宇支配之剑）现在都跑旧移植算法。它们留在仓库里不动**——能跑、无害、bug 全继承自尸体，不挡路。
+- **下一版效果**：只带「球面射线模拟无限空间」这条思想，用 26.2 框架**从零写新 shader**，不看旧工程结构。**不是现在的任务，等立项。**
 
-星空**不用** `ItemHullGeometry`（18h 那个沿法线外推的），用只保留 ±Z 面、丢掉侧壁的 `ItemFacesGeometry`。
-
-**理由**：侧壁只有一个像素宽，遮罩 UV 在那个方向退化成一条线 ⇒ 多个重叠侧面采到同一列纹素，星空在厚度上呈斑块状。**这与 18h 的结论不冲突** —— 18h 说的是「物品不是平的，几何要跟随形状」，这里说的是「一像素宽的面上采不出球面映射」。两个不同维度。
-
-⚠️ **`ItemFacesGeometry.isCoplanar()` 返回 `true`**（无外推 ⇒ 与物品表面共面 ⇒ 需要深度偏移），`ItemHullGeometry` 用默认 `false`。
-
-### 18j-5. 🔴 `isCoplanar()` 住在几何源，不住效果
-
-**v1.6-Dev 的接口修正**：原先是 `ShaderEffect.drawsCoplanar()`，javadoc 自己写着「⚠️ 这个和 `geometry()` 必须保持一致」—— **一对约束被拆到接口的两个方法里、由实现者手工维护，是典型的坏接缝**。
-
-### 18j-6. 🔴 深度偏移的符号：正数，不是负数
-
-**这一轮踩得最深的坑之一。** `AbyssFallPipelines` 原来写：
-
-```java
-COPLANAR_DEPTH_BIAS_SCALE = -1.0F;
-COPLANAR_DEPTH_BIAS_CONSTANT = -10.0F;
-```
-
-注释论证「26.2 深度范围反了 ⇒ 符号要反」。**这个推理是错的**：`glPolygonOffset` 作用在**窗口空间**（深度缓冲区），不是 NDC，正数**永远**把片段推向观察者，与深度范围方向无关。
-
-反深度下负 bias 把深度值减小 ⇒ 比物品表面小 ⇒ `GREATER_THAN_OR_EQUAL` 失败 ⇒ **每个片段都被拒绝，什么都不画，全程静默**。
-
-**vanilla 26.2 实证**（`RenderPipelines.java`，同样的反深度、同样的 `GREATER_THAN_OR_EQUAL`、同样「共面图层浮到表面前」）：
-
-| 行 | 用途 | 参数 |
-|---|---|---|
-| 445 | `crumbling`（方块破坏裂纹贴方块面） | `1.0F, 10.0F` |
-| 489 / 498 | `text_polygon_offset`（告示牌文字贴牌面） | `1.0F, 10.0F` |
-| 573 | — | `1.0F, 1.0F` |
-| 618 | — | `3.0F, 3.0F` |
-
-**全部正数。**
-
-🔴 **参考实现根本没用 polygon offset。** `CosmicItemRender:73` 用的是：
-
-```java
-GlStateManager.disableAlpha();
-GlStateManager.depthFunc(GL11.GL_EQUAL);   // 只放行深度恰好相等的片段
-```
-
-即「精确相等」而不是「偏移后取胜」。26.2 这条 draw path 没有 `GL_EQUAL` 的等价物（`DepthStencilState` 只给 `CompareOp` + bias），所以我们用 bias 顶替了精确匹配。**视觉结果相同，机制不同。** 之前注释说「量级来自参考实现的 `polygonOffset(-1.0F, -10.0F)`」，那是编的 —— 那两个数是我们项目自己的历史值。
-
-⇒ 现在是 `1.0F / 10.0F`，出处是 vanilla 上表。**别再"修"回负数。**
-
-### 18j-7. 资源重载：`clear()` 挂在 plugin 回调体里，零 Mixin
-
-`ShaderSpriteAtlas.clear()` 与 `AbyssFallPipelines.clear()` 一度**无人调用** ⇒ `/reload` 或换资源包后 UV 与 pipeline 全部过期且不自愈。
-
-**用 `javap` 读 `ModelLoadingPluginManager` 字节码确认**：`preparePlugins` 由资源重载监听器驱动 ⇒ **`ModelLoadingPlugin.initialize` 的回调体每次重载都会重跑**。所以两个 `clear()` 放在回调体首部就够了，**不需要额外注册 `SimpleSynchronousResourceReloadListener`，也不需要 Mixin**。
-
-### 18j-8. 🔴 遮罩：填线稿**内部**，不是描线稿本身
-
-**用户实测报的现象**：星空只长在黑色线条上。
-
-**根因极其简单**：`final_death_omen.png` 是**纯线稿**（实测：64 个不透明黑像素 + 192 个透明，无中间色）。上一版遮罩脚本把「不透明像素」当成要填红的区域 ⇒ 红色精确覆盖在**轮廓线**上 ⇒ 星空长在线上。
-
-**正解**（用户指定方向）：4 连通 flood fill 从四边灌水、把轮廓当墙，**没被灌到的透明像素就是内部**。内部填纯红 `(255,0,0,255)`，轮廓线与外部全透明。
-
-**实测结果**：轮廓 64 px、内部 **45 px**、外部 147 px。线稿闭合。
-
-⚠️ **物品贴图全程只读**，脚本跑前后 SHA256 一致（`1141828E...`）。
-
-**排查这类问题的一条命令**（并排打印，一眼看出红色在线上还是线内）：
-
-```powershell
-Add-Type -AssemblyName System.Drawing
-$i=New-Object System.Drawing.Bitmap((Resolve-Path 'xxx.png').Path)
-$m=New-Object System.Drawing.Bitmap((Resolve-Path 'xxx_mask.png').Path)
-for($y=0;$y -lt 16;$y++){ $a='';$b='';
-  for($x=0;$x -lt 16;$x++){
-    if($i.GetPixel($x,$y).A -gt 0){$a+='#'}else{$a+='.'}
-    $p=$m.GetPixel($x,$y); if($p.A -gt 0 -and $p.R -gt 0){$b+='R'}else{$b+='.'} }
-  "$a    $b" }
-$i.Dispose(); $m.Dispose()
-```
-
-### 18j-9. 遮罩通道契约：两个效果读的通道不同，且不兼容
-
-| 效果 | 读 | 忽略 |
-|---|---|---|
-| `starfield` | **R**（= 不透明度，`R = 0` 直接 discard） | G / B |
-| `masked_pulse` | **G**（常驻）+ **B**（抽样） | R |
-
-🔴 **当前那张遮罩 G = B = 0** ⇒ `masked_pulse` 在死兆将至上完全透明。**不是坏了，是没数据。** 要恢复得同时：①`ShaderConfigData.DEFAULT` 的 `type` 改回 `abyssfall:masked_pulse`，②遮罩脚本重新写 G/B。
-
-⚠️ **星空遮罩可以超出物品轮廓，这是用户明确的设计意图**（原话：「星空渲染这套逻辑不会覆盖物品原来的材质，只会在空白像素的地方渲染星空」）。shader **不检查物品自身 alpha**，只看 `mask.r`。**别把这当 bug 修掉。**
-
-### 18j-10. 命名：渲染层不许出现效果种类的词汇
-
-`AbyssFallPipelines` 一度把 define 命名成 `STAR_COUNT` / `STAR_n_U0` —— **通用渲染层硬编码了某个效果种类的名字，违反 18d-4 的「渲染层 → 效果种类零引用」**。
-
-现在渲染层只说 `SPRITE_COUNT` / `SPRITE_n_U0`（它确实只知道「有若干精灵」这件事）。而 `STAR_LAYERS` / `STAR_DENSITY` / `STAR_BRIGHTNESS` / `STAR_DRIFT_SPEED` **留在效果自己身上**，那是效果的词汇，本来就该由它拥有。
-
-### 18j-11. 三个已知代价（都是 26.2 逼出来的，不是没想到）
-
-1. **漂移每 MC 日回绕一次**（`GameTime` 归零）。要单调时钟，这条 draw path 没有。把速度锁成整数能把接缝挪到图案重复处，但那会废掉 `drift_speed` 这个设置项 ⇒ **没做**。
-2. **`Sampler2` 强加给所有效果**（`SAMPLER0_SAMPLER1_SAMPLER2` + `useLightmap()`）⇒ `masked_pulse.fsh` 被迫声明一个它从不用的 sampler。换成第二套 layout 就得让 `AbyssFallPipelines` 知道「哪些效果要 lightmap」，**那正是这个类要避免的知识**。取舍：一个空声明比一次架构泄露便宜。
-3. **`externalScale` 的 25 这个数没有出处**。参考实现（1.12.2 与 Re-Avaritia 1.21.1 都查过）是**逐帧 uniform**，不存在固定 25。这里只能取近/远两端插值，注释已改成实话。
-
-### 18j-12. 🔴 `RenderPipeline` 没有 `equals` —— GPU pipeline 缓存按对象身份
-
-**这条专门记下来，因为我在审查时据此报了两个不存在的严重 bug。**
-
-`RenderPipeline` 是 **plain class 不是 record**，全文 425 行只覆盖了 `toString()`，**没有覆盖 `equals` / `hashCode`**（`getSortKey()` 里还出现 `super.hashCode()`，反证 `hashCode` 未被覆盖）。
-
-而 `VulkanDevice:263` / `GlDevice:309`：
-
-```java
-protected VulkanRenderPipeline getOrCompilePipeline(final RenderPipeline pipeline) {
-    return this.pipelineCache.computeIfAbsent(pipeline, ignored -> this.compilePipeline(...));
-}
-```
-
-⇒ **缓存键是对象身份（identity）**。每个 `new RenderPipeline` 各自编译一次，**`location` 相同也不会互相命中**。
-
-**因此以下两个"bug"都不存在**：
-- ❌「`pipelineId` 不含 atlas ⇒ 两个图集共用错误 pipeline」
-- ❌「`AbyssFallPipelines.clear()` 清不到 GPU 缓存 ⇒ 重载后仍用旧 UV」
-
-`clear()` 丢掉 `CACHE` 里的 `RenderType`，下次 `create()` 造**新的 `RenderPipeline` 对象** ⇒ GPU 层必然重新编译。整条链是对的。
-
-⚠️ **`location` 的作用只是调试标识**（`toString()` 返回它）。它不参与任何缓存判定。所以 `pipelineId` 用 `hashCode` 拼是**够用的**，不需要把 atlas 编进去。
-
-### 18j-13. 与参考实现的两处有意分歧（不是 bug，但别当 bug 修）
-
-**1. 掉落物 / 展示框用远端 depth**
-
-`isViewerRelative` 只认手持与头部；`GROUND`、`ITEM_FRAME`、`GUI` 一律 `depth = 1.0`（即 `externalScale = 25`，细密静止）。
-
-参考实现只把 **GUI** 特殊处理（`CosmicItemRender:50` 判 `TransformType.GUI`），`GROUND` 走 `renderSimple` 用正常尺度。
-
-**我们的逻辑站得住**（掉在地上的东西不该跟着玩家转头而变），但**与参考不同**。如果哪天觉得地上的剑星空太细，改 `isViewerRelative` 而不是改 shader。
-
-**2. `GL_EQUAL` → bias**
-
-见 18j-6。参考用精确深度相等，我们用深度偏移，因为 26.2 没有前者。
-
-### 18j-14. 其他修正（1.6-Dev 一并做掉）
-
-- **`starBounds` 越界**：`density > 1.0` 时 `symbol` 可达 19 而只有 10 个精灵 ⇒ 采到图集原点。加 `mod(symbol, SPRITE_COUNT)`，现在是**复用**精灵
-- **`pow(0,0)` 未定义**：改 `pow(float(tu) + 1.0, float(tv))`，底数恒正，意图（逐格稳定混合）不变
-- **`lightCoords` 被忽略**：原先用 `LocalPlayer.blockPosition()` 算光照 ⇒ 掉落物/展示框/他人手持全用错位置。现在解包 vanilla 递来的 `lightCoords`（`LightCoordsUtil.block()/sky()`）
-- **`ViewerState` 多上下文污染**：renderer 缓存 key 从 `effect` 改成 `Map.entry(effect, viewerRelative)` ⇒ GUI 槽与手持不再共享同一个 renderer
-- **`LENIENT_CODEC` 注释撒谎**：`FixedColorSource` 删除后（用户授意）回落只能是 `derived`，注释改成实话 —— 旧字段会被丢弃，只保留「曾配置过颜色」这个事实
-
-
-
-### 18j-15. 🔴 遮罩可以律动 —— 把它当图集精灵，不当独立纹理（v1.7-Dev）
-
-**这条推翻了 1.6-Dev 写下的结论。** 之前记的是「26.2 只有 `TextureAtlas` 实现 `TickableTexture` ⇒ 遮罩不可能动」——**前半句对，推论错**。
-
-遮罩不必是独立纹理。**绑成图集精灵它就跟着图集 tick**，与星星素材一直在用的是同一个机制。
-
-**三条实证：**
-
-1. **`withTexture` 接受任意 `TextureManager` 纹理**
-   ```java
-   // RenderSetup.prepareTextures
-   AbstractTexture texture = textureManager.getTexture(entry.getValue().location);
-   // AtlasManager 构造函数
-   textureManager.register(info.textureId, atlasTexture);   // items.png 图集在此注册
-   ```
-
-2. **同名 atlas 定义是叠加不是覆盖**
-   ```java
-   // SpriteSourceList.load
-   for (Resource entry : resourceManager.getResourceStack(resourceId)) {
-       loaders.addAll(...);   // 遍历所有资源包累加
-   }
-   ```
-   而 **vanilla 的 `items.json` 本来就有 `prefix: "item/"`** ⇒ `textures/item/` 下的遮罩**一直都在图集里**，旧写法只是没去那儿找它。
-
-3. **星星就是活例子** —— 它们会动，走的正是这条路。
-
-**代价：一次间接。** `0..1` 现在跨整张图集，所以 shader 要经 `MASK_U0..MASK_V1` 映射进遮罩矩形：
-
-```glsl
-vec2 maskCoord(vec2 local) {
-    return vec2(mix(MASK_U0, MASK_U1, local.x), mix(MASK_V0, MASK_V1, local.y));
-}
-```
-
-⚠️ **`mask()` 现在返回精灵名不是纹理路径**：`abyssfall:item/xxx`（无 `textures/`、无 `.png`）。旧路径形式会解析失败 ⇒ `addMaskDefines` 记 ERROR 并发退化矩形（全 discard，不画而非乱画）。
-
-⚠️ **`masked_pulse.fsh` 里只有采样走 `maskCoord`。** 逐像素抽样那行必须留 `texCoord0`：
-```glsl
-vec4 mask = texture(Sampler1, maskCoord(texCoord0));        // 改
-ivec2 pixel = ivec2(floor(texCoord0 * MASK_RESOLUTION));    // 不改
-```
-用图集坐标会对着整张 1024×512 量化，格子跟像素对不上。
-
-⚠️ **`run/config/AbyssFallShader.json` 也得改** —— 它覆盖 `DEFAULT`，不改就解析不到遮罩。
-
-**当前素材**：物品与遮罩都是原版的 16×144 九帧 + 同一套帧序列（30 项），所以**剑身与星空同步呼吸**。
-
-### 18j-16. 🔴 修掉两个从参考实现抄来的散列缺陷（v1.7-Dev）
-
-用户定调：**「我们的目标是复现整套渲染机制，而不是照抄 bug」**。
-
-#### ① `rand2d` 对 π 取模 —— `sin` 半个值域不可达
-
-```glsl
-// 旧（参考实现原样）
-fract(sin(mod(dot(x, vec2(12.9898, 78.233)), 3.14)) * 43758.5453)
-// 新
-fract(sin(mod(dot(x, vec2(12.9898, 78.233)), TAU)) * 43758.5453)
-```
-
-`sin` 周期是 2π，对 3.14 取模把参数限进 `[0, π)` ⇒ 实测 4096 样本 **`sin<0` 出现 0 次**。
-
-| | 旧 | 新 |
-|---|---|---|
-| 含星 cell | 9.18% | 9.38% |
-| 星图分布卡方 | 8.2 | 7.3 |
-
-**视觉影响很小**（两者都通过均匀性检验），改它主要是让代码意图正确、顺带去掉 `3.14` 这个魔数。
-
-⚠️ **散列质量的主要瓶颈不在这里，而在输入**：`rand2d(vec2(tu, tv + i*10.0))` 的层步长 10 **小于** `tv` 的 16 值域 ⇒ **35.2% 的 (层, cell) 组合碰撞**（256 组合只有 166 个不同值）。修它会移动每一颗星，**没做** —— 星座图案是参考实现的，其随机性质量属于原设计而非缺陷。
-
-#### ② `pow` 溢出 float32 —— 六成星星朝向一致
-
-```glsl
-// 参考实现
-int rotation = int(mod(pow(tu, float(tv)) + tu + 3 + tv*i, 8));
-// 我们 1.6-Dev（为修 pow(0,0) 未定义而加 +1.0，结果更糟）
-int rotation = int(mod(pow(float(tu) + 1.0, float(tv)) + ... , 8.0));
-// 现在
-int rotation = int(rand2d(vec2(float(tu) + 0.5, float(tv) + float(i) * 16.0 + 0.5)) * 8.0);
-```
-
-`pow(15,15) = 4.4e17`，float32 尾数仅 24 位 ⇒ 低位全丢 ⇒ 低位为零者 `mod 8` 必得 0。**实测溢出组合里 97% 塌到 rotation 0。**
-
-| 方案 | 溢出组合 | 卡方 | `rotation=0` |
-|---|---|---|---|
-| 参考 `pow(tu,tv)` | 89/256 | 2691.6 | 38.2% |
-| **1.6-Dev `pow(tu+1,tv)`** | **98/256** | **5003.6** | **48.0%** |
-| **1.7-Dev 复用 `rand2d`** | — | **11.2** | **11.7%** |
-| 理想 | — | ~7 | 12.5% |
-
-🔴 **1.6-Dev 那个 `+1.0` 抄得比原版还糟** —— 抬高底数让溢出来得更早。渲染出来溢出区是一整块朝向相同的星芒。
-
-**卡方 11.2 低于临界值 14.1** ⇒ 统计上无法拒绝均匀假设。且因为不再用 `pow`，`pow(0,0)` 未定义那个原始问题自动消失。
-
-**两次 `rand2d` 调用不相关**（实测皮尔逊 r = **-0.015**）：选星用 `(tu, tv+i*10)`，选朝向用 `(tu+0.5, tv+i*16+0.5)`。
-
-**边界安全**：`fract` 返回 `[0,1)`，`*8.0` 后 `int()` 截断得 `0..7`，实测 4096 样本零越界。
-
-#### 🔴 直方图均匀 ≠ 视觉随机（这条最容易被"优化"掉）
-
-线性形式 `tu*7 + tv*13 + i*29` 的**卡方是 0，完美均匀**。但它的空间图是：
-
-```
-0765432107654321
-5432107654321076
-2107654321076543
-7654321076543210
-```
-
-**完美的对角条纹** —— 完美均匀恰恰因为完美周期，渲染成斜向规则纹理，比分布不均更难看。
-
-对比复用 `rand2d` 的空间图（无可见规律）：
-```
-1431110375430344
-6165724737324163
-7417267332045236
-```
-
-⇒ **这里要的是空间无关联，不是直方图均匀。** 别拿卡方 0 来"改进"它。
-
-### 18j-17. 原版的星空确实有观感缺陷，但主因是素材而非算法（v1.7-Dev 验证）
-
-用户实测 1.12.2 原版：**「密集但种类少、更像雪花」**、**「只看到 cosmic_0 的元素」**。
-
-**已排除：选星算法没问题。** 穷举 4096 组合（float32/float64 都算），**十张星图全部被选中且分布均匀**：
-
-```
-cosmic_0..9 命中: 19 42 42 28 40 39 55 48 33 39
-```
-
-**真正原因：十张素材量级悬殊 41 倍。**
-
-```
-cosmic_1: [f0=3]   [f1=7]   [f2=7]   [f3=7]      ← 最小
-cosmic_8: [f0=2]   ...                            ← 第0帧仅 2 像素
-cosmic_9: [f0=124] [f1=112] [f2=120]              ← 最大
-cosmic_6: [f0=60]  [f1=72]  ... [f5=72]
-```
-
-它们不是"十种星星变体"，是完全不同的物体：`cosmic_1` 是三个孤立单像素点，`cosmic_9` 是一个巨大实心团块。
-
-⇒ **大的那几张（9/6/2）视觉上压倒一切；小的那几张（1/8/3，2-4 像素）在屏幕上物理不可见。** 用户"只看到一种"其实是"只看到大的那几张"。
-
-🔴 **以后自制星图素材必须注意**：**别画 2-4 像素的星星，屏幕上看不见**。十张之间的量级要接近，否则小的等于白画。
-
-**用户结论（已认可）**：我们的实现是"真正的星空"，原版更像雪花。差异来自素材量级失衡 + 我们规避了两处未定义行为（`pow(0,0)`、`asin` 域外加了 `clamp`）+ 26.2 没有 1.12.2 固定管线光照的干扰。
-
-**`layer_1.png` 已查明**（16×448、28 帧、仅 28 个不透明像素 = 每帧 1 像素）：剑柄底部单像素的渐变，走普通 layer 路径，与 cosmic shader 无关，**无需移植**（用户判断，已复核）。
-
-
-### 18j-18. 🔴 资源重载有一个窗口期，那期间**不许**建 pipeline（v1.8-Dev-Fix）
-
-**用户报的现象**：游戏内切换语言后星空永久消失，日志 `undefined variable "SPRITE_0_U0"` ×40。
-
-**根因不是切语言，是「两个来源不同步」。** pipeline 的 define 来自两处可信度完全不同的地方：
-
-| define | 来源 | 性质 |
-|---|---|---|
-| `SPRITE_COUNT` | `effect.spriteDependencies().size()` | **常量**，永远答 10 |
-| `SPRITE_n_U0..V1` | `ShaderSpriteAtlas.get()` | **可变缓存**，重载时被清空 |
-
-`clear()` 挂在 `ModelLoadingPlugin` 回调体里（18j-7），跑在重载的 **prepare 阶段** —— 而模型是之后才烘焙的。于是 `BOUNDS` 空、`SPRITE_COUNT` 仍是 10 ⇒ shader 编译出十个引用不存在 define 的分支。
-
-🔴 **窗口期内渲染线程没有停**（26.2 源码实证，`GameRenderer.render`）：`renderLevel` 受 `isGameLoadFinished()` 门控，但 **`guiRenderer.render()` 在那个 if 块之外、无条件执行** —— LoadingOverlay 本身就靠这条路画出来。所以窗口期内旧 wrapper 仍会调 `forEffect`。
-
-**为什么是永久性的**：坏 pipeline 被 `computeIfAbsent` **记进了 `CACHE`**，而 `CACHE` 只在**下一次**重载才清。加上自定义 pipeline 编译失败是静默的（4b.7）⇒ 一次切语言换来一个永不自愈的坏缓存。
-
-**修法（`forEffect`）**：
-
-```java
-Set<Identifier> missing = unresolvedSprites(effect);   // 建之前先问
-if (!missing.isEmpty()) return null;                    // 不建、【不缓存】、下一帧重试
-```
-
-⚠️ **`computeIfAbsent` 必须改成显式 `get`/`put`** —— 它无法表达「算不出来就别记」。这不是风格改动。
-
-⚠️ **`unresolvedSprites` 必须把 `mask()` 也算进去。** mask 同样来自 `ShaderSpriteAtlas`，但它缺失时 `addMaskDefines` 走的是「四个 0 的退化矩形」= 全 discard ⇒ **编译成功、什么都不画**，比报错更难查。两条一起治。
-
-⚠️ **`addSpriteDefines` 里那句 `continue` + WARN 不是安全降级。** 原注释读起来像是，实际上跳过一个精灵必然产生 undefined。现在它只服务于「永远不会解析的名字」（拼错），正常窗口由上游挡住 —— 注释已改。
-
-**代价**：重载期间效果不画。那时屏幕上是加载覆盖层，无所谓。
-
-### 18j-19. 星空亮度：环境光实时增益（v1.8-Dev-Fix）
-
-**用户报**：原版无尽贪婪的星空无论白天黑夜都更亮一些。
-
-**查明：光照公式两边逐字相同**（`col.rgb *= light * lightmix + (1 - lightmix)`，`lightmix` 都是 0.2）。**差异在喂进去的 `light`：**
-
-| | 参考（1.12.2） | 我们（26.2） |
-|---|---|---|
-| `light` 起点 | `gl_Color`，**携带固定管线光照**（`cosmic.vert` 的 `sceneColor + Ambient + Diffuse`） | 无，26.2 没有固定管线 |
-| GUI / 兜底 | `setLightLevel(1.2F)` / `(1.0F)`，**直接断言全亮**、不采样世界光 | 一律走 vanilla 递来的 `lightCoords` |
-
-⇒ **这是第四处「从参考实现继承来的问题」**（前三处见 18j-16/18j-17），性质与教训 33 同族：跨版本腐烂的不只是类名，还有**平台提供的隐式量**。
-
-**用户选择**：不照抄参考的恒定全亮（那会连带提亮已照亮的场景），改为**按环境光实时插值增益**：
-
-```glsl
-float ambient = clamp(dot(light, LUMINANCE_WEIGHTS), 0.0, 1.0);
-float gain    = mix(GAIN_IN_DARK, GAIN_IN_LIGHT, ambient);   // 1.7 → 1.2
-col.rgb *= shade * gain;
-```
-
-🔴 **插值因子必须取 `light` 的亮度，不能取 `shade` 的。** `LIGHT_MIX=0.2` 把 `shade` 压在 `[0.8, 1.0]`，拿它当因子 gain 永远到不了 1.7。`light` 是 lightmap 原始采样，跨满 0..1。
-
-🔴 **`GAIN_IN_DARK = 1.7` 是实测选出的甜点，别乱调**（用户原话「正好是甜点数值」）：
-
-| dark 端取值 | 峰值总倍率 | 后果 |
-|---|---|---|
-| 1.2 | **0.96×** | **比不加增益还暗**（`shade` 在暗处是 0.8）⇒ 区间下限只能给 `GAIN_IN_LIGHT` |
-| **1.7** | **1.36×** | **三通道全在 clamp 以下，冷蓝调完整** |
-| 2.5（曾试） | 2.00× | G/B 双双打满 ⇒ **整片星空褪成白色** |
-
-参考的星星配色是 R 0.4–0.7 / G 0.6–1.0 / B 0.7–1.0，**G/B 远早于 R 饱和**（B 只需 1.429× 就削顶）。1.7 的 1.36× 恰好卡在下面 —— 唯一过曝的是贴图本身 G/B 已是 1.0 的那几颗最亮星，**这就是「可接受的过曝」**。
-
-⚠️ **总倍率对环境光是【反向】的**（1.36× 全黑 → 1.20× 全亮），即山洞最亮、正午最淡，**与 `LIGHT_MIX` 那步的方向相反**。这是用户要的意图，不是 bug，别去「修正」方向。
-
-**用亮度加权而非逐通道**：否则红石火把/岩浆会给星空染色。三个权重和恰为 `1.0f`（已实测），所以中性光下两个端点精确到达。
-
-### 18j-20. ⏳ 这套星空迟早要重构（用户已提上日程）
-
-用户原话：**「他妈迟早给这个 14 年前的破东西重构了，这个可以提上日程了」**。
-
-**已知的四处继承缺陷**（都不是我们写错，是参考实现本身的）：
-
-1. `rand2d` 对 π 取模 ⇒ `sin` 半个值域不可达（18j-16 已修）
-2. `pow(tu, tv)` 溢出 float32 ⇒ 六成星星朝向一致（18j-16 已修）
-3. 十张素材量级悬殊 **41 倍**，小的 2-4 像素在屏幕上不可见（18j-17，**未修，属素材**）
-4. **亮度依赖 1.12.2 固定管线光照**，26.2 无可继承（18j-19 用末端增益补偿，**不是治根因**）
-
-**还未修的散列瓶颈**：`rand2d(vec2(tu, tv + i*10.0))` 的层步长 10 小于 `tv` 的 16 值域 ⇒ **35.2% 的 (层, cell) 组合碰撞**。修它会移动每一颗星，18j-16 判断「星座图案属原设计」故未动 —— **重构时这条是首要目标**。
-
-⚠️ **重构前必读 18j-17**：用户已逐帧对比确认「我们的比原版好」，且 18j 开头写着算法部分「不要再动」。**重构 ≠ 可以随手改** —— 那是一次需要用户重新验收观感的整体工作，不是修 bug。
 
 ## 19. 自有稀有度：Abyssal / Infinity（v1.8-Dev 新增）
 
@@ -1330,7 +979,7 @@ col.rgb *= shade * gain;
 
 ## 20. 寰宇支配之剑 `abyssfall:fake_infinity_sword`（v1.8-Dev 新增）
 
-**Shader 系统的第二个消费者，纯外观剑。** 星空渲染与死兆将至同构（配置里第二条 `starfield` entry）。
+**Shader 系统的第二个消费者，纯外观剑。** 渲染与死兆将至同构（配置里第二条 effect entry），但用的是 `cosmic` 效果种类（旧移植星空算法，见 18j）。
 
 **属性只有一条**：`ATTACK_DAMAGE` modifier = **0.0**（tooltip 显示 `1`，即玩家空手值）；**`ATTACK_SPEED` 整条不加**（不是设 0 —— 设 0 会显示「4 攻击速度」，比 1.6 更难看）。与死兆将至同一做法（见 17f）。
 
@@ -1344,7 +993,7 @@ col.rgb *= shade * gain;
 
 🔴 **`Mth.hsvToArgb` 对负 hue 会抛异常**（首行 `(int)(hue*6)%6` 得负数 → 落进 `default` → throw，已实测）。而负相位是**常态**（步长为负）⇒ 必须 `Mth.positiveModulo(phase, 1.0F)`，**这不是防御性代码**。
 
-**贴图与遮罩是死兆将至的独立副本**（同像素、两套文件）：effect 身份含 mask，共享会把两把剑的美术永久绑死。代价是多编译一条 pipeline。
+**贴图与遮罩是死兆将至的独立副本**（同像素、两套文件）：effect 身份含 mask，共享会把两把剑的美术永久绑死。代价是多编译一条 pipeline。⚠️ **v1.9-Dev-Fix 起两套各住自己的子目录**（`item/fake_infinity_sword/…`），见「目录结构」末尾那条约定。
 
 
 

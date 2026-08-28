@@ -52,6 +52,26 @@ import com.abyssfall.shadercore.ShaderQuad;
  *
  * <p>The two never fight, because they are 1/16 apart and only one faces the viewer at a time.
  *
+ * <h2>🔴 Why one layer and not all of them</h2>
+ *
+ * <p>A model may state several texture layers — {@code layer0}, {@code layer1} and so on — and vanilla extrudes
+ * <em>each</em> of them between the same two planes. Two layers therefore produce two front faces and two back
+ * faces at identical coordinates, and a filter on the normal alone keeps all four.
+ *
+ * <p>Drawing an effect over the same patch of screen four times is not four times as bright, because the blend
+ * is {@code SRC_ALPHA, ONE_MINUS_SRC_ALPHA} rather than additive — it saturates. What that costs is precisely
+ * the mask's <em>faint</em> values: a red of 8 rises 94% between two passes and four, while a red of 254 does
+ * not move. The visible result is a mask whose soft edges have hardened, which reads as the artwork being wrong
+ * rather than as the geometry being drawn twice.
+ *
+ * <p>So this keeps one layer's worth. Which one does not matter — every layer bakes the same two rectangles at
+ * the same coordinates, so any of them addresses the mask identically — but it must be a <em>fixed</em> one, or
+ * the count of faces would depend on how many layers an item happens to declare.
+ *
+ * <p>⚠️ Faces reporting {@link ShaderQuad#UNKNOWN_LAYER} are kept. A model that is not one of vanilla's
+ * generated items has no layer stacking to collapse, so dropping its faces would mean drawing nothing at all
+ * for it; that would trade a subtle blending fault for a total absence.
+ *
  * <h2>What this costs</h2>
  *
  * <p>The item's 1/16 thickness gets no effect on it. At the size items are drawn that edge is one or two screen
@@ -80,7 +100,7 @@ public final class ItemFacesGeometry implements ShaderGeometrySource {
 		List<ShaderQuad> result = new ArrayList<>(2);
 
 		for (ShaderQuad quad : itemGeometry) {
-			if (Math.abs(quad.normalZ()) >= FLAT_FACE_THRESHOLD) {
+			if (Math.abs(quad.normalZ()) >= FLAT_FACE_THRESHOLD && isKeptLayer(quad)) {
 				result.add(quad);
 			}
 		}
@@ -92,6 +112,16 @@ public final class ItemFacesGeometry implements ShaderGeometrySource {
 		// block item gets those two. Whether a sky drawn on two faces of a cube is desirable is a question for
 		// whoever configures it, not for this source.
 		return List.copyOf(result);
+	}
+
+	/**
+	 * Whether a face belongs to the one layer this source draws on.
+	 *
+	 * <p>The base layer, or a face that never reported a layer at all. Every other layer is a duplicate of the
+	 * base one at identical coordinates — see the class javadoc for what drawing those duplicates costs.
+	 */
+	private static boolean isKeptLayer(final ShaderQuad quad) {
+		return quad.layer() == ShaderQuad.BASE_LAYER || quad.layer() == ShaderQuad.UNKNOWN_LAYER;
 	}
 
 	/**

@@ -36,17 +36,16 @@ import com.mojang.serialization.JsonOps;
 
 import net.minecraft.util.StrictJsonParser;
 
-import net.fabricmc.loader.api.FabricLoader;
-
 import com.abyssfall.AbyssFall;
 
 /**
- * Reads and holds {@code AbyssFallShader.json}.
+ * Reads and holds {@code config/abyssfall/AbyssFallShader.json}.
  *
  * <p>Deliberately the same shape as {@code AbyssFallConfig}: the same failure cases handled the same
  * ways, the same timestamped backup for a file that cannot be understood, the same refusal to throw. The
  * two are separate files because they answer to different things — that one is gameplay, this one is
- * appearance — but a player who has learned how one behaves has learned how both do.
+ * appearance — but a player who has learned how one behaves has learned how both do. They share a
+ * directory for the same reason; see {@link AbyssFall#configPath}.
  *
  * <p>Must be loaded after {@link AbyssFallShaderCore#initialize()}, since parsing an entry needs its
  * effect type to be registered.
@@ -186,6 +185,6 @@ public final class AbyssFallShaderConfig {
 	}
 
 	private static Path path() {
-		return FabricLoader.getInstance().getConfigDir().resolve(FILE_NAME);
+		return AbyssFall.configPath(FILE_NAME);
 	}
 }

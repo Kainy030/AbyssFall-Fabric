@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/handheld",
   "textures": {
-    "layer0": "abyssfall:item/final_death_omen"
+    "layer0": "abyssfall:item/final_death_omen/final_death_omen"
   }
 }
