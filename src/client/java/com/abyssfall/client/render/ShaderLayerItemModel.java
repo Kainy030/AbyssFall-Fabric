@@ -205,16 +205,28 @@ public final class ShaderLayerItemModel implements ItemModel {
 
 		if (!viewerRelative || player == null) {
 			// A GUI slot, an item frame, or the ground: no viewing angle, and the field pushed to its far end
-			// so it reads as fine still grain rather than as churn.
-			return new ViewerState(0.0F, 0.5F, 1.0F);
+			// so it reads as fine still grain rather than as churn. The camera position is the folded origin
+			// too — an item in a slot is not being looked at from anywhere in the world.
+			return new ViewerState(0.0F, 0.5F, 1.0F, 0.0F, 0.0F, 0.0F);
 		}
 
 		// Pitch runs -90..90 and is negated: vanilla counts downwards as positive, while an effect treating
 		// this as a viewing direction wants the opposite. Biased to put level at the middle of the range.
 		float pitchTurns = 0.5F - (player.getXRot() / 360.0F);
 
-		// Depth 0.0: the field stays at the reference's world scale. Only the GUI pushes it away, which is the
-		// reference's own choice, so it is reproduced as is rather than "improved".
-		return new ViewerState(ViewerState.degreesToTurns(player.getYRot()), pitchTurns, 0.0F);
+		// The camera's real world position, folded for the vertex stream. This is what a volumetric effect
+		// (the abyss) needs that an infinitely-far sky does not: translation parallax. The eye position is the
+		// rendered camera's, so it includes the head bob and the held-item sway — the near structures slide
+		// past exactly as the head moves. 26.2 names these record-style: gameRenderer.mainCamera() and
+		// camera.position() (a Vec3 with x()/y()/z()), verified against the decompiled sources.
+		net.minecraft.client.Camera camera = Minecraft.getInstance().gameRenderer.mainCamera();
+		net.minecraft.world.phys.Vec3 eye = camera.position();
+		float camX = ViewerState.foldPosition((float) eye.x());
+		float camY = ViewerState.foldPosition((float) eye.y());
+		float camZ = ViewerState.foldPosition((float) eye.z());
+
+		// Depth 0.0: the field stays at world scale. Only the GUI pushes it away.
+		return new ViewerState(ViewerState.degreesToTurns(player.getYRot()), pitchTurns, 0.0F,
+				camX, camY, camZ);
 	}
 }

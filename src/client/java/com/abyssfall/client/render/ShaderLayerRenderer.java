@@ -161,17 +161,17 @@ public final class ShaderLayerRenderer implements NoDataSpecialModelRenderer {
 		submitNodeCollector.order(1)
 				.submitCustomGeometry(poseStack, renderType, (pose, buffer) -> {
 					for (ShaderQuad quad : this.geometry) {
-						emit(buffer, pose, quad, state, blockLight, skyLight);
+						emit(buffer, pose, quad, state, this.effect.usesViewerPosition(), blockLight, skyLight);
 					}
 				});
 	}
 
 	private static void emit(final VertexConsumer buffer, final PoseStack.Pose pose, final ShaderQuad quad,
-			final ViewerState state, final int blockLight, final int skyLight) {
-		vertex(buffer, pose, quad.vertex0(), quad, state, blockLight, skyLight);
-		vertex(buffer, pose, quad.vertex1(), quad, state, blockLight, skyLight);
-		vertex(buffer, pose, quad.vertex2(), quad, state, blockLight, skyLight);
-		vertex(buffer, pose, quad.vertex3(), quad, state, blockLight, skyLight);
+			final ViewerState state, final boolean viewerPosition, final int blockLight, final int skyLight) {
+		vertex(buffer, pose, quad.vertex0(), quad, state, viewerPosition, blockLight, skyLight);
+		vertex(buffer, pose, quad.vertex1(), quad, state, viewerPosition, blockLight, skyLight);
+		vertex(buffer, pose, quad.vertex2(), quad, state, viewerPosition, blockLight, skyLight);
+		vertex(buffer, pose, quad.vertex3(), quad, state, viewerPosition, blockLight, skyLight);
 	}
 
 	/**
@@ -213,8 +213,28 @@ public final class ShaderLayerRenderer implements NoDataSpecialModelRenderer {
 			final ShaderVertex vertex,
 			final ShaderQuad quad,
 			final ViewerState state,
+			final boolean viewerPosition,
 			final int blockLight,
 			final int skyLight) {
+		if (viewerPosition) {
+			// The abyss: this shader reads neither the item's own texture nor the world's light, so the
+			// channels those travelled in carry the camera's folded world position instead. UV0 is the one
+			// float pair and takes the two horizontal coordinates with plenty of precision; the colour
+			// channel's green and blue bytes together carry the vertical coordinate as sixteen bits. The red
+			// byte (depth, for the sky) and alpha are unused. Normal is written WITHOUT the pose: the camera
+			// position is a world-space value and must not be rotated with the item's model transform. See
+			// ViewerState for the packing and abyss.vsh for the unpacking.
+			int camY = Math.clamp(Math.round(state.camY() * 65535.0F), 0, 65535);
+
+			buffer.addVertex(pose, vertex.x(), vertex.y(), vertex.z())
+					.setColor(0, (camY >> 8) & 0xFF, camY & 0xFF, 255)
+					.setUv(state.camX(), state.camZ())
+					.setUv1(toFixedPoint(vertex.maskU()), toFixedPoint(vertex.maskV()))
+					.setUv2(toFixedPoint(state.yawTurns()), toFixedPoint(state.pitchTurns()))
+					.setNormal(0.0F, 0.0F, 1.0F);
+			return;
+		}
+
 		buffer.addVertex(pose, vertex.x(), vertex.y(), vertex.z())
 				// Depth stays in the colour channel's red byte; the block and sky light levels sit in the
 				// green and blue bytes; yaw and pitch moved to UV2. See the javadoc below for why the

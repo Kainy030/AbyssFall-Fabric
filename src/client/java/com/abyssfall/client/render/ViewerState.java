@@ -57,37 +57,82 @@ package com.abyssfall.client.render;
  *       sphere jump in sync while turning. Sixteen bits give 32767 steps per turn, far finer than a mouse.</li>
  *   <li><strong>depth</strong> — the colour channel's red byte. A coarse near/far selector needs nowhere near
  *       256 levels.</li>
+ *   <li><strong>camX, camZ</strong> — {@code UV0}, the one floating-point pair, but only for effects whose
+ *       {@link com.abyssfall.shadercore.ShaderEffect#usesViewerPosition()} is true (the abyss); such a shader
+ *       does not read the item's
+ *       own texture, so the pair is free for them. They carry the camera's world X and Z, folded into
+ *       {@code 0..1} over {@link #POSITION_PERIOD} metres. Other effects leave UV0 as the atlas coordinate and
+ *       these values are ignored.</li>
+ *   <li><strong>camY</strong> — the colour channel's green and blue bytes (sixteen bits combined), folded the
+ *       same way. Those bytes carry block/sky light for the other shaders; the abyss shader reads neither the
+ *       world's light nor depth, so the three bytes it does not use carry the position instead.</li>
  * </ul>
  *
  * <p>Angles are stored as turns rather than radians, {@code 0..1} being the range a fixed-point attribute can
- * carry.
+ * carry. The position is folded, not clamped: see {@link #foldPosition(float)}.
  *
  * @param yawTurns   the viewer's horizontal facing, in turns, {@code 0..1}
  * @param pitchTurns the viewer's vertical facing, biased so level sits at {@code 0.5}
  * @param depth      how far away whatever this drives should appear, {@code 0..1}
+ * @param camX       the camera's world X, folded to {@code 0..1} over {@link #POSITION_PERIOD} metres
+ * @param camY       the camera's world Y, folded the same way
+ * @param camZ       the camera's world Z, folded the same way
  */
-public record ViewerState(float yawTurns, float pitchTurns, float depth) {
+public record ViewerState(float yawTurns, float pitchTurns, float depth,
+		float camX, float camY, float camZ) {
 	/**
-	 * Level, facing along positive Z, at the nearest depth.
+	 * The period, in metres, over which the camera position is folded into {@code 0..1} for the vertex stream.
+	 *
+	 * <p>No attribute can carry an unbounded world coordinate, and the procedural volume the abyss marches is
+	 * periodic anyway: a ray is walked through a lattice of cells, and the lattice only needs the camera's
+	 * position modulo a large distance, because a cell far enough back is identical (under the hash) to one a
+	 * period ahead. The period therefore only has to be longer than what the eye could ever match up across —
+	 * a thousand metres of walking is well past that — while keeping the folded value inside what a float pair
+	 * or a pair of bytes can address.
+	 *
+	 * <p>This is a channel-packing constant, not a property of any effect: an effect states how large a cell
+	 * is and how far a ray reaches; it never needs to know the position was folded.
+	 */
+	public static final float POSITION_PERIOD = 1024.0F;
+
+	/**
+	 * Level, facing along positive Z, at the nearest depth, with the camera treated as standing at the folded
+	 * origin.
 	 *
 	 * <p>Used where a viewpoint is not available or not meaningful — an item in an inventory slot is not being
 	 * looked at from anywhere.
 	 */
-	public static final ViewerState IDENTITY = new ViewerState(0.0F, 0.5F, 0.0F);
+	public static final ViewerState IDENTITY = new ViewerState(0.0F, 0.5F, 0.0F, 0.0F, 0.0F, 0.0F);
 
 	/**
-	 * The same values with each field clamped into what the channel can carry.
+	 * The same values with each field in the range the channel it travels in can carry.
 	 *
-	 * <p>Applied here rather than trusted from the caller: an angle computed from a player's rotation can
-	 * legitimately land outside {@code 0..1}, and the byte it is packed into wraps rather than saturates — a
-	 * value just past the top would read as the bottom, which shows up as the effect snapping round once per
-	 * revolution.
+	 * <p>The angles are clamped: an angle computed from a player's rotation can land outside {@code 0..1}, and
+	 * the byte it is packed into wraps rather than saturates — a value just past the top would read as the
+	 * bottom, which shows up as the effect snapping round once per revolution. The position is folded rather
+	 * than clamped by the caller ({@link #foldPosition(float)}), so it already sits in range here.
 	 */
 	public ViewerState clamped() {
 		return new ViewerState(
 				Math.clamp(this.yawTurns, 0.0F, 1.0F),
 				Math.clamp(this.pitchTurns, 0.0F, 1.0F),
-				Math.clamp(this.depth, 0.0F, 1.0F));
+				Math.clamp(this.depth, 0.0F, 1.0F),
+				Math.clamp(this.camX, 0.0F, 1.0F),
+				Math.clamp(this.camY, 0.0F, 1.0F),
+				Math.clamp(this.camZ, 0.0F, 1.0F));
+	}
+
+	/**
+	 * Folds a world coordinate in metres into the {@code 0..1} range a vertex attribute can carry, wrapping
+	 * every {@link #POSITION_PERIOD} metres.
+	 *
+	 * <p>Wrapping rather than clamping for the same reason a heading wraps rather than clamps: a position a
+	 * period away is the same lattice cell, not a boundary to flatten onto.
+	 */
+	public static float foldPosition(final float metres) {
+		float folded = metres / POSITION_PERIOD;
+
+		return folded - (float) Math.floor(folded);
 	}
 
 	/**

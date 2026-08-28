@@ -148,4 +148,24 @@ public interface ShaderEffect {
 	default Set<String> shaderFlags() {
 		return Set.of();
 	}
+
+	/**
+	 * Whether this kind needs the camera's world position packed into the vertices it draws, not just the
+	 * viewing angles.
+	 *
+	 * <p>Most effects do not. The two are different quantities: the angles ({@code yaw}/{@code pitch}) rotate
+	 * every ray and describe where the viewer is <em>looking</em>; the position describes where the viewer
+	 * <em>is</em>. An appearance painted onto the item — a glow, a pulse, a sky projected infinitely far away —
+	 * reads correctly from the angles alone, because translating the camera changes nothing about an
+	 * infinitely distant surface. An appearance that occupies a real 3-D volume, by contrast, only gains
+	 * parallax from translation, and without a position the near parts cannot slide past the far parts.
+	 *
+	 * <p>Effects that answer {@code true} receive, in their vertex stream, a folded camera position (see
+	 * {@code ViewerState}); effects that answer {@code false} leave those channels holding whatever they
+	 * always did, and their shaders must not read the position. Default is {@code false} so existing kinds are
+	 * untouched.
+	 */
+	default boolean usesViewerPosition() {
+		return false;
+	}
 }
