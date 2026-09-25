@@ -30,19 +30,6 @@ src/main/java/com/abyssfall/
 │        SourceSlotAccess  SlotMemoryAccess                          见 22
 ├── item/AbyssFallRarity.java            自有稀有度（两级），见 19
 ├── loot/AbyssFallLootTables.java
-├── shadercore/  (13 个：AbyssFallShaderCore  AbyssFallShaderConfig  ShaderConfigData
-│                 ShaderConfigProvider  ShaderEffect  ShaderEffectProvider
-│                 ShaderEffectType  ShaderEffectTypes  ShaderColorSource
-│                 ShaderRenderContext  ShaderGeometrySource  ShaderQuad
-│                 ShaderVertex)                                见 18 / HANDOFF 4b
-├── shadercore/color/ColorDerivation.java       四种推导，见 18g
-├── shadercore/color/DerivedColorSource.java    从物品贴图推色，见 18g
-├── shadercore/color/ShaderColorSources.java    dispatch codec，见 18g
-├── shadercore/geometry/ItemHullGeometry.java   跟随物品外壳，见 18h
-├── shadercore/geometry/ItemFacesGeometry.java  只 ±Z 两面+基础层，见 18h / 18j
-├── shadercore/effect/MaskedPulseEffect.java    第一个效果种类，见 18e
-├── shadercore/effect/CosmicEffect.java         旧移植星空（寰宇支配之剑），见 18j
-├── shadercore/effect/AbyssEffect.java          分层方向场（v2.1 从零重写，死兆将至），见 shaderreference.md
 └── mixin/  (7 个：PlayerAttackMixin        毕业武器接管点，见 17
              BlockDestroyProgressMixin      挖掘解禁，见 21b
              EntityUndyingMixin  ItemEntityUndyingMixin  ItemStackUndyingMixin
@@ -54,30 +41,11 @@ src/client/java/com/abyssfall/client/
 ├── hud/SanIconHudElement.java        图标行
 ├── hud/SanBarHudElement.java         进度条
 ├── tooltip/AbyssFallTooltips.java    tooltip 逐字波浪染色 + 物品名，见 17g / 19
-├── tooltip/SwordOfTheCosmosTribute.java  致敬碑文（Shift 展开），见 19b
-├── render/ShaderLayerItemModel.java      包装物品模型 + 每帧决策，见 18c
-├── render/ShaderLayerModelPlugin.java    装到所有物品 + 取几何，见 18c / 18h
-├── render/ShaderLayerRenderer.java       画 source 给的几何 + 折叠顶点通道，见 18c
-├── render/ShaderSpriteAtlas.java         遮罩图集精灵 bounds 缓存，见 18j
-├── render/ViewerState.java               观察者朝向/位置快照（abyss 视差用），见 shaderreference.md
-├── shader/AbyssFallPipelines.java        effect → RenderType，见 18b
-├── mixin/RenderTypeInvoker.java          取 package-private 的 create，见 18b
 ├── mixin/HudSelectedItemNameMixin.java   手持提示的物品名上色，见 19a
 └── mixin/HudStatusBarHeightRegistryImplMixin.java   见 15a
-
-src/main/resources/assets/abyssfall/shaders/core/
-├── masked_pulse.vsh / .fsh            见 18e / 18g
-├── cosmic.vsh / .fsh                  旧移植「星空」，跑 18j 说的旧算法
-└── abyss.vsh / .fsh                   分层方向场（v2.1 从零重写），见 shaderreference.md
-
-src/main/resources/assets/abyssfall/textures/shader/
-├── cosmic/cosmic_0..9.png (+.mcmeta)  旧算法素材，18j
-└── abyss/abyss_0..9.png (+.mcmeta)    ⚠️ v2.1 起零引用（abyss 程序化生成不采样贴图），去留待定
 ```
 
-**美术脚本**（见 11）：`make-death-omen-texture.ps1`（alpha 二值化，见 18i）+ `make-death-omen-mask.ps1`（debug 遮罩，见 18i）。
-
-**abyss 深渊特效的专项开发文档是根目录的 `shaderreference.md`**（v2.1 新增）：架构决策、走过的弯路、调试工作流与收尾待办都在那里，本文档不重复。
+**美术脚本**（见 11）：`make-death-omen-texture.ps1`（alpha 二值化）。
 
 ### 🔴 贴图目录约定：材质多的物品各占一个同名子目录（v1.9-Dev-Fix）
 
@@ -85,39 +53,27 @@ src/main/resources/assets/abyssfall/textures/shader/
 textures/item/
 ├── abyss_flower.png                     单张贴图的物品：留在 item/ 根下，不动
 ├── san_lens.png + .mcmeta               两份也算少，同样留在根下
-├── final_death_omen/                    ← 四份文件的物品分出来
-│   ├── final_death_omen.png / .mcmeta
-│   └── final_death_omen_mask.png / .mcmeta
-└── fake_infinity_sword/
-    ├── fake_infinity_sword.png / .mcmeta
-    └── fake_infinity_sword_mask.png / .mcmeta
+└── final_death_omen/                    ← 多文件的物品分出来
+    └── final_death_omen.png / .mcmeta
 ```
 
 **目录名 = 物品名，文件名保持全名不缩写**（用户选定的方案 A）：这样在 IDE 里按全名搜索仍能命中，代价是名字重复一次。
 
-🔴 **子目录会进 sprite 名，一并进图集**：`item/final_death_omen/final_death_omen_mask` 就是完整的 sprite id。这不是巧合而是 vanilla 的既有能力 —— `DirectoryLister` 经 `PathPackResources.listPath` 的 `Files.find(path, Integer.MAX_VALUE, ...)` **递归**列举，jar 侧的 `FilePackResources.listResources` 也只做前缀判断（26.2 源码实证）。vanilla 自己就依赖这点：`atlases/gui.json` 的 source 是 `gui/sprites`，而其下有 207 个深度 ≥2 的文件（`hud/heart/*`）。
+🔴 **子目录会进 sprite 名，一并进图集**：`item/final_death_omen/final_death_omen` 就是完整的 sprite id。这不是巧合而是 vanilla 的既有能力 —— `DirectoryLister` 经 `PathPackResources.listPath` 的 `Files.find(path, Integer.MAX_VALUE, ...)` **递归**列举，jar 侧的 `FilePackResources.listResources` 也只做前缀判断（26.2 源码实证）。vanilla 自己就依赖这点：`atlases/gui.json` 的 source 是 `gui/sprites`，而其下有 207 个深度 ≥2 的文件（`hud/heart/*`）。
 
-⇒ **遮罩/素材作为图集精灵才能播动画、才能被递归收录**这条在子目录下依然成立（机制见 18j 的「落地框架」），无需给 `items.json` 加任何 source。
-
-⚠️ **只能是 `.png`**：`DirectoryLister` 的 converter 扩展名写死 `".png"`（不是 png 根本不进图集），且 `NativeImage.read` 会 `PngInfo.validateHeader` 后抛 `Bad PNG Signature`。**jpg 在这两道门上都过不去**，也没有 alpha 通道可供 18i 那条二值化约定使用。
+⚠️ **只能是 `.png`**：`DirectoryLister` 的 converter 扩展名写死 `".png"`（不是 png 根本不进图集），且 `NativeImage.read` 会 `PngInfo.validateHeader` 后抛 `Bad PNG Signature`。**jpg 在这两道门上都过不去。**
 
 ⚠️ **`.mcmeta` 必须与 `.png` 同目录同名**。它不是 `.png` 故不会被当成精灵收录，只作为伴生元数据被 `resource.metadata()` 读到。
 
-**改这类路径要同步四类引用**（v1.9-Dev-Fix 迁移两把剑时实际动了这些）：
+**改这类路径要同步两类引用**：
 1. `models/item/*.json` 的 `layer0`
-2. `ShaderConfigData.DEFAULT` 里的 mask sprite 名
-3. 写这些文件的美术脚本（`make-death-omen-texture.ps1` / `make-death-omen-mask.ps1`）
-4. 🔴 **玩家本机已生成的 `config/abyssfall/AbyssFallShader.json`** —— 那是**存量文件**，不热加载也不自动迁移，仍写着旧 sprite 名 ⇒ `resolve` 报 WARN、`forEffect` 返回 null、**星空完全不画**。改完必须提醒用户删掉重新生成（同族问题见 `HANDOFF.md` 教训 19）
+2. 写这些文件的美术脚本（`make-death-omen-texture.ps1`）
 
-⚠️ 改名会让精灵在图集里换位置 ⇒ 编译进 shader 的 `SPRITE_n_U0..V1` / `MASK_*` 常量全部变化。功能上无害（每次重载本来就重算），但**必须进游戏复看渲染**，编译通过不能作为证据。
-
-**Mixin 现在有四个**（`main` 一个 + `client` 三个），配置两份。`src/main` 下的 `mixin/` 包在 26.2 迁移时曾被删除（`WitherRoseBlockMixin` 改成数据文件，见 4），v1.3-Dev 为毕业武器**重新建立**——那次删除是因为不再需要，不是因为禁止。
+**Mixin 现在有九个**（`main` 七个 + `client` 两个），配置两份。`src/main` 下的 `mixin/` 包在 26.2 迁移时曾被删除（`WitherRoseBlockMixin` 改成数据文件，见 4），v1.3-Dev 为毕业武器**重新建立**——那次删除是因为不再需要，不是因为禁止。
 
 `onInitialize()` 调用顺序**有依赖关系，勿随意调整**：
 ```java
 AbyssFallConfig.load();               // 最先！注册与否取决于配置，注册后无法回头
-AbyssFallShaderCore.initialize();     // 必须在下一行之前：解析 entry 需要 effect 类型已注册
-AbyssFallShaderConfig.load();
 AbyssFallCoreSystem.initialize();     // San 最先，它是其他一切要移动的值
 AbyssFallSanCommand.initialize();     // 条件注册（dev_command）
 AbyssFallEffects → Items → Blocks → ItemGroups（依赖前两者）
@@ -242,7 +198,7 @@ AbyssFallDevInventory.initialize();   // 最后，条件注册
 
 ## 11. 美术脚本（PowerShell + System.Drawing）
 
-`make-icon.ps1`（128×128）、`make-item-texture.ps1`（16×16）、`make-effect-icon.ps1`（18×18）、`make-dev-icon.ps1`（16×16 DEV）、`make-san-icon.ps1`（9×9 ×5，见 15d）、`make-lens-icon.ps1`（两面镜子，见 13d）、`make-breakdown-icon.ps1` / `make-spirited-icon.ps1`（18×18，**占位**）、`make-death-omen-texture.ps1`（alpha 二值化，见 18i）、`make-death-omen-mask.ps1`（debug 遮罩，见 18i-2）。均用 `$PSScriptRoot` 相对定位。
+`make-icon.ps1`（128×128）、`make-item-texture.ps1`（16×16）、`make-effect-icon.ps1`（18×18）、`make-dev-icon.ps1`（16×16 DEV）、`make-san-icon.ps1`（9×9 ×5，见 15d）、`make-lens-icon.ps1`（两面镜子，见 13d）、`make-breakdown-icon.ps1` / `make-spirited-icon.ps1`（18×18，**占位**）、`make-death-omen-texture.ps1`（alpha 二值化）。均用 `$PSScriptRoot` 相对定位。
 
 ⚠️ **本机执行策略禁止直接跑**：必须 `powershell -ExecutionPolicy Bypass -File .\xxx.ps1`。
 ⚠️ **含中文注释的脚本必须存成带 BOM 的 UTF-8**（只有 `make-san-icon.ps1` 有中文）。
@@ -564,7 +520,7 @@ lang key `death.attack.death_omen.1/2/3`，数量由 `DEATH_MESSAGE_VARIANTS` �
 
 ⚠️ **剑不挖掘**（v2.2）：死兆将至**刻意不在** `dig_from_abyss` 里（见 21b/21c）——它挖不动基岩，挖掘链与剑无关。
 
-**贴图 `abyssfall:item/final_death_omen/final_death_omen`**（16×16，`parent: item/handheld`）。进常规创造栏，无 config 门禁。⚠️ **贴图与遮罩住在同名子目录里**，见「目录结构」末尾那条约定。
+**贴图 `abyssfall:item/final_death_omen/final_death_omen`**（16×16，`parent: item/handheld`）。进常规创造栏，无 config 门禁。⚠️ **贴图住在同名子目录里**，见「目录结构」末尾那条约定。
 
 ### 17g. tooltip 逐字波浪染色（`client/tooltip/AbyssFallTooltips`）
 
@@ -591,364 +547,22 @@ lang key `death.attack.death_omen.1/2/3`，数量由 `DEATH_MESSAGE_VARIANTS` �
 - **用户明确要求不打日志**：「我们的武器不需要跟任何人解释」
 
 
-## 18. Shader 渲染系统（v1.4-Dev 新增，地基三）
+## 19. 自有稀有度：Abyssal（v1.8-Dev 新增）
 
-**架构与禁忌读 `HANDOFF.md` 4b**，这里只记「怎么实现的」。
 
-用户定位：**「SanCore 负责规则框架，Shader 负责物品渲染框架」**。🔴 **它不是死兆将至的专属系统**，那把剑只是第一个消费者。
-
-### 18a. 26.2 渲染管线的四个事实（决定了整套设计）
-
-全部用 `javap` / 源码实测，**不要凭 1.21.x 的记忆改**：
-
-1. **无 `ItemRenderer`、无 `ShaderInstance`、无 `AbstractUniform`** —— 26.2 整套换成 `RenderPipeline` + UBO。
-2. **`CuboidItemModelWrapper.validateAtlasUsage` 拒绝非图集 quad**（全库仅 2 处引用，都在该类）⇒ 高分辨率/程序化贴图**不能走普通 `layer0`**。
-3. **逃生口是 `SpecialModelRenderer`** —— vanilla 自己的盾牌/三叉戟/箱子走这条路，纹理是裸 `Identifier` 而非图集精灵。`LayerRenderState.setupSpecialModel` 是 public。
-4. **`SubmitNodeCollector.submitCustomGeometry(PoseStack, RenderType, CustomGeometryRenderer)`** 可提交任意 RenderType 的几何。GUI 与世界渲染都有 vanilla 用例（`GuiProfilerChartRenderer`、`BeaconRenderer` 等 15 处）。
-
-⇒ 结论：**包装物品模型 + 追加一个 special 图层 + 自定义 RenderType**。那个 atlas 校验没有被绕过，它只是不适用于这种图层。
-
-### 18b. 自定义 RenderType：唯一必须的 Mixin
-
-`client/mixin/RenderTypeInvoker`，`@Invoker` 取 `RenderType.create`。
-
-**为什么不可避免**（每一环都实测过）：
-- `RenderPipeline.builder()` / `withVertexShader(Identifier)` / `withFragmentShader(Identifier)` —— **public**，接受自定义命名空间
-- `RenderSetup.builder(RenderPipeline)` 及其 builder 全部方法 —— **public**
-- **`RenderType.create(String, RenderSetup)` —— package-private**，descriptor 从字节码读得：
-  `(Ljava/lang/String;Lnet/minecraft/client/renderer/rendertype/RenderSetup;)Lnet/minecraft/client/renderer/rendertype/RenderType;`
-- `RenderTypes` 里全部 public 工厂**只产 vanilla 自己的 pipeline**
-- **Fabric API 没有替代** —— `fabric-rendering-v1 25.3.2` 与 `fabric-renderer-api-v1 14.1.3` 的 `api` 包已逐个扫过，只有 `FabricRenderPipeline`（仅一个 GUI draw-mode 开关）
-
-**曾评估的替代方案**：把类放进 `net.minecraft.client.renderer.rendertype` 包借 package 访问权。可行，但会往 vanilla 包里塞我们的文件；三行 invoker 侵入更小。用户选了 Mixin（原话「我们要保证自己的架构干净」）。
-
-**GLSL 加载路径**：`ShaderManager.prepare` 用 `manager.listResources("shaders", ...)` 扫**全部命名空间** ⇒ `assets/abyssfall/shaders/core/*.vsh/.fsh` 会被加载，`#moj_import <minecraft:xxx.glsl>` 也可用。
-
-**pipeline 无需注册**：`RenderPipelines.register` 是 private，但不需要它——`GlRenderPass:76` 走 `getOrCompilePipeline` **懒编译**。
-
-🔴 **代价：静默失败。** `ShaderManager.apply` 只预编译 `getStaticPipelines()`、只为它们报错。自定义 pipeline 编译失败**不抛异常、不打日志、什么都不画**。排查「效果没出现」时先怀疑这个。
-
-**pipeline location 必须按 effect 唯一**（用 `effect.hashCode()`）：两个只差一个 define 的 effect 是不同程序，共用 location 会让 GPU 缓存把第二个当成第一个。
-
-
-
-
-### 18c. 渲染路径（`client/render/` 三个类）
-
-```
-ShaderLayerModelPlugin   modifyItemModelAfterBake 装到【所有】物品上 + bake 时取几何与图集
-        ↓
-ShaderLayerItemModel     每帧：先委托原模型，再问 core 要 effect
-        ↓
-ShaderLayerRenderer      submitCustomGeometry 画【几何源给的】quad 集合
-```
-
-**为什么装到所有物品**（不是只装配置里那几个）：provider 可能在任意一帧声明任意物品，按配置筛选会把答案固化在 bake 时。不命中时不加图层、结果等同原版。无 provider 时完全不安装。**别"优化"成预筛。**
-
-🔴 **两个坐标系陷阱**（都踩过，见 HANDOFF 教训 34）：
-
-1. **模型空间是 `0..1`，中心在 `(0.5,0.5)`**，不是以原点为中心。平面物品 z 在 `7.5/16 ~ 8.5/16`。~~故 `Z_PLANE = 8.5/16 + 0.002`~~ ⚠️ **`Z_PLANE` 已于 v1.5-Dev 删除**，几何改为跟随物品真实外壳，见 18h。
-2. **每个图层要自己 `setItemTransform`** —— `ItemStackRenderState.submit` 逐图层套变换，新图层默认 `NO_TRANSFORM`，不设就不跟着物品转（手持时最明显）。变换取自 `ResolvedModel.getTopTransforms()`（沿父链解析，所以 `handheld` 的值是继承来的）。
-
-**顶点必须写满 `DefaultVertexFormat.ENTITY` 的六个属性**（position/color/UV0/UV1/light/normal），顺序照 vanilla 的 `submitCustomGeometry` 调用方（如 `ExperienceOrbRenderer`）。绑定是位置相关的，少一个后面全错位。⚠️ **`UV1` 自 v1.5-Dev 起装遮罩 UV，不再是 overlay**，见 18h-2。
-
-**GUI 缓存**：`output.setAnimated()` + `output.appendModelIdentityElement(effect)`。第二个传 effect 本身 ⇒ effect 变了就是 cache miss（教训 29 同族）。
-
-### 18d. 🔴 颜色来源是刻意留空的接缝
-
-用户明确要求：**「让 Shader System 不绑定任何一种颜色来源，避免以后选择方案时需要重做底层渲染系统」**。
-
-`ShaderColorSource` 接口 + `ShaderColorSources` dispatch（`"type"` 字段选 codec，与效果种类同构，见 18g-3）。⚠️ **占位实现 `FixedColorSource` 已删除**（1.6-Dev，用户授意）：当前唯一实现是 `DerivedColorSource`（从物品自己的贴图推色，**这条接缝的第一次真正兑现**，见 18g），兼作各效果的默认回落。
-
-**当年的 `FixedColorSource` 不是设计决定，是占位。** 它的三条限制（编译期常量、整块同色、不读原贴图）已随删除消失；**第三条限制当年就被 `DerivedColorSource` 打破** —— 它读原贴图，证明那确实是占位的限制而非系统的。
-
-**已实测**：从外部定义一个性质完全不同的 source（贡献 `HUE_START`/`HUE_SPAN` + `COLOR_FROM_GRADIENT` 标志），零系统改动即生效，且 `COLOR_A_*` 那组 define 完全消失 —— 证明系统没有任何地方假设「颜色是两个 RGB 常量」。
-
-**接口当前边界**：source 只能贡献编译期 define。若要「每帧变色」，改的是**这一个接口文件**（扩成也能贡献 uniform），不是渲染代码。⚠️ **但 `HANDOFF.md` 4d 实测证明不该走 uniform 而该走顶点属性** —— 动之前先读那节。
-
-**未解决**：绿/蓝共用一个颜色 —— `opacity = continuous + sampled` 那步就把来源信息丢了，到着色时已分不清。修它必然涉及颜色方案设计，故未修。
-
-#### ✅ 18d-2. 死兆将至的 debug 配色已随 `FixedColorSource` 删除（1.6-Dev，用户授意）
-
-**当年的用户原话**：「现在死兆将至还没有画出来 mask，同时当时 shader 系统刚刚解耦，必须要有一个道具用来测试，我就用的这种办法，**死兆将至相关的色彩系统压根就是 debug 下的产物**，后面遮罩画好之后这部分记得删除即可，届时也是颜色系统构思出来的时候。」
-
-✅ **这句话已兑现**：红(`0xFF0000`)→蓝(`0x0000FF`)渐变的 `FixedColorSource`、连同 `masked_pulse.fsh` 里 `COLOR_A_*`/`COLOR_B_*` 那套，已于 1.6-Dev 删除（用户授意，见 `HANDOFF.md` 7.2）。`masked_pulse` 的默认颜色来源自此是 `DerivedColorSource.DEFAULT`；死兆将至的默认 entry 也早已不走 `masked_pulse`（现用 `abysseffect`，见 `ShaderConfigData`）。
-
-#### ✅ 18d-3. 那行 `xmap` 的写路径会 ClassCastException（**v1.5-Dev 已修**）
-
-**已修，改成了 dispatch codec，详见 18g-3。** 下面保留原始记录，因为它解释了为什么「只有一个实现时也要用 dispatch」。
-
-原来的 `MaskedPulseEffect.MAP_CODEC`：
-
-```java
-FixedColorSource.CODEC.optionalFieldOf("color", FixedColorSource.DEFAULT)
-    .xmap(source -> (ShaderColorSource) source,   // 读：向上转，安全
-          source -> (FixedColorSource) source)     // 写：向下强转，危险
-```
-
-**当时的实测结论**（JDK 25 + DFU 10.0.21 单文件验证）：
-
-| 路径 | 结果 |
-|---|---|
-| 运行时用非 Fixed 的 source | ✅ 正常，defines/flags 都对，`COLOR_A_R` 确实消失 |
-| 读文件 | ✅ 但**永远只能读出 `FixedColorSource`**（`optionalFieldOf` 不认的字段回落默认） |
-| **写文件（`save()`）** | ❌ **`ClassCastException`** |
-
-当时不会炸，是因为读出来的永远是 `FixedColorSource`，写回去强转必然成功 —— 那条路是死循环，走不出去。**v1.5-Dev 引入 `DerivedColorSource` 时这个循环被打破，所以先改了 codec。**
-
-#### 18d-4. 解耦程度盘点（1.4-Dev 建立，v1.5-Dev 复测仍全部成立）
-
-| 边界 | 状态 |
-|---|---|
-| `shadercore` → 任何具体物品 | ✅ 零引用（`ShaderConfigData.DEFAULT` 提到那把剑，但那是**默认值/消费方**，不是系统层） |
-| `shadercore` → `client` / `net.minecraft.client` | ✅ **零引用**（v1.5-Dev 新增校验：`ShaderQuad`/`ShaderVertex` 刻意自带类型，不用 `BakedQuad`） |
-| 渲染层 `client/render/` → 效果种类 / 颜色 / 几何实现 | ✅ **零引用** `MaskedPulse`/`DerivedColor`/`ColorDerivation`/`ItemHull`/`COLOR_*`/`DERIVE_*`（v2.1 复测仍成立） |
-| 效果种类 → 渲染层 | ✅ 零引用 `client/` |
-| `core` ↔ `shadercore` | ✅ **互不相识**（两向 grep 均为空） |
-
-**已知的两处非缺陷**：
-- `ShaderEffect.mask()` 是接口级强制 —— 每个效果都必须有遮罩。当年预计「星空类程序化效果不需要遮罩，届时要么给占位白图、要么改接口」，实际答案是不用改接口：**遮罩红通道成了程序化效果的窗口透明度**（cosmic/abyss 都这么用，见 18j 与 `shaderreference.md`）。⚠️ **`ShaderEffect.geometry()` 刻意做成 `default` 方法就是为了不再重犯这个** —— 新效果不想管几何就不用管
-- ~~`AbyssFallPipelines.clear()` **无人调用**~~ ✅ **1.6-Dev 已接上**：`ShaderLayerModelPlugin` 的回调体里与 `ShaderSpriteAtlas.clear()` 一起调用。⚠️ 但清空到填回之间有窗口期，那期间不许建 pipeline（HANDOFF 教训 47）
-
-
-### 18e. `abyssfall:masked_pulse`（第一个效果种类）
-
-遮罩**按通道**分工，通道**值**即不透明度（所以美术可以做渐隐）：
-
-| 通道 | 行为 |
-|---|---|
-| **G** | 常驻显示 |
-| **B** | 随机抽样：每轮随机选一批，持续一轮后换一批 |
-| **R** | 空着，可作第三种行为 |
-
-**时基全部挂在 vanilla 的 `GameTime` 上**（`globals.glsl` 自带，免费）。⚠️ 它是 `((gameTime % 24000) + partialTick) / 24000.0`，即 **0..1 归一化、一个 MC 日一圈**，不是秒也不是 tick。
-
-🔴 **必须在归一化域里直接乘，不要先还原成 tick**：`floor(GameTime * 24000 / 10)` 实测 2400 个边界里有 **138 个错位**（float32 把 `110/24000*24000` 算成 `109.999992`）。正确写法 `floor(GameTime * 2400.0)`。
-
-**实测的抽样时基质量**（0.5 秒 = 10 tick）：2400 桶全部访问、**零跳桶**、每桶 9~11 tick。抖动无害（只让切换早/晚一帧）。⚠️ 每 MC 日归零时会多一次不规则切换，20 分钟一次、持续一帧，判断可忽略。
-
-**哈希抽样是纯函数**，无 CPU 侧状态：键 = `(像素坐标, 轮号)` ⇒ 同轮结果恒定、换轮全新一批。实测阈值 0.15 → 实际点亮率 0.1505。**像素坐标必须用 `floor(texCoord0 * MASK_RESOLUTION)`**，直接用 UV 会让单个物品像素内部出现噪点。
-
-**`MASK_RESOLUTION` 必须可配** —— 项目里已有 16×48 的物品贴图（`san_lens.png`），写死 16 就错。
-
-**采样器必须 `FilterMode.NEAREST`** —— 遮罩是数据不是图片，线性插值会在绿蓝边界混出中间值，造出属于任何效果的假像素。
-
-**参数走编译期 define 的原因与代价**见 HANDOFF 4b.5。⚠️ `withShaderDefine` 只有 `int`/`float`/flag 三个重载（教训 32）。
-
-### 18g. 🔴 颜色来源之二：`DerivedColorSource`（从物品自己的贴图推色，v1.5-Dev）
-
-**这条是 18d 那道接缝第一次被真正用上**，也是「以后不必逐物品画遮罩」的技术前提。
-
-用户原话：**「这个丁很重要，丁的出现可以让我们以后不用每个物品都要自己画遮罩」**。
-
-当年的 `FixedColorSource` 把颜色**画在**物品上 ⇒ 每个要变异的物品都得有人手画遮罩。而本项目的前提是「**普通**物品随 San 下降开始变得不对」，主角是玩家背了几小时的石镐 —— 没人会给全游戏物品画遮罩。`DerivedColorSource` 读**被覆盖的那个像素**再推导出颜色，物品自己提供细节。
-
-**四种推导**（`ColorDerivation` 枚举，`derivation` 字段）：
-
-| 值 | 观感 | 做法 |
-|---|---|---|
-| `tinted`（默认） | 物品还认得出是自己，但颜色不再属于它 | 保留明暗，色相推向目标 |
-| `drained` | 像被抽干了 | 先去饱和成灰再染色 |
-| `inverted` | 负片 / 异界 | 亮度反相 |
-| `glowing` | 物品几乎不变，只是在发光 | 原色 + 叠加辉光 |
-
-**做成一个枚举而非四个 source**：四者输入相同、都由同一个 shader 的一个分支回答，拆开会把采样/参数/混合复制四遍去改一个表达式。三个参数 `derivation` / `color` / `strength`（`strength` 0~1 可部分应用，**这是留给 San 驱动的口子**）。
-
-**shader 侧**：`#ifdef COLOR_FROM_TEXTURE` 大分支 + 每种推导各自 `#ifdef DERIVE_*`。**未选中的分支不进编译产物**，原来的 `COLOR_A/B` 分支一字未动。
-
-⚠️ **`glowing` 有一个已知缺陷（v1.5-Dev 未修）**：公式是 `original + target * luminance(original)`，**发光强度与底层亮度成正比**。对近黑物品等于不发光 —— 实测死兆将至剑柄底层 luminance 仅 0.024，发光增量只有 **+3.5/255**，而人眼在深色背景上约需 +15~20 才能分辨。真要用它照亮暗色物品，得给公式加亮度底线，那会改变它对所有物品的行为，**属于数值语义、动前必须问用户**。
-
-#### 🔴 18g-2. `Sampler0` 改绑物品图集（不再是遮罩）
-
-**这是本轮唯一影响既有渲染的改动。**
-
-| | 旧 | 新 |
-|---|---|---|
-| `Sampler0` | 绑遮罩，**从不读**（源码注释写着 bound but unread） | **物品自己的贴图**（图集） |
-| `Sampler1` | 遮罩 | 遮罩（未变） |
-
-⚠️ **物品贴图是图集不是单图** ⇒ 采样必须用**图集坐标**，喂 `0..1` 会读到整张图集（全游戏物品一起）。故 `ShaderVertex` 同时携带两套 UV，见 18h。
-
-⚠️ **图集来源必须从 sprite 现取**（`sprite.atlasLocation()`）：多数物品在 item atlas，但**方块物品的 quad 带的是 block atlas**，绑错整个读错。且 `TextureAtlas.LOCATION_*` 三个常量在 26.2 **已 `@Deprecated`**（javap 实证），别去用它们——问 sprite 就绕开了。
-
-⚠️ **pipeline 缓存 key 因此变成 `(effect, atlas)` 二元组**：同一 effect 贴在方块物品和普通物品上是两个 RenderType。
-
-**采样器仍是 `NEAREST`**：物品是像素画，线性插值会造出美术从未用过的中间色，而推导会忠实地把它放大。
-
-#### 🔴 18g-3. 那行危险的 xmap 已换成 dispatch codec
-
-18d-3 记的那个「引入第二种颜色来源前必须先改，否则 `save()` 会 ClassCastException」的待办 —— **本轮做了**，因为第二种来源就是它等的那个。
-
-新增 `ShaderColorSources`，与 effect 的 dispatch **同构**（`Codec.STRING.partialDispatch("type", ...)`）。⚠️ `partialDispatch` **直接返回 `Codec`，后面不要再 `.codec()`**（编译不过，本轮踩过）。
-
-**旧文件兼容（1.6-Dev 起）**：`FixedColorSource` 删除后，`LENIENT_CODEC = Codec.either(CODEC, DerivedColorSource.CODEC)`——无 `"type"` 字段的旧 `color` 对象**按 `derived` 读**：颜色本身不保留（当年写的是已删的红蓝 debug source，无从复原），但条目能加载而不是整个失败（这个取舍写在 `ShaderColorSources` 的 javadoc 里）。四种推导往返 + 旧文件读取已实测通过，**写路径不再抛 CCE**。
-
-### 18h. 🔴 几何来源：`ShaderGeometrySource`（v1.5-Dev，取代单平面 quad）
-
-**旧实现的错误必须记下来，因为它极易重犯：单平面 quad 假设「物品是平的」，而 Minecraft 里没有一个物品是平的。**
-
-`ItemModelGenerator.bakeExtrudedSprite`（26.2 源码原文）给**每个**生成型物品造：
-
-```java
-Vector3f from = new Vector3f(0.0F, 0.0F, 7.5F);
-Vector3f to   = new Vector3f(16.0F, 16.0F, 8.5F);
-addUnculledFace(... SOUTH ...);   // 前面 @ z=8.5/16
-addUnculledFace(... NORTH ...);   // 后面 @ z=7.5/16
-bakeSideFaces(...);               // 逐像素侧壁，即物品的 1/16 厚度
-```
-
-⇒ **前面 + 后面 + 一圈逐像素侧壁**。旧的单平面只盖住三者之一，从任何非正视角度看都像「物品被压成一片、效果浮在旁边」——用户报的正是这个。
-
-⚠️ **HANDOFF 4b.8 旧表述「`Z_PLANE` 假设平面物品 ⇒ 3D 物品会偏」低估了范围**：受影响的不是 3D 物品这个子集，而是**全部物品**。那条已在本轮修正。
-
-**现在的形状**：
-
-```
-ShaderEffect.geometry()      效果说「我贴在什么形状上」（default → 物品外壳）
-        ↓
-ShaderGeometrySource         接口：收物品真实 quads，产出要画的几何
-        ↓
-ItemHullGeometry             唯一实现：跟随全部面，沿【各自法线】外推 0.002
-```
-
-**为什么是接缝而不是直接写死跟随外壳**：程序化「无限空间」那类效果**不贴合物品**（思想见 18j），它要的是投影面。若把「总是跟随外壳」写进渲染器，那种效果来时又得改渲染器。**加种类 = 加实现，不动渲染器。**
-
-**沿各自法线外推，不沿固定轴**：固定轴对前面对、对侧壁全错（侧壁朝侧向，往镜头推等于沿物品滑动而非离开表面）。退化面（侧壁可能塌成线）法线为零 ⇒ 原地不动，**这是正确的省略**，无面积的面本来什么都不画。
-
-**几何在 bake 时解析一次并持有**，不是每帧：几何属于模型，模型重烘焙时 wrapper 本来就会重建。每帧解析等于每秒 60 次相同工作 + 每次一个 list 分配，在渲染路径上、对屏幕上每个物品。
-
-**取几何的途径**：`resolved.bakeTopGeometry(resolved.getTopTextureSlots(), baker, BlockModelRotation.IDENTITY).getAll()`。⚠️ 用 `IDENTITY` 是因为**显示变换在 submit 时逐图层套**（来自 `ItemTransforms`），这里再烘一次旋转会**套两遍**。
-
-#### 18h-2. ⚠️ 顶点格式只有一个浮点 UV 槽，遮罩 UV 挤在 `UV1`
-
-`DefaultVertexFormat.ENTITY` 的 `UV0` 是 `RG32_FLOAT`，而 `UV1`/`UV2` 是 **`RG16_SINT`**（26.2 源码实证）。现在要两套坐标，只能有一套走整数：
-
-| 属性 | 装什么 | 理由 |
-|---|---|---|
-| `UV0`（float） | **图集坐标** | 必须精确，差一点就读到隔壁物品的像素 |
-| `UV1`（16bit int） | **遮罩坐标** | 量化无害，见下 |
-
-**已实测精度**：`FIXED_POINT_SCALE = 32767`，16px 遮罩每像素 **2048 个量化级**、128px 仍有 256 级，最坏往返误差 **0.00024 个像素**。
-
-⚠️ **`FIXED_POINT_SCALE` 在 Java 与 `.vsh` 里各写一份，改一个必须改另一个。**
-
-**用 `setUv1` 而非 `setOverlay`**：后者把一个 int 拆进两半，无法独立设两个分量。`UV1` 本来就闲置（这一层一直写 `NO_OVERLAY`、shader 从不读）——**又一次「格式声明了 ≠ 有人在用」**（HANDOFF 教训 36 同族）。
-
-### 18i. 🔴 物品贴图的 alpha 必须只有 0 或 255（v1.5-Dev，血泪）
-
-**这是「厚度看不见」问题的真正原因，与 shader、颜色、几何全都无关。**
-
-`SpriteContents.isTransparent` 是 **`ARGB.alpha(pixel) == 0`**（26.2 源码原文，严格判断）。**alpha ≥ 1 就算实体**，参与建几何。
-
-⇒ 一个 `alpha = 1` 的像素（0.4% 不透明，肉眼绝对看不见）会**长出侧壁**。后果：
-
-| | 实际 |
-|---|---|
-| 玩家**看见**的轮廓 | 由 alpha 高的像素构成 |
-| vanilla **建几何**的轮廓 | 由 alpha ≥ 1 的像素构成，**大一圈** |
-
-**旧贴图实测**：83 个 alpha 1~254 的像素 ⇒ 116 个侧壁里 **76 个（65.5%）长在 alpha 均值仅 6.6/255 的像素上**。那圈厚度无论给什么颜色、多亮的光，乘上 2.6% 不透明度之后都是看不见的。
-
-⇒ **原版的那把剑本身就没有可见厚度。** 之前几轮一直在给一圈本来就不可见的几何上色。
-
-**解法只有一个，且不在代码里**：`make-death-omen-texture.ps1` 把 alpha 二值化（`≥128 → 255` 保留原色，`<128 → 全透明`）。处理后：
-
-| | 前 | 后 |
-|---|---|---|
-| 幽灵像素 | 76 | **0** |
-| 侧壁总数 | 116 | 98 |
-| **侧壁长在可见像素上** | 40（34.5%） | **98（100%）** |
-
-**代价**：边缘变成硬像素阶梯。**但那就是原版画风** —— vanilla 物品贴图从不用半透明像素，REFERENCE 11 早就记了「任何抗锯齿都会把 1px 笔画糊成灰」。
-
-🔴 **以后新增任何物品贴图，先验 alpha 分布。** 一条命令的事：
-
-```powershell
-Add-Type -AssemblyName System.Drawing
-$b=New-Object System.Drawing.Bitmap((Resolve-Path 'xxx.png').Path)
-$semi=0; for($y=0;$y -lt $b.Height;$y++){for($x=0;$x -lt $b.Width;$x++){
-  $a=$b.GetPixel($x,$y).A; if($a -gt 0 -and $a -lt 255){$semi++} }}
-"半透明像素 = $semi （应为 0）"; $b.Dispose()
-```
-
-#### 18i-2. debug 遮罩按分区画，不按亮度猜
-
-`make-death-omen-mask.ps1` 现在按**几何分区**：`rows 0..4` = 剑刃 → 蓝（抽样闪烁）；`rows 5..15` = 护手与柄 → 绿（常驻）。轮廓覆盖 **57/57**。
-
-**为什么不按亮度**：上一版按「亮度 ≥ 68 = 剑身」分，那对旧贴图成立（亮剑身 + 近黑剑柄，双峰分明）。新贴图**亮度中位数只有 16、无第二个峰**，任何阈值都会把 89 个像素归一边、14 个归另一边 —— 这个办法失效了。**剑的形状是可靠信号，亮度不是。**
-
-⚠️ **这张遮罩是 debug 工具不是美术**，目的是让「厚度有没有出现 / 哪个通道驱动哪里 / 抽样是否真在闪」一眼可辨。用户明确说「你自己随便画一张，目的是 debug」。
-
-⚠️ **debug 时把 `sample_density` 调到 0.85、`sample_period_ticks` 调到 20**（默认 0.1 / 10）。**10% 可见率下根本看不出抽样规律** —— 任一瞬间只有一两个像素在亮，形不成可判断的图案。
-
-🔴 **v1.6 起 18i-2 描述的分区遮罩已不存在**。当前遮罩是「线稿内部纯红」，G/B 归零 ⇒ `masked_pulse` 在它上面完全透明。要回到分区遮罩得改回生成脚本。
-
-
-
-## 18j. 「有限平面上的无限空间」——下一版 Shader 的核心思想（v2.0-Dev 重写）
-
-> 🔴 **这一节取代了旧的「星空效果」全部内容。** 旧的 18j-1～18j-20（移植自 Avaritia `cosmic.frag` 的那套）**已从本文档删除**。原因见 `HANDOFF.md` 教训 50：那段东西是把一具 14 年前的尸体移植到 26.2，我们要的不是尸体，是它的思想。
-
-### 我们真正继承的东西：一个思想，不是一套代码
-
-参考实现唯一不可替代的贡献，是这个问题本身：**「如何在一个有限的二维平面上，渲染出看似无限大的三维空间。」**
-
-答案是一道数学题：**把每个 fragment 当作一条从观察者射出的射线（球面射线），用它去模拟一个无限空间。** 步骤——
-
-1. 把 fragment 的屏幕坐标当作一条射线的方向；
-2. 随观察者朝向旋转，映射到一个**球面**上（球面自封闭，永远走不到边）；
-3. 把球面划成网格，用伪随机决定哪些格子里有东西；
-4. 多层网格沿各自轴堆叠，制造**视差**（近处层掠过得快、远处层慢）。
-
-⇒ **没有贴图要拼接、不会重复、没有接缝、任意分辨率代价相同。** 这就是「无限感」的全部来源，也是下一版效果必须实现的核心。**这几条数学关系不可替代（教训 50 的第 2 问）。**
-
-### 🔴 参考「尸体」前必须回答的七个问题（教训 50）
-
-1. 这个实现最终解决什么问题？
-2. 哪些数学关系是不可替代的？（= 上面那几条射线/球面/网格/多层）
-3. 哪些代码只是历史 API 适配？（1.12.2 固定管线光照、`ShaderInstance`/`AbstractUniform` 等——26.2 全没了，见教训 33/48）
-4. 哪些参数只是视觉设计？（`lightmix=0.2`、16 层、101 格测试、十张素材——都可调可丢）
-5. 哪些数据结构是旧架构遗产？（独立纹理遮罩、每帧上传 uniform 矩形等）
-6. 哪些地方有明显 bug？（旧散列 `rand2d` 对 π 取模、`pow` 溢出 float32、层步长碰撞 35.2% 等——**全是尸体自带的，不是我们的 bug**）
-7. 完全不管原工程结构，现代环境该怎么重写？
-
-### 26.2 下这套思想的落地框架（已建好，照用）
-
-旧实现能跑，已验证下面这些**框架事实**——它们与旧算法无关，下一版直接用：
-
-- **效果 = 一个 record + 一个 GLSL + 注册**（见 18a–18c）；每帧决策、几何来源、颜色来源、遮罩机制全部现成。
-- **每帧变化的值走顶点属性，不走 define/uniform**（`HANDOFF.md` 4d / 教训 35）；配置态常量才走 define。
-- **遮罩当图集精灵**而非独立纹理，才能播动画、才能被递归收录。
-- **几何取 ±Z 两面 + 只取基础层**（`ItemFacesGeometry`，v1.9 加了图层去重，见 `ShaderQuad#BASE_LAYER`），不取侧壁。
-- **深度偏移用正数**（coplanar 几何）；**资源重载窗口期不许建 pipeline**。
-- **只有遮罩红通道决定不透明度**（`mask.r <= 0 → discard`）。
-
-### 🔴 素材分辨率不再是限制（v2.0 用户实测）
-
-旧文档里「素材建议 64×64、警惕图集爆掉」**作废**。用户实测：**素材多大都无所谓，2048×2048 × 10 张一起渲染，帧率代价不到 10 fps。** 旧实现用低分辨率纯粹因为 2012 年那是极限。⚠️ 仍要守的硬约束只有：**`.png`、正方形帧、总高是帧高整数倍、数量与 shader 分支数一致**；图集 `GL_MAX_TEXTURE_SIZE` 仍是物理上限（现代卡 16384+）。
-
-### 现状与下一步
-
-- **`cosmic`（寰宇支配之剑）仍跑旧移植算法：留在仓库里不动**——能跑、无害、bug 全继承自尸体，不挡路。
-- ✅ **「从零写新 shader」已于 v2.1 兑现**：`abysseffect`（死兆将至）只带这条思想、用本节框架从零重写为**分层方向场**（中间走过真 3D march 的弯路），架构、数值与收尾待办全在 `shaderreference.md`。
-
-
-## 19. 自有稀有度：Abyssal / Infinity（v1.8-Dev 新增）
-
-
-`item/AbyssFallRarity`，两级：**`ABYSSAL`**（物品名灰阶逐字波浪）+ **`INFINITY`**（固定 `§c` 红）。**当前只改物品名颜色，无其它作用** —— 用户明确要求本轮只做这个，别自行加掉率/排序/tooltip 行等语义。
+`item/AbyssFallRarity`，一级：**`ABYSSAL`**（物品名灰阶逐字波浪）。**当前只改物品名颜色，无其它作用** —— 用户明确要求本轮只做这个，别自行加掉率/排序/tooltip 行等语义。
 
 🔴 **不是新增 `Rarity` 枚举值，做不到**：vanilla `Rarity` 是 enum、四值、构造器 private（26.2 源码实证）；且它是网络与存档格式（`STREAM_CODEC` 传 ordinal、`CODEC` 读 name），加值会让不认识它的客户端/存档误读每个物品栈。
 
 ⇒ **旁表 + 覆盖显示**：`IdentityHashMap<Item, AbyssFallRarity>`，`assign()` 声明 / `of()` 查询。**不做 data component**（那会让稀有度进每个栈、上网络、写存档，而它只是给名字上色且同物品恒定）。物品**仍声明 vanilla rarity**，那是回落色。
 
-**颜色常量都在 `AbyssFallTooltips`**，与「深渊」那行的四个常量**完全独立**（用户明确要求以后能分开调）：`RARITY_CYCLE_MILLIS=3500` / `RARITY_STEP_PER_CHARACTER=-0.045` / `RARITY_DARKEST=0x1F1F1F` / `RARITY_LIGHTEST=0xB4B4B4` / `INFINITY_NAME_COLOR=ChatFormatting.RED`。
+**颜色常量都在 `AbyssFallTooltips`**，与「深渊」那行的四个常量**完全独立**（用户明确要求以后能分开调）：`RARITY_CYCLE_MILLIS=3500` / `RARITY_STEP_PER_CHARACTER=-0.045` / `RARITY_DARKEST=0x1F1F1F` / `RARITY_LIGHTEST=0xB4B4B4`。
 
 - **步长比属性词小得多**（-0.045 vs -0.2）：物品名可长达二十字，用属性词的步长会绕好几圈、碎成不相干的色块。
 - **灰阶比 `DARKEST`/`LIGHTEST` 宽**：那两个刻意压在 vanilla `GRAY` 以下以免和名字抢，而这**就是**名字。最亮 180 已略高于 `GRAY`(170)。
 - ⚠️ **`ABYSSAL` 曾叫 `ABYSS`**（v1.8-Dev 当轮改名）。改名时只动了枚举值，`ABYSS_WORD_KEY` / `ABYSS_FLOWER` / `abyss_dirt` 是无关的同名物，**别一起改**。
 
-**当前归属**：死兆将至 = `ABYSSAL`，寰宇支配之剑 = `INFINITY`。
+**当前归属**：死兆将至与深渊元素 = `ABYSSAL`。
 
 ### 19a. 🔴 手持提示要 Mixin，tooltip 不要（第四个 Mixin）
 
@@ -972,41 +586,6 @@ $semi=0; for($y=0;$y -lt $b.Height;$y++){for($x=0;$x -lt $b.Width;$x++){
 - `@WrapOperation` 包**一个调用点**，不是整个方法 ⇒ 全游戏其它成千处 `getHoverName()` 不受影响。
 - 两处共用 `AbyssFallTooltips.rarityName()` + `nameClock()`（都 public），**波浪在两处永不失步**。
 - `analyze_mixin` 报 `isValid: true`、零 error 零 warning。
-
-### 19b. 致敬碑文（`SwordOfTheCosmosTribute`）
-
-寰宇支配之剑的 tooltip 追加用户亲笔的十五行致敬（Avaritia / Morpheus1101）。🔴 **文案是用户的，一字不能改**；这个类只管排版与配色。
-
-**默认收起**，只显示一行 `按住 Shift 阅读碑文`（lang key `...tribute.hint`）；按住 Shift 铺开 25 行。**`Minecraft.hasShiftDown()`** 直接查两个 Shift 键的物理状态（340/344），不存状态、下一帧即生效，vanilla 自己在 tooltip 期间也读它（`ExtendedView`）。
-
-**排版**：空行分五段；`§7` 灰=叙述、`§8` 斜体=引语、**`§c` 红只给三句**（两个转折 + 收束句，用剑名同一个红）、Avaritia 引文缩进两格（tooltip 无边距，缩进只能进文本）。
-
-🔴 **排版不写进 lang 文件**：`§` 代码能用，但那会把排版塞进可翻译文本 —— 翻译者得原样保留 `§7`/`§o`，漏一个就静默变样。**lang 只承载文字。**
-
-⚠️ **没用 `appendHoverText`**（26.2 **已 `@Deprecated`**）、**没用 `ItemLore`**（它强制套 `DARK_PURPLE`+斜体，见 `ItemLore.LORE_STYLE`）⇒ 走已有的 `ItemTooltipCallback`，**零新增 Mixin**。
-
-**追加在染色 pass 之后**：碑文样式已终、无可被匹配的词，放前面等于让全游戏每个 tooltip 白走二十多行。
-
-## 20. 寰宇支配之剑 `abyssfall:fake_infinity_sword`（v1.8-Dev 新增）
-
-**Shader 系统的第二个消费者，纯外观剑。** 渲染与死兆将至同构（配置里第二条 effect entry），但用的是 `cosmic` 效果种类（旧移植星空算法，见 18j）。
-
-**属性只有一条**：`ATTACK_DAMAGE` modifier = **0.0**（tooltip 显示 `1`，即玩家空手值）；**`ATTACK_SPEED` 整条不加**（不是设 0 —— 设 0 会显示「4 攻击速度」，比 1.6 更难看）。与死兆将至同一做法（见 17f）。
-
-🔴 **属性必须显式替换，不能靠 `sword()` 的 baseline 凑**：`sword(material, dmg, spd)` 会把材质的 `attackDamageBonus` 加到伤害 baseline 上（NETHERITE = +4.0）⇒ 传 `0.0F` 实测得 modifier 4.0、tooltip 显示 5.0。**实测过**（真实 classpath）：显式写 modifier 才得 1.0/1.6，而原版下界合金剑同法算得 8.0/1.6（对照正确）。
-
-⚠️ **`sword(...)` 那两个参数因此是死的**，留着只为它顺带给的耐久/修复/附魔/横扫/蛛网规则 —— 没有不带 baseline 的重载。
-
-**tooltip 那行是 `+无限 攻击伤害`**，机制照抄 17g（`Display.override` + 逐字波浪），只有两处不同：
-- 走 `INFINITY_WORD_KEY`，客户端按 key 分派到**彩虹**调色板（`Mth.hsvToRgb`）
-
-- 🔴 **彩虹的步长与周期都不能与灰阶共用**：灰阶由余弦驱动**会折返**，相位差一整圈看起来只是「波过去了」；**色相不折返，它绕回自身** ⇒ `-0.2 × 8` 字母跨 1.4 圈，实测第 6 个字母与第 1 个**字节完全相同**。故 `HUE_STEP_PER_CHARACTER = -0.1`（跨 0.7 圈、最近一对 RGB 距 91）、`RAINBOW_CYCLE_MILLIS = 500`（**用户实测后自己定的值**）。
-
-🔴 **`Mth.hsvToArgb` 对负 hue 会抛异常**（首行 `(int)(hue*6)%6` 得负数 → 落进 `default` → throw，已实测）。而负相位是**常态**（步长为负）⇒ 必须 `Mth.positiveModulo(phase, 1.0F)`，**这不是防御性代码**。
-
-**贴图与遮罩是死兆将至的独立副本**（同像素、两套文件）：effect 身份含 mask，共享会把两把剑的美术永久绑死。代价是多编译一条 pipeline。⚠️ **v1.9-Dev-Fix 起两套各住自己的子目录**（`item/fake_infinity_sword/…`），见「目录结构」末尾那条约定。
-
-
 
 ## 21. 深渊元素 Abyssdium `abyssfall:abyssdium`（v2.2 新增）
 
