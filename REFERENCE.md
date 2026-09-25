@@ -17,21 +17,24 @@ src/main/java/com/abyssfall/
 ├── agreement/AgreementText.java        测试协议文案（双语，硬编码）
 ├── agreement/TestAgreement.java        preLaunch 入口点，见 16
 ├── block/AbyssDirtBlock.java  AbyssFallBlocks.java  AbyssFallBoneMealHandler.java
-│        TintedGlassPaneBlock.java
+│        TintedGlassPaneBlock.java  AbyssFallBedrockDrops.java       见 21b
+│        AbyssFallBlockTags.java                                   见 21a
 ├── config/  (7 个，见 HANDOFF 4)
 ├── core/    (6 个，见 HANDOFF 3)
 ├── damage/AbyssFallDamageTypes  DeathOmenDamageSource                见 17
 ├── effect/AbyssExplorerEffect  AbyssFallEffects  SanBreakdownEffect  SanSpiritedEffect
 ├── item/AbyssFallDevInventory  AbyssFallItemGroups  AbyssFallItems
 │        SanCounterItem  SanLensItem  FinalDeathOmen                  见 17
+│        AbyssFallItemTags  AbyssFallToolMaterials  AbyssFallItemMechanics   见 21 / 22
+├── itemframework/ItemMechanic  ItemMechanics  NeverDestroyed
+│        SourceSlotAccess  SlotMemoryAccess                          见 22
 ├── item/AbyssFallRarity.java            自有稀有度（两级），见 19
 ├── loot/AbyssFallLootTables.java
-├── shadercore/  (11 个：AbyssFallShaderCore  AbyssFallShaderConfig  ShaderConfigData
+├── shadercore/  (13 个：AbyssFallShaderCore  AbyssFallShaderConfig  ShaderConfigData
 │                 ShaderConfigProvider  ShaderEffect  ShaderEffectProvider
 │                 ShaderEffectType  ShaderEffectTypes  ShaderColorSource
 │                 ShaderRenderContext  ShaderGeometrySource  ShaderQuad
 │                 ShaderVertex)                                见 18 / HANDOFF 4b
-├── shadercore/color/FixedColorSource.java      ⚠️ 占位实现，见 18d
 ├── shadercore/color/ColorDerivation.java       四种推导，见 18g
 ├── shadercore/color/DerivedColorSource.java    从物品贴图推色，见 18g
 ├── shadercore/color/ShaderColorSources.java    dispatch codec，见 18g
@@ -39,8 +42,11 @@ src/main/java/com/abyssfall/
 ├── shadercore/geometry/ItemFacesGeometry.java  只 ±Z 两面+基础层，见 18h / 18j
 ├── shadercore/effect/MaskedPulseEffect.java    第一个效果种类，见 18e
 ├── shadercore/effect/CosmicEffect.java         旧移植星空（寰宇支配之剑），见 18j
-├── shadercore/effect/AbyssEffect.java          cosmic 的独立副本（死兆将至），见 18j
-└── mixin/PlayerAttackMixin.java        毕业武器接管点，见 17
+├── shadercore/effect/AbyssEffect.java          分层方向场（v2.1 从零重写，死兆将至），见 shaderreference.md
+└── mixin/  (7 个：PlayerAttackMixin        毕业武器接管点，见 17
+             BlockDestroyProgressMixin      挖掘解禁，见 21b
+             EntityUndyingMixin  ItemEntityUndyingMixin  ItemStackUndyingMixin
+             InventorySlotMemoryMixin  ServerPlayerDropMixin      不毁引擎，见 22)
 src/client/java/com/abyssfall/client/
 ├── AbyssFallClient.java
 ├── hud/AbyssFallSanHud.java          HUD 注册
@@ -51,7 +57,9 @@ src/client/java/com/abyssfall/client/
 ├── tooltip/SwordOfTheCosmosTribute.java  致敬碑文（Shift 展开），见 19b
 ├── render/ShaderLayerItemModel.java      包装物品模型 + 每帧决策，见 18c
 ├── render/ShaderLayerModelPlugin.java    装到所有物品 + 取几何，见 18c / 18h
-├── render/ShaderLayerRenderer.java       画 source 给的几何，见 18c
+├── render/ShaderLayerRenderer.java       画 source 给的几何 + 折叠顶点通道，见 18c
+├── render/ShaderSpriteAtlas.java         遮罩图集精灵 bounds 缓存，见 18j
+├── render/ViewerState.java               观察者朝向/位置快照（abyss 视差用），见 shaderreference.md
 ├── shader/AbyssFallPipelines.java        effect → RenderType，见 18b
 ├── mixin/RenderTypeInvoker.java          取 package-private 的 create，见 18b
 ├── mixin/HudSelectedItemNameMixin.java   手持提示的物品名上色，见 19a
@@ -60,14 +68,16 @@ src/client/java/com/abyssfall/client/
 src/main/resources/assets/abyssfall/shaders/core/
 ├── masked_pulse.vsh / .fsh            见 18e / 18g
 ├── cosmic.vsh / .fsh                  旧移植「星空」，跑 18j 说的旧算法
-└── abyss.vsh / .fsh                   同上的独立副本（深渊效果），见 18j
+└── abyss.vsh / .fsh                   分层方向场（v2.1 从零重写），见 shaderreference.md
 
 src/main/resources/assets/abyssfall/textures/shader/
 ├── cosmic/cosmic_0..9.png (+.mcmeta)  旧算法素材，18j
-└── abyss/abyss_0..9.png (+.mcmeta)    旧算法素材，18j
+└── abyss/abyss_0..9.png (+.mcmeta)    ⚠️ v2.1 起零引用（abyss 程序化生成不采样贴图），去留待定
 ```
 
 **美术脚本**（见 11）：`make-death-omen-texture.ps1`（alpha 二值化，见 18i）+ `make-death-omen-mask.ps1`（debug 遮罩，见 18i）。
+
+**abyss 深渊特效的专项开发文档是根目录的 `shaderreference.md`**（v2.1 新增）：架构决策、走过的弯路、调试工作流与收尾待办都在那里，本文档不重复。
 
 ### 🔴 贴图目录约定：材质多的物品各占一个同名子目录（v1.9-Dev-Fix）
 
@@ -499,6 +509,8 @@ long from = Math.max(this.lastShownAt, SanHudModeState.revealEndsAt());
 
 `mixin/PlayerAttackMixin`，`@Mixin(value = Player.class, priority = Integer.MAX_VALUE)`。
 
+**扳机已材质化（v2.2）**：判定从「武器是死兆将至」改为「武器在 `abyssfall:bless_from_abyss` tag 里」（见 21c）——前提属于材料而非某一把武器，任何 abyssdium 制品（或数据包加入的物品）进 tag 即获得同样的接管。**秒杀逻辑本体（17c 四步）一字未动**，迁移的只有扳机。
+
 - **`@WrapMethod`**（MixinExtras 0.5.4，**Loader 0.19.3 内嵌**，零新依赖）：vanilla 方法变成一个可调可不调的 `Operation`，「武器替换攻击」成为结构事实而非取消标志的副作用。**可叠加**，别的 mod 包裹同方法会形成嵌套链
 - ❌ **`@Overwrite` 曾被评估并否决**：`hurtServer` 全仓 **55 处覆写** + `actuallyHurt` 7 处，覆盖不全；且会**静默删掉** Fabric API 自己的 `ALLOW_DAMAGE`/`AFTER_DAMAGE` 注入点
 - ❌ `@Redirect` **独占**，第二个 mod 直接冲突
@@ -540,13 +552,17 @@ lang key `death.attack.death_omen.1/2/3`，数量由 `DEATH_MESSAGE_VARIANTS` �
 
 ### 17f. 物品属性
 
-`sword(ToolMaterial.NETHERITE, 3.0F, -2.4F)` 打底（耐久、横扫、蛛网挖掘、下界合金修复），然后**替换两处**：
+`sword(AbyssFallToolMaterials.ABYSSDIUM, 3.0F, -2.4F)` 打底（横扫、蛛网挖掘、剑类物品行为；**材料已从下界合金改为深渊元素**，v2.2，见 21）——**耐久不在其列**：元素不知磨损（`UNBREAKABLE` + 材料耐久 0，契约与两个坑见 21a）。`sword(...)` 装上的东西随后被替换/移除/补充：
 
 - **`ATTACK_DAMAGE = Float.MAX_VALUE`**：原版 `LivingEntity#kill` 用的正是这个常量，且 `hurtServer` 会把 `Infinity` 钳到它 ⇒ 这是游戏能表达的最大伤害。传 `Float.POSITIVE_INFINITY` 无意义（会被钳成同一个值）。**实际伤害与它无关**（＝目标剩余生命值）
 - **无 `ATTACK_SPEED` modifier**（整条不加，不是设 0）：攻速对别的武器有意义是因为冷却决定多少伤害能打进去；这把打的是「还剩多少」，蓄力只影响下令频率。不加 ⇒ 保持玩家基础攻速，**无后摇**
 - **`component(DataComponents.ENCHANTABLE, null)` 移除附魔能力**：已追到底层验证 `component(type, null)` → `Initializer.add` → `DataComponentMap.Builder.setUnchecked` → **`map.remove(type)`**，而 `ItemStack.isEnchantable()` 第一行就是 `if (!has(ENCHANTABLE)) return false` ⇒ 附魔台与铁砧都走这个判断，**零 Mixin**。理由：值得上剑的附魔全都修改被跳过的流水线，留着是兑不了的承诺
+- **`component(DataComponents.UNBREAKABLE, Unit.INSTANCE)`**（v2.2）：不毁属性本体。⚠️ 材料耐久填 0（见 21a），**没有这个组件的话 `isBroken()` 恒真、首用即碎**（教训 54）——它是「无耐久」语义能成立的必需品，不是装饰
+- **`component(DataComponents.TOOLTIP_DISPLAY, TooltipDisplay.DEFAULT.withHidden(UNBREAKABLE, true))`**（v2.2）：把原版会为 `UNBREAKABLE` 打印的「无法破坏」行藏掉。`TOOLTIP_DISPLAY` 是 vanilla 自己的按组件显示开关（`shows(UNBREAKABLE)` 是那行字的唯一闸门）——**只摘字，组件与功能全留**。深渊元素材料同款处理
 
 ⚠️ 曾计划用 Mixin 替换铁砧「过于昂贵」提示，**已放弃**：`TOO_EXPENSIVE_TEXT` 是 `AnvilScreen` 的 `private static final` 全局字段、不区分物品，替换会影响所有物品。
+
+⚠️ **剑不挖掘**（v2.2）：死兆将至**刻意不在** `dig_from_abyss` 里（见 21b/21c）——它挖不动基岩，挖掘链与剑无关。
 
 **贴图 `abyssfall:item/final_death_omen/final_death_omen`**（16×16，`parent: item/handheld`）。进常规创造栏，无 config 门禁。⚠️ **贴图与遮罩住在同名子目录里**，见「目录结构」末尾那条约定。
 
@@ -642,9 +658,9 @@ ShaderLayerRenderer      submitCustomGeometry 画【几何源给的】quad 集�
 
 用户明确要求：**「让 Shader System 不绑定任何一种颜色来源，避免以后选择方案时需要重做底层渲染系统」**。
 
-`ShaderColorSource` 接口 + ~~**唯一占位实现**~~ `FixedColorSource`。⚠️ **v1.5-Dev 起有两个实现**：`FixedColorSource`（占位 / 现为 debug 工具）与 `DerivedColorSource`（从物品自己的贴图推色，**这条接缝的第一次真正兑现**，见 18g）。
+`ShaderColorSource` 接口 + `ShaderColorSources` dispatch（`"type"` 字段选 codec，与效果种类同构，见 18g-3）。⚠️ **占位实现 `FixedColorSource` 已删除**（1.6-Dev，用户授意）：当前唯一实现是 `DerivedColorSource`（从物品自己的贴图推色，**这条接缝的第一次真正兑现**，见 18g），兼作各效果的默认回落。
 
-**`FixedColorSource` 不是设计决定，是占位。** 它的限制（编译期常量、整块同色、不读原贴图）写在自己 javadoc 里并标注「这是占位的限制，不是系统的限制」。⚠️ **第三条限制已被 `DerivedColorSource` 打破** —— 它读原贴图，证明那确实是占位的限制而非系统的。
+**当年的 `FixedColorSource` 不是设计决定，是占位。** 它的三条限制（编译期常量、整块同色、不读原贴图）已随删除消失；**第三条限制当年就被 `DerivedColorSource` 打破** —— 它读原贴图，证明那确实是占位的限制而非系统的。
 
 **已实测**：从外部定义一个性质完全不同的 source（贡献 `HUE_START`/`HUE_SPAN` + `COLOR_FROM_GRADIENT` 标志），零系统改动即生效，且 `COLOR_A_*` 那组 define 完全消失 —— 证明系统没有任何地方假设「颜色是两个 RGB 常量」。
 
@@ -652,15 +668,11 @@ ShaderLayerRenderer      submitCustomGeometry 画【几何源给的】quad 集�
 
 **未解决**：绿/蓝共用一个颜色 —— `opacity = continuous + sampled` 那步就把来源信息丢了，到着色时已分不清。修它必然涉及颜色方案设计，故未修。
 
-#### 🔴 18d-2. 死兆将至的颜色是 debug 产物，遮罩定稿后连带删除
+#### ✅ 18d-2. 死兆将至的 debug 配色已随 `FixedColorSource` 删除（1.6-Dev，用户授意）
 
-**用户原话**：「现在死兆将至还没有画出来 mask，同时当时 shader 系统刚刚解耦，必须要有一个道具用来测试，我就用的这种办法，**死兆将至相关的色彩系统压根就是 debug 下的产物**，后面遮罩画好之后这部分记得删除即可，届时也是颜色系统构思出来的时候。」
+**当年的用户原话**：「现在死兆将至还没有画出来 mask，同时当时 shader 系统刚刚解耦，必须要有一个道具用来测试，我就用的这种办法，**死兆将至相关的色彩系统压根就是 debug 下的产物**，后面遮罩画好之后这部分记得删除即可，届时也是颜色系统构思出来的时候。」
 
-⇒ 配置文件里 `final_death_omen` 那条 entry **不写 `color` 字段**，回落到 `FixedColorSource.DEFAULT` = 红(`0xFF0000`)→蓝(`0x0000FF`)渐变。**这是调试配色，不是美术决定。**
-
-**遮罩定稿时要一起清掉的东西**：`FixedColorSource`、以及 `masked_pulse.fsh` 里 `COLOR_A_*`/`COLOR_B_*` 那套（那行 xmap 已于 v1.5-Dev 换成 dispatch codec，不必再等）。
-
-⚠️ **v1.5-Dev 状态更新（用户明确决定）**：`FixedColorSource` **暂不删除**。理由是它仍是 `MaskedPulseEffect` 的默认值（两处），删了没有回落值；且用户原话「**既然确定是材质问题，那么我画完新材质之后红蓝还是对比色最强的两个颜色，可以看得更清晰**」⇒ 红蓝现在是 **debug 工具**，等新美术定稿再删。
+✅ **这句话已兑现**：红(`0xFF0000`)→蓝(`0x0000FF`)渐变的 `FixedColorSource`、连同 `masked_pulse.fsh` 里 `COLOR_A_*`/`COLOR_B_*` 那套，已于 1.6-Dev 删除（用户授意，见 `HANDOFF.md` 7.2）。`masked_pulse` 的默认颜色来源自此是 `DerivedColorSource.DEFAULT`；死兆将至的默认 entry 也早已不走 `masked_pulse`（现用 `abysseffect`，见 `ShaderConfigData`）。
 
 #### ✅ 18d-3. 那行 `xmap` 的写路径会 ClassCastException（**v1.5-Dev 已修**）
 
@@ -690,13 +702,13 @@ FixedColorSource.CODEC.optionalFieldOf("color", FixedColorSource.DEFAULT)
 |---|---|
 | `shadercore` → 任何具体物品 | ✅ 零引用（`ShaderConfigData.DEFAULT` 提到那把剑，但那是**默认值/消费方**，不是系统层） |
 | `shadercore` → `client` / `net.minecraft.client` | ✅ **零引用**（v1.5-Dev 新增校验：`ShaderQuad`/`ShaderVertex` 刻意自带类型，不用 `BakedQuad`） |
-| 渲染层四个类 → 效果种类 / 颜色 / 几何实现 | ✅ **零引用** `MaskedPulse`/`FixedColor`/`DerivedColor`/`ColorDerivation`/`ItemHull`/`COLOR_*`/`DERIVE_*` |
+| 渲染层 `client/render/` → 效果种类 / 颜色 / 几何实现 | ✅ **零引用** `MaskedPulse`/`DerivedColor`/`ColorDerivation`/`ItemHull`/`COLOR_*`/`DERIVE_*`（v2.1 复测仍成立） |
 | 效果种类 → 渲染层 | ✅ 零引用 `client/` |
 | `core` ↔ `shadercore` | ✅ **互不相识**（两向 grep 均为空） |
 
 **已知的两处非缺陷**：
-- `ShaderEffect.mask()` 是接口级强制 —— 每个效果都必须有遮罩。对 `masked_pulse` 合理，但**星空类程序化效果不需要遮罩**，届时要么给占位白图、要么改接口。这是设计取舍不是 bug。⚠️ **`ShaderEffect.geometry()` 刻意做成 `default` 方法就是为了不再重犯这个** —— 新效果不想管几何就不用管
-- `AbyssFallPipelines.clear()` **无人调用** —— 资源重载场景需要它，加 reload 支持时记得接上
+- `ShaderEffect.mask()` 是接口级强制 —— 每个效果都必须有遮罩。当年预计「星空类程序化效果不需要遮罩，届时要么给占位白图、要么改接口」，实际答案是不用改接口：**遮罩红通道成了程序化效果的窗口透明度**（cosmic/abyss 都这么用，见 18j 与 `shaderreference.md`）。⚠️ **`ShaderEffect.geometry()` 刻意做成 `default` 方法就是为了不再重犯这个** —— 新效果不想管几何就不用管
+- ~~`AbyssFallPipelines.clear()` **无人调用**~~ ✅ **1.6-Dev 已接上**：`ShaderLayerModelPlugin` 的回调体里与 `ShaderSpriteAtlas.clear()` 一起调用。⚠️ 但清空到填回之间有窗口期，那期间不许建 pipeline（HANDOFF 教训 47）
 
 
 ### 18e. `abyssfall:masked_pulse`（第一个效果种类）
@@ -729,7 +741,7 @@ FixedColorSource.CODEC.optionalFieldOf("color", FixedColorSource.DEFAULT)
 
 用户原话：**「这个丁很重要，丁的出现可以让我们以后不用每个物品都要自己画遮罩」**。
 
-`FixedColorSource` 把颜色**画在**物品上 ⇒ 每个要变异的物品都得有人手画遮罩。而本项目的前提是「**普通**物品随 San 下降开始变得不对」，主角是玩家背了几小时的石镐 —— 没人会给全游戏物品画遮罩。`DerivedColorSource` 读**被覆盖的那个像素**再推导出颜色，物品自己提供细节。
+当年的 `FixedColorSource` 把颜色**画在**物品上 ⇒ 每个要变异的物品都得有人手画遮罩。而本项目的前提是「**普通**物品随 San 下降开始变得不对」，主角是玩家背了几小时的石镐 —— 没人会给全游戏物品画遮罩。`DerivedColorSource` 读**被覆盖的那个像素**再推导出颜色，物品自己提供细节。
 
 **四种推导**（`ColorDerivation` 枚举，`derivation` 字段）：
 
@@ -769,9 +781,7 @@ FixedColorSource.CODEC.optionalFieldOf("color", FixedColorSource.DEFAULT)
 
 新增 `ShaderColorSources`，与 effect 的 dispatch **同构**（`Codec.STRING.partialDispatch("type", ...)`）。⚠️ `partialDispatch` **直接返回 `Codec`，后面不要再 `.codec()`**（编译不过，本轮踩过）。
 
-**旧文件兼容**：`LENIENT_CODEC = Codec.either(CODEC, FixedColorSource.CODEC)`，无 `"type"` 字段的旧 `color` 对象**仍按 `fixed` 读**。已实测四种推导往返 + fixed 往返 + 旧文件读取全部通过，**写路径不再抛 CCE**。
-
-**`FixedColorSource` 保留未删** —— 它仍是 `MaskedPulseEffect` 的默认值（两处），删了那两处就没有回落值。用户明确要求「删除留到遮罩真正定稿时」，且**红蓝是对比最强的两色，debug 时看得最清**。
+**旧文件兼容（1.6-Dev 起）**：`FixedColorSource` 删除后，`LENIENT_CODEC = Codec.either(CODEC, DerivedColorSource.CODEC)`——无 `"type"` 字段的旧 `color` 对象**按 `derived` 读**：颜色本身不保留（当年写的是已删的红蓝 debug source，无从复原），但条目能加载而不是整个失败（这个取舍写在 `ShaderColorSources` 的 javadoc 里）。四种推导往返 + 旧文件读取已实测通过，**写路径不再抛 CCE**。
 
 ### 18h. 🔴 几何来源：`ShaderGeometrySource`（v1.5-Dev，取代单平面 quad）
 
@@ -919,8 +929,8 @@ $semi=0; for($y=0;$y -lt $b.Height;$y++){for($x=0;$x -lt $b.Width;$x++){
 
 ### 现状与下一步
 
-- **`abysseffect`（死兆将至）与 `cosmic`（寰宇支配之剑）现在都跑旧移植算法。它们留在仓库里不动**——能跑、无害、bug 全继承自尸体，不挡路。
-- **下一版效果**：只带「球面射线模拟无限空间」这条思想，用 26.2 框架**从零写新 shader**，不看旧工程结构。**不是现在的任务，等立项。**
+- **`cosmic`（寰宇支配之剑）仍跑旧移植算法：留在仓库里不动**——能跑、无害、bug 全继承自尸体，不挡路。
+- ✅ **「从零写新 shader」已于 v2.1 兑现**：`abysseffect`（死兆将至）只带这条思想、用本节框架从零重写为**分层方向场**（中间走过真 3D march 的弯路），架构、数值与收尾待办全在 `shaderreference.md`。
 
 
 ## 19. 自有稀有度：Abyssal / Infinity（v1.8-Dev 新增）
@@ -989,6 +999,7 @@ $semi=0; for($y=0;$y -lt $b.Height;$y++){for($x=0;$x -lt $b.Width;$x++){
 
 **tooltip 那行是 `+无限 攻击伤害`**，机制照抄 17g（`Display.override` + 逐字波浪），只有两处不同：
 - 走 `INFINITY_WORD_KEY`，客户端按 key 分派到**彩虹**调色板（`Mth.hsvToRgb`）
+
 - 🔴 **彩虹的步长与周期都不能与灰阶共用**：灰阶由余弦驱动**会折返**，相位差一整圈看起来只是「波过去了」；**色相不折返，它绕回自身** ⇒ `-0.2 × 8` 字母跨 1.4 圈，实测第 6 个字母与第 1 个**字节完全相同**。故 `HUE_STEP_PER_CHARACTER = -0.1`（跨 0.7 圈、最近一对 RGB 距 91）、`RAINBOW_CYCLE_MILLIS = 500`（**用户实测后自己定的值**）。
 
 🔴 **`Mth.hsvToArgb` 对负 hue 会抛异常**（首行 `(int)(hue*6)%6` 得负数 → 落进 `default` → throw，已实测）。而负相位是**常态**（步长为负）⇒ 必须 `Mth.positiveModulo(phase, 1.0F)`，**这不是防御性代码**。
@@ -996,6 +1007,71 @@ $semi=0; for($y=0;$y -lt $b.Height;$y++){for($x=0;$x -lt $b.Width;$x++){
 **贴图与遮罩是死兆将至的独立副本**（同像素、两套文件）：effect 身份含 mask，共享会把两把剑的美术永久绑死。代价是多编译一条 pipeline。⚠️ **v1.9-Dev-Fix 起两套各住自己的子目录**（`item/fake_infinity_sword/…`），见「目录结构」末尾那条约定。
 
 
+
+## 21. 深渊元素 Abyssdium `abyssfall:abyssdium`（v2.2 新增）
+
+MOD 毕业材料，死兆将至的打造材料。自定义材料，不属于原版矿石类；**无获取途径**（无配方、无战利品，只能创造栏取，获取方式未设计）。稀有度 = 自有 `ABYSSAL` + 原版 `EPIC`（见 19）。`fireResistant` + `UNBREAKABLE` 组件（「无法破坏」tooltip 行用 `TOOLTIP_DISPLAY` 隐藏，组件保留——与死兆将至同一开关，见 17f）。贴图 `abyssfall:item/abyssdium`（16×16 占位水晶，`make-abyssdium-texture.ps1` 生成，alpha 二值化规矩见 18i；等用户美术）。
+
+### 21a. `ToolMaterial`：一组「拒绝」而不是一组数值（`item/AbyssFallToolMaterials`）
+
+record 六个槽位的填法与各自踩过的坑（类 javadoc 有完整契约，此处是结论）：
+
+| 槽位 | 值 | 要点 |
+|---|---|---|
+| `incorrectBlocksForDrops` | 空 tag `abyssfall:incorrect_for_abyssdium_tool`（`block/AbyssFallBlockTags`） | 没有任何方块被列为「拒绝」＝挖掘等级无限 |
+| `durability` | `0` | 🔴 `MAX_DAMAGE=0` 而无 `UNBREAKABLE` 会**首次使用即碎**（`isBroken()` 恒真，教训 54）⇒ **每个 abyssdium 产物必须带 `UNBREAKABLE` 组件** |
+| `speed` | `Float.MAX_VALUE` | 喂给未来挖掘工具的 Tool 规则；剑的规则固定，不吃这个值 |
+| `attackDamageBonus` | `5.0F` | 🔴 先不动。用户挖坑：**以后是动态乘区**，按不同 MOD / 不同生物类型动态增伤——只记录，未实现 |
+| `enchantmentValue` | `1` | 🔴 **0 不可表达**：`Enchantable` 构造器带正数校验（CODEC 同 `POSITIVE_INT`），填 0 启动即崩（教训 51，v2.2 实崩一次）。1 是死信——`isEnchantable()` 是存在性判定（教训 54），**每个产物必须移除 `ENCHANTABLE` 组件** |
+| `repairItems` | 空 tag `abyssfall:abyssdium_tool_materials` | Unbreakable 无需修复；空 tag 经 `getOrCreateTagForRegistration` 安全解析（教训 56） |
+
+**未来新 abyssdium 物品的三件套义务**：①`UNBREAKABLE` 组件（否则首用即碎）②移除 `ENCHANTABLE` 组件（否则可附魔）③按职能进 tag（打击 → `bless_from_abyss`，挖掘 → `dig_from_abyss`，见 21c）。
+
+### 21b. 挖掘链（目前整体休眠）
+
+- **`mixin/BlockDestroyProgressMixin`**：原版「不可挖掘」（`destroySpeed == -1.0F`：基岩、屏障、命令方块、末地门框架等）对 `dig_from_abyss` 成员放行——已核实客户端裂纹与服务端破坏**都**走 `BlockBehaviour.getDestroyProgress` 这唯一一道口，无 Fabric 事件可替（interaction 模块 api 包逐类查过）。代理硬度 **50**（黑曜石档，首值）。⚠️ 放行针对**全部** -1 方块，但它们**全部没有战利品表**（已逐一核实），什么都不掉——只有基岩有掉落（下条）。
+- **`block/AbyssFallBedrockDrops`**（Fabric `PlayerBlockBreakEvents.AFTER`，API 优先）：基岩是 `noLootTable()`，数据包战利品表不会被读 ⇒ 事件掉落；带 `preventsBlockDrops` 门（创造拆基岩不掉，与原版一致）。
+- **基岩已加入 `minecraft:mineable/pickaxe`**（`replace:false`）：未来 abyssdium 镐以 `MAX_VALUE` 秒挖基岩；对其他人零影响（-1 门在上游挡着）。
+- 🔴 **`dig_from_abyss` 目前为空**（死兆将至是剑，刻意不入——「剑不挖掘」）⇒ **挖掘链整体休眠**，等第一把 abyssdium 挖掘工具。
+
+### 21c. 物品 tag 双轴（`item/AbyssFallItemTags`）与 tag 译名
+
+- **`abyssfall:bless_from_abyss`（深渊庇佑者 / Bless From Abyss）**：打击轴。`PlayerAttackMixin` 的秒杀扳机查此 tag（见 17b）。当前成员：死兆将至。⚠️ **abyssdium 原材料刻意不入**——入 tag 会让一把深渊元素拿在手里也能秒杀（不毁改走三重保险覆盖它，见 22）。
+- **`abyssfall:dig_from_abyss`（深渊采集者 / Dig From Abyss）**：挖掘轴（见 21b），目前为空。
+- 两个 tag 都有 lang 译名 `tag.item.abyssfall.*`（双语）。⚠️ vanilla 自身**零** tag 翻译键（已核实 26.2 jar），这是 JEI/工具链的生态约定，游戏原生界面不显示。
+- `abyssdium_tool_materials`（修复用空 tag，见 21a）无译名。
+
+
+## 22. 物品机制框架 `com.abyssfall.itemframework` 与不毁 `NeverDestroyed`（v2.2 新增）
+
+**框架定位**：以后 AbyssFall 所有**物品**机制都进这个包，每个机制一个类；机制清单 `ItemMechanics` 枚举。🔴 **框架永远不许引用内容**（abyssdium / tag / 任何具体物品）——「abyssdium 可以使用这个清单的功能，但绝不能变成这个清单因为 abyssdium 而存在」（用户原话）。
+
+- `ItemMechanic`：机制接口。`grant(Predicate<ItemStack>)`（授予，初始化期）+ `has(stack)`（查询，运行期）。机制只知道「被谁授予」和「如何回答」，**永远不知道「为什么」**。
+- `ItemMechanics`：机制清单，`List.of(...)` 枚举全部机制。新机制 = 新类 + 这里一行；三重保险自动覆盖新机制。
+- 授予只发生在**组合根** `item/AbyssFallItemMechanics`（框架外唯一的内容↔框架接缝）：**三重保险**，每条独立授予整个清单——①`abyssdium || final_death_omen`（元素及其锻品）②`bless_from_abyss` tag ③`final_death_omen`（单独再陈述一次）。**三重不是耦合，是毕业物品和材料本身就应该包含所有物品机制**（用户原话）。
+- **自检方法**（把内容与 tag 全删掉后，框架是否仍独立成立）：①grep 框架包 import 仅 `java.*`/`net.minecraft.*`；②`javac` 把框架包单独对 MC jar 编译；③写一次性 UsageCheck（给原版物品授予并查询）编译。v2.2 三项全 PASS。
+
+### 22a. 不毁 `NeverDestroyed`：五种死法与五个引擎 mixin
+
+判定统一走 `NeverDestroyed.INSTANCE.has(stack)`；机制语义的唯一权威是它的类 javadoc。
+
+| 死法 | 真实路径（26.2 已核实） | 拦截（都在 `com.abyssfall.mixin`） |
+|---|---|---|
+| 熔岩/火/仙人掌/一切伤害 | `ItemEntity.hurtServer` 问 `ItemStack.canBeHurtBy` | `ItemStackUndyingMixin`：一律答 false。枚举清单会过时，全免疫不会；附带 `fireImmune()` 为真（不起火苗） |
+| 爆炸 | 🔴 **有伤害前置门**：`ServerExplosion.hurtEntities` 先问 `ignoreExplosion`（教训 55） | `ItemEntityUndyingMixin`：一律答 true ⇒ **无伤害也无击退**（防被崩进虚空/崩丢） |
+| `/kill` | `Entity.kill` = `remove(KILLED)`，**不是伤害**（教训 53） | `EntityUndyingMixin`：取消移除 |
+| 5 分钟 despawn | `tick` 里 `age >= 6000 → discard` | `ItemEntityUndyingMixin`：套 vanilla 自己的 `setUnlimitedLifetime()`（age=-32768，随 NBT 持久） |
+| 虚空 | `Entity.onBelowWorld` = 裸 `discard()`（物品实体不受伤直接删） | `EntityUndyingMixin`：拦截并执行回栏（见 22b） |
+
+**熔岩驻面**（`ItemEntityUndyingMixin`，替换 `setUnderLavaMovement`）：**像在地上一样停在液面，不抖**。`getFluidHeight(LAVA)` = 物品底部低于液面的深度；深度 > 驻留带 **0.15**（刻意高于原版 0.1 的走重力阈值，低于它会重陷抖动）则以 ≤ **0.08** m/tick 上浮、且每 tick 上浮量被剩余距离封顶（渐近、零过冲）；到带后垂直速度恒零、重力永不运行。水平 ×**0.6**（地面摩擦同级，落哪停哪）。三个常量首值可调。
+
+### 22b. 虚空回栏（检测代码，非配置）
+
+优先级：①**物品栏任何空格** → `inventory.add()`（vanilla 放置/合并，不动原格）；②**满栏** → 回来源格、**占用者删除**（用户明确授权；但占用者是同类 blessed 时走合并——毁掉一个 blessed 给另一个腾位置违背不毁本意）；③`add()` 也放不下（满栏且无可合并）→ 不删实体、交还 vanilla（与「找不到主人（离线/非玩家）」同一策略——**这是不毁仅剩的出路**）。回栏成功后实体 discard（防每 tick 重复触发刷物品）。
+
+**来源格记忆链**（`abyssfall$sourceSlot`，NBT `AbyssFallSourceSlot` 持久化，区块卸载不丢）：`InventorySlotMemoryMixin` 暂存 `removeItem` 的格子+返回对象（Q 键经 `removeFromSelected`→`removeItem`、背包拖拽经 `Slot.remove` 都覆盖）→ `ServerPlayerDropMixin`（所有服务端丢出路径汇聚于 `ServerPlayer.drop(3参)`）先做引用匹配、失败再全栏身份扫描兜底（死亡掉落 `dropAll` 由此覆盖）→ 写进物品实体。两招都落空 = 来源未知，回栏走 vanilla `add()`——**绝不猜格子**（猜错会删错占用者）。
+
+**duck 接口**（`SourceSlotAccess`/`SlotMemoryAccess`）住 `itemframework` 包——mixin 配置的 `package` 只允许 mixin 类（教训 52，v2.2 实崩一次）。
 
 ## Git / 发布流程（由你负责）
 

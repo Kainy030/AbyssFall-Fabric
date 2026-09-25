@@ -110,6 +110,7 @@ public final class AbyssFallItemGroups {
 					entries.accept(AbyssFallItems.ABYSS_FLOWER);
 					entries.accept(AbyssFallItems.SAN_LENS);
 					entries.accept(AbyssFallItems.GOLD_LENS);
+					entries.accept(AbyssFallItems.ABYSSDIUM);
 					entries.accept(AbyssFallItems.FINAL_DEATH_OMEN);
 					entries.accept(AbyssFallItems.FAKE_INFINITY_SWORD);
 					entries.accept(AbyssFallBlocks.ABYSS_DIRT);

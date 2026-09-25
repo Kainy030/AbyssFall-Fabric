@@ -31,7 +31,7 @@
 
 > 「原则是尽量不使用 mixin，因为我以前是写外挂的，我的思考方式就是遇事不决用钩子，所以需要你来最大程度地不用 mixin，用 Fabric API 事件。但凡是有例外，有时候不得不用钩子的时候就要放心大胆地用钩子，**你在代码中看到的钩子就是不得不用的情况**。」
 
-⇒ 目前**四个** Mixin：`client/mixin/HudStatusBarHeightRegistryImplMixin`（HUD 高度，`REFERENCE.md` 15a）+ `mixin/PlayerAttackMixin`（毕业武器接管，`REFERENCE.md` 17）+ `client/mixin/RenderTypeInvoker`（Shader 系统造 RenderType，`REFERENCE.md` 18b）+ `client/mixin/HudSelectedItemNameMixin`（手持提示的物品名上色，`REFERENCE.md` 19a）。**都不要当技术债清理、不要试图用 API 重写**——前两个的理由见各自那节，第三个是 `RenderType.create` 为 package-private 且 Fabric API 未提供替代（已逐个核实 `api` 包），第四个是 `Hud.extractSelectedItemName` 全程零暴露且 Fabric 只能换整个 HUD 元素。写新功能时优先找 API 事件，找不到再注入并说明理由。
+⇒ 目前**十个** Mixin（主端 7 + 客户端 3）。客户端 3 个不变：`client/mixin/HudStatusBarHeightRegistryImplMixin`（HUD 高度，`REFERENCE.md` 15a）+ `client/mixin/RenderTypeInvoker`（Shader 系统造 RenderType，`REFERENCE.md` 18b）+ `client/mixin/HudSelectedItemNameMixin`（手持提示的物品名上色，`REFERENCE.md` 19a）。主端 7 个：`mixin/PlayerAttackMixin`（毕业武器接管，`REFERENCE.md` 17）+ 深渊元素体系 6 个：`BlockDestroyProgressMixin`（挖掘解禁，`REFERENCE.md` 21）、`EntityUndyingMixin`（kill 拒绝 + 虚空回栏）、`ItemEntityUndyingMixin`（爆炸豁免 + despawn 冻结 + 熔岩驻面 + 来源格持久化）、`ItemStackUndyingMixin`（全伤害免疫）、`InventorySlotMemoryMixin` 与 `ServerPlayerDropMixin`（回栏记忆链）——后五者全部见 `REFERENCE.md` 22。**都不要当技术债清理、不要试图用 API 重写**——每个的「为什么非得是钩子」都写在它自己的类 javadoc 里（老四个的理由另见各自那节）。写新功能时优先找 API 事件，找不到再注入并说明理由。
 
 **其他相处方式**：
 - 他问「这两个功能有什么区别」是真想搞清语义边界 → 直接答区别 + 什么情况下才看得出差异。说「简单回复即可」时别长篇大论。
@@ -48,7 +48,7 @@
 | Minecraft | **26.2**；**无映射**（26.1 起不再混淆，Fabric 停止维护第三方映射） |
 | Loader / Loom / Fabric API | 0.19.3 / 1.17.19（插件 id **`net.fabricmc.fabric-loom`**）/ 0.158.0+26.2 |
 | Gradle / JDK | 9.7.0 / **25**（`java-runtime-epsilon`），toolchain 与 `release` 都是 25 |
-| 版本 / 许可 | `2.0-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**）。⚠️ **`gradle.properties` 的 `version` 是唯一事实来源，这一行易过时，现场核一遍** |
+| 版本 / 许可 | `2.2-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**）。⚠️ **`gradle.properties` 的 `version` 是唯一事实来源，这一行易过时，现场核一遍** |
 | 源集 | `splitEnvironmentSourceSets()`：`src/main` + `src/client` |
 | Git | `https://github.com/Kainy030/AbyssFall-Fabric.git`，分支 `main` |
 
@@ -257,9 +257,9 @@ float intensity = f(change.current().ratio());   // 随 San 连续变化，无�
 
 用户原话：「颜色来源、计算方式以及后续 Provider 怎么决定效果，等整体渲染架构稳定后再单独设计」、「让 Shader System 不绑定任何一种颜色来源，避免以后选择方案时需要重做底层渲染系统」。
 
-⇒ `ShaderColorSource` 接口 + **唯一的占位实现** `FixedColorSource`。
+⇒ `ShaderColorSource` 接口 + `ShaderColorSources` dispatch（`"type"` 字段选 codec，与效果种类同构）。占位实现 `FixedColorSource` 已删除（1.6-Dev，用户授意）；当前唯一实现是 `DerivedColorSource`（从物品贴图推色，这条接缝的第一次真正兑现，见 `REFERENCE.md` 18g），兼作各效果的默认回落。
 
-**`FixedColorSource` 是占位，不是决定。** 它的三条限制写在自己的 javadoc 里，且明确标注「这是占位的限制，不是系统的限制」：编译期常量、整块同色、不读原贴图。
+**当年那三条占位限制**（编译期常量、整块同色、不读原贴图）**已随删除消失**——它们从不是系统的限制：`DerivedColorSource` 就读原贴图。
 
 **已知未解决**：绿/蓝两通道共用一个颜色——`opacity` 合并那步就把来源信息丢了。修它必然涉及颜色方案设计，故未修。
 
@@ -294,7 +294,7 @@ float intensity = f(change.current().ratio());   // 随 San 连续变化，无�
 - **bind group / 顶点格式固定**：所有效果 shader 必须 import 同一套 uniform。**v1.5 起 `Sampler0` 是物品图集、`Sampler1` 是遮罩（也是图集精灵，故遮罩能播动画）、`Sampler2` 是 vanilla lightmap**。新种类若需第四张贴图，得给 `AbyssFallPipelines` 加选项
 - 绿/蓝共色（见 4b.4）
 - **`glowing` 推导对近黑物品等于不发光**（公式与底层亮度成正比，实测增量仅 +3.5/255，见 `REFERENCE.md` 18g）
-- **效果种类现状**：`masked_pulse`（第一个）+ `cosmic` + `abysseffect`（后两个跑的是同一套**旧移植星空算法**，见 4b.9 与 `REFERENCE.md` 18j）
+- **效果种类现状**：`masked_pulse`（第一个，无默认消费者）+ `cosmic`（旧移植星空算法，尸体定位，见 4b.9 与 `REFERENCE.md` 18j）+ `abysseffect`（**v2.1 起：分层方向场**，思想的第一次从零兑现，见 `shaderreference.md`）
 - 🔴 **`masked_pulse` 无默认配置消费者**：默认配置里两把剑都用 `cosmic`/`abysseffect`。**不是坏了，是没人调用。** 当前遮罩只有红通道有数据，`masked_pulse` 在它上面完全透明。恢复它要同时改配置与遮罩
 - ~~**遮罩无法播动画**（26.2 只有 `TextureAtlas` 实现 `TickableTexture`）~~
   ✅ **已解决，且原结论是错的**：遮罩不必是独立纹理，绑成**图集精灵**就跟着图集 tick。vanilla 的 `items.json` 本来就收 `item/` 目录，同名 atlas 定义是叠加不是覆盖。代价是 shader 要经 `MASK_U0..V1` 映射。
@@ -312,9 +312,9 @@ float intensity = f(change.current().ratio());   // 随 San 连续变化，无�
 
 **结论与处置**：
 
-- **`cosmic`（寰宇支配之剑）与 `abysseffect`（死兆将至）现在都跑这套旧移植算法。它们留在仓库里不管、不重构、不验收**——能跑、无害、bug 全继承自 14 年前的参考实现，不挡路。两个类是故意分开的副本（不是屎山，是为了能互不影响地演进）。
+- **`cosmic`（寰宇支配之剑）仍跑这套旧移植算法：留在仓库里不管、不重构、不验收**——能跑、无害、bug 全继承自 14 年前的参考实现，不挡路。
 - 旧的 `REFERENCE.md` 18j-1～18j-20 那套移植细节**已从文档删除**，只留 18j 新写的思想 + 落地框架。
-- **下一步（不是现在）**：只带这两条思想，用 26.2 的框架**从零写我们自己的 shader**，完全不看旧工程结构。
+- ✅ **「从零写我们自己的 shader」已于 v2.1 兑现**：`abysseffect`（死兆将至）带着这两条思想、用 26.2 框架从零重写为**分层方向场**（中间走过真 3D march 的弯路），开发与数值全记录在 `shaderreference.md`。它曾是 `cosmic` 的逐文件副本——当年故意分开，就是为了能这样互不影响地演进——现已与尸体无关。
 - **以后参考任何「尸体」前，先回答教训 50 里那七个问题。**
 - **素材分辨率不再是限制**（用户实测）：2048×2048 × 10 张一起渲染，帧率代价不到 10 fps。旧实现用低分辨率素材纯粹是 2012 年的极限，不是我们的约束。
 
@@ -556,7 +556,7 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 6. 哪些地方有明显 bug？（是尸体的病，不是你的）
 7. 完全不管原工程结构，现代环境该怎么重写？
 
-三条具体判据：①**旧实现能跑就留着当参考产物，别去重构/验收一具尸体**（我们的 `cosmic`/`abysseffect` 现在就是这个定位）；②**不可替代的通常是数学题，不是工程结构**——这次就是「fragment 当射线→球面映射→网格伪随机→多层视差」；③**旧环境的限制（素材分辨率、贴图数、性能）到新环境大多消失**——用户实测 2048²×10 张素材帧率代价不到 10fps，我们却一度建议素材只用 64²，那是被 2012 年的极限禁锢了。这条是教训 33/48（跨版本腐烂的不只是名字）的上游：**先问「这个限制现在还成立吗」，再尊重它。**
+三条具体判据：①**旧实现能跑就留着当参考产物，别去重构/验收一具尸体**（我们的 `cosmic` 现在就是这个定位；`abysseffect` 曾是，v2.1 已带思想从零重写，见 4b.9）；②**不可替代的通常是数学题，不是工程结构**——这次就是「fragment 当射线→球面映射→网格伪随机→多层视差」；③**旧环境的限制（素材分辨率、贴图数、性能）到新环境大多消失**——用户实测 2048²×10 张素材帧率代价不到 10fps，我们却一度建议素材只用 64²，那是被 2012 年的极限禁锢了。这条是教训 33/48（跨版本腐烂的不只是名字）的上游：**先问「这个限制现在还成立吗」，再尊重它。**
 
 
 
@@ -606,6 +606,20 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 28. **PowerShell 读本项目文件必须显式指定 UTF-8**：`Get-Content`（含 `-Raw`）按本机 GBK 解码，含中文的文件会整片乱码——`zh_cn.json` 会假报「JSON 无效」，`HANDOFF.md` 会读出天书。用 `[System.IO.File]::ReadAllText(path, [System.Text.Encoding]::UTF8)` / `ReadAllLines`。**别因为假报错去「修」文件。** 另：`ConvertFrom-Json` **拒绝空字符串键**，而 `blockstates/abyss_dirt.json` 的 `"variants": { "": {...} }` 是 MC 合法写法 ⇒ 它永远会被误报，**不是文件坏了**。
 
+
+51. **组件 record 的构造器可能带校验，CODEC 也是**：`Enchantable(int)` 对 `value <= 0` 直接 `IllegalArgumentException`（CODEC 同为 `POSITIVE_INT`），启动即崩——崩溃链 `sword() → applyCommonProperties → enchantable(0)`（v2.2 实崩一次）。**给组件/record 填「极端但合理」的值之前，先读它的构造器与 CODEC。** 「附魔能力 0」在代码与数据两侧都不可表达；「禁止附魔」的正解是移除 `ENCHANTABLE` 组件（见 54）。
+
+52. 🔴 **mixin 配置的 `package` 里只允许 mixin 类**：任何非 mixin 类（duck 接口、工具类）住进去，类加载时被 `IllegalClassLoadError` 拒载——**编译与 `analyze_mixin` 都查不出，只有启动才炸**（v2.2 实崩一次）。项目的 duck 接口住 `com.abyssfall.itemframework`（`SourceSlotAccess`/`SlotMemoryAccess`），新接口照此办理。
+
+53. **26.2 的「杀死」不一定是伤害**：`/kill` 走 `Entity.kill(ServerLevel)` = `remove(KILLED)` 直接移除；虚空走 `Entity.onBelowWorld` = 裸 `discard()`（物品实体不受伤直接删）；despawn 是 `age >= 6000` 的判定。全都不过 `hurtServer` ⇒ **伤害免疫一个都挡不住**。做「不毁/免死」类需求时，**逐条核实每种「破坏」到底是伤害还是移除**，分别拦截。
+
+54. **两个关键组件判定是「存在性」而非「值」**：`ItemStack.isEnchantable()` = `has(ENCHANTABLE)` 且魔咒列表为空（**不看值**）；`isDamageableItem()` = `has(MAX_DAMAGE) && !has(UNBREAKABLE) && has(DAMAGE)`。由此推出：⚠️ `MAX_DAMAGE=0` 而无 `UNBREAKABLE` 的物品 `isBroken()` 恒真、**首次使用即碎**——「无耐久」的正解 = 耐久填 0 + 每个产物强制 `UNBREAKABLE` 组件（`AbyssFallToolMaterials` javadoc 有完整契约）。
+
+55. **爆炸有伤害前置门**：`ServerExplosion.hurtEntities` 先问 `entity.ignoreExplosion(this)`，通过的才谈伤害/击退——`canBeHurtBy` 全免疫够不着这道门（v2.2 实测爆炸是唯一漏网死因）。让实体彻底豁免爆炸（**含击退**）的正解是答 `ignoreExplosion = true`。
+
+56. **`Item.Properties.repairable(TagKey)` 对空 tag 安全**：bootstrap 期经 `MappedRegistry.getOrCreateTagForRegistration` 现场创建命名 tag，数据包加载时再填充（或保持空）。「无修复材料」的正解 = 空 tag 文件，不是 null、也不是省掉这个 record 字段。
+
+
 ---
 
 
@@ -627,7 +641,8 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 ## 7. 当前状态
 
 - **编译已验证**：`build` 与 `releaseJars` 都 `BUILD SUCCESSFUL`。产物 `build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`
-- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v1.9-Dev-Fix`（本轮将打 `v2.0-Dev`；26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）。tag 名与 `gradle.properties` 的 `version` **本轮起对应**（都是 `v2.0-Dev`/`2.0-Dev`），但两者本不必一致（`REFERENCE.md` 发布流程一节）
+- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v2.2-Dev`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）。tag 名与 `gradle.properties` 的 `version` 自 v2.0 起对应（如 `v2.2-Dev`/`2.2-Dev`），但两者本不必一致（`REFERENCE.md` 发布流程一节）
+- **v2.2-Dev（本轮）**：深渊元素材料体系 + ItemFramework/不毁落地（`REFERENCE.md` 21/22）。两轮启动崩溃均已修复并记住（`Enchantable` 正数校验 → 教训 51；duck 接口住 mixin 包 → 教训 52）。用户已实测通过：秒杀、死亡消息、熔岩/火/仙人掌/kill/爆炸豁免、虚空回栏（含空位优先）、熔岩浮面、5 分钟不消失。**未实测**：熔岩驻面静止版（最后改为贴面不抖）、深渊元素 tooltip「无法破坏」行隐藏
 
 ### 7.1 已实测通过（用户在真实环境验证，**别再列成待确认项去催他测**）
 
@@ -704,6 +719,19 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 🟢 **用户已实测通过**：切语言后星空仍在、亮度观感认可（原话「实现效果不错」）。**本轮全部事项验证完毕。**
 
+**v2.0-Dev 内容（方向纠偏轮，见 4b.9 与 `REFERENCE.md` 18j）**：
+
+- **星空定位确立为「尸体」**：不重构、不验收，只留思想（用户原话与七问见 4b.9 / 教训 50）。`StarfieldEffect` 改名 `CosmicEffect`（寰宇支配之剑），并 fork 出 `AbyssEffect`（死兆将至）——故意分开的副本，为了能互不影响地演进。GLSL 同步改名 `starfield.*` → `cosmic.*` + 新建 `abyss.*`
+- **纹理按效果分目录**（`textures/shader/{cosmic,abyss}/`）；**全部配置收进 `config/abyssfall/`**（`AbyssFall.configPath`，见 4.1），`AbyssFallShader.json` 随之迁移
+- **多层物品模型不再叠 shader 面**：`ItemFacesGeometry` 只取基础层（`ShaderQuad#BASE_LAYER` 图层去重）
+
+**v2.1-Dev 内容（abyss 从零重写为分层方向场，🔴 详见 `shaderreference.md`）**：
+
+- **「带思想从零写我们自己的 shader」兑现**：`abysseffect` 不再是 `cosmic` 的副本——真 3D 体素 march 是弯路（成本挂钩物品屏幕面积、有「区块加载」穿帮），最终模型是**分层方向场**：成本只取决于层数常数、视差来自相机平移、无限感来自球面方向场
+- **abyss 不再采样任何贴图**（形状全程序化）：`textures/shader/abyss/abyss_0..9.png`（约 28MB）自此零引用，去留待定（见 8 节）
+- **观察者位置折进顶点流**（`ViewerState`：UV0 = X/Z、Color.g/b = Y 两字节 16 位；26.2 无相机位置 uniform，已核实 include）
+- `AbyssEffect` 加 `usesViewerPosition()` 开关 + `Haze` 嵌套 record（`RecordCodecBuilder.group` 上限 16 字段）；6 个分层常量暂硬编码在 `shaderDefines()`（未进 codec，见 8 节）
+- 🟢 **用户已实测通过**（转述自 `shaderreference.md`）：方向场版 FPS 回到 800+ 量级；「贴脸迷雾」是最好的观感方向；下降=坠入、上升=远离（相机 Y 取反）
 
 
 ### 7.2 仍未验证的项
@@ -723,7 +751,7 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 **顶点颜色通路（4d 提出的方案）**：✅ **1.6-Dev 已在游戏里验证** —— 星空的 `depth` / 两个光照等级全部走顶点颜色的 R/G/B 字节，yaw/pitch 走 `UV2` 的 16-bit 对，用户确认星空渲染正确 ⇒ 顶点属性确实能把值送到 fragment stage，`RGBA8_UNORM` 归一化行为符合预期。
 
-**`ALL_LOADED` 是否每次 `/reload` 都触发**，仍未实测。⚠️ 但**同族的另一件事已用字节码确认**：`ModelLoadingPlugin.initialize` 的回调体每次资源重载都会重跑（`ModelLoadingPluginManager.preparePlugins` 由重载监听器驱动），所以 1.6-Dev 把两个 `clear()` 挂在那里，**没有加 Mixin**。见 `REFERENCE.md` 18j-7。🔴 **v1.8-Dev-Fix 补上了当年漏掉的那半**：回调**确实**每次重载都跑（结论没错），但它跑在 prepare 阶段、清空与填回之间有一段窗口期，**而渲染线程在那期间没有停** —— 那正是切语言丢星空的成因，见 18j-18 与教训 47。
+**`ALL_LOADED` 是否每次 `/reload` 都触发**，仍未实测。⚠️ 但**同族的另一件事已用字节码确认**：`ModelLoadingPlugin.initialize` 的回调体每次资源重载都会重跑（`ModelLoadingPluginManager.preparePlugins` 由重载监听器驱动），所以 1.6-Dev 把两个 `clear()` 挂在那里，**没有加 Mixin**。🔴 **v1.8-Dev-Fix 补上了当年漏掉的那半**：回调**确实**每次重载都跑（结论没错），但它跑在 prepare 阶段、清空与填回之间有一段窗口期，**而渲染线程在那期间没有停** —— 那正是切语言丢星空的成因，见教训 47。（当年记在旧 18j-7/18j-18，那两节已随 v2.0 的 18j 重写删除。）
 
 ### 7.3 已用真实 classpath 实测过约 210 项
 
@@ -739,6 +767,18 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 **写新 core 时守住 4c.1 那条禁忌：core 里不得出现另一个 core 的 import。**
 
+### 🔴 8.0.1 最大待办：从根本上推翻现有 shader 渲染（用户拍板，v2.2 收尾立）
+
+**路走错了。以后要想出一个更现代化的渲染办法**——不该硬用这套老古董的渲染逻辑：它在十年前确实很厉害，但不适合现代 MC MOD 的开发，维护成本过于庞大，并且没有意义。
+
+推翻的三个原因（用户原话要点）：
+
+1. **这套 shader 本质上还是 10 年前的老古董**（4b.9 当年已定位为「14 年前的尸体」，现在升级为整体推翻）。
+2. **加载钠（Sodium）后，星空渲染的所有星辰变成死星**：所有星辰素材只会播放第一帧（原因未知）。
+3. **完全无法兼容 Iris**：用了三轮累计约 3 亿 tokens 寻找方法皆失败（设计逻辑冲突 + 代码从底层就开始冲突）。
+
+⚠️ **推翻落地之前，现有 shader 体系（4b 全部、`REFERENCE.md` 18 系、`shaderreference.md`）冻结维护、不再投入**——不修 bug、不做数值回调、不扩效果种类；**也不提前删**（它还承担着死兆将至与寰宇支配之剑的当前外观）。**4b 与 18 系里所有「下一步」条目（外观数值回调、6 个分层常量提字段、march 时代字段清理、`abyss_0..9.png` 28MB 素材去留、程序化眼睛效果、San 联动 provider、四种推导观感、`glowing` 近黑缺陷等）全部作废**，被本条取代。新渲染办法的设计从零开始，不受旧体系约束。
+
 **San（主线）**
 - 事件仍无监听者。框架就绪，等玩法来用
 - 🔴 **什么情况下侵蚀 San —— 最大的空白。** 药水效果已能扣 San，但没有任何东西会给玩家上那个 debuff。黑暗、深渊、目击恐怖等真正的侵蚀来源全未设计
@@ -746,14 +786,18 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 - 显示道具已实现（认知窥镜），四个待定点已定：双向切换、手持右键、无耐久时效、与理智计数器并存
 
 **内容**
-- **毕业武器（死兆将至）待定项**：横扫附带目标是否也秒杀未定；`stabAttack` 那条路是剑就不需要覆盖
+- **毕业武器（死兆将至）待定项**：横扫附带目标是否也秒杀未定；`stabAttack` 那条路是剑就不需要覆盖。材料已从下界合金改为**深渊元素**（`REFERENCE.md` 17/21）
+- **深渊元素（abyssdium，v2.2 新增，见 `REFERENCE.md` 21/22）**：无配方、无战利品途径，只能创造栏取；制品目前只有死兆将至 ⇒ `dig_from_abyss` 仍为空，**挖掘链（挖基岩+掉落）整体休眠**，等第一把 abyssdium 挖掘工具；未来新 abyssdium 物品的三件套义务别忘（`UNBREAKABLE`、移除 `ENCHANTABLE`、按职能进 `bless_from_abyss`/`dig_from_abyss`，见 `REFERENCE.md` 21）
+- **ItemFramework（v2.2 新增，见 `REFERENCE.md` 22）**：以后所有物品机制进 `itemframework` 清单（新机制 = 新类 + `ItemMechanics` 一行），三重保险自动覆盖新机制；框架**永远不许引用内容**（abyssdium/tag/具体物品），授予只发生在组合根 `AbyssFallItemMechanics`
 - **自有稀有度目前只改名字颜色** —— 用户明确限定本轮只做这个。掉率、排序、tooltip 上标注稀有度名称等语义**全未设计，别自作主张加**（`REFERENCE.md` 19）
 - **寰宇支配之剑无配方、无战利品途径**，只能创造栏取
 
 **Shader 渲染系统（地基三，1.4-Dev 建立，1.5-Dev 升级）**
+
+⚠️ **本节全部条目已被 8.0.1（推翻 shader）取代，冻结、不再投入、不要再做**——保留仅为理解现状。
 - ~~🔴 **颜色系统未设计**~~ ✅ **1.5-Dev 兑现了第一步**：`DerivedColorSource` + 四种推导，从物品自己的贴图推色（`REFERENCE.md` 18g）。⚠️ **这不等于「颜色系统设计完了」** —— 用户当初要的「颜色来源、计算方式、Provider 怎么决定效果」中，**「Provider 怎么决定」仍未设计**（那属于 game core）
 - ~~🔴 **遮罩定稿后要删掉整套 debug 配色**~~ ⏸ **用户明确改为「暂不删」**：新美术定稿前，红蓝是对比最强的 debug 工具（`REFERENCE.md` 18d-2）。那行危险的 xmap 已在 1.5-Dev 换成 dispatch codec
-- ~~**星空效果种类未做**~~ ✅ 已落地，但走了弯路——做出来的是**移植的旧算法**（`cosmic`/`abysseffect`），那是 14 年前的尸体（见 4b.9）。✅ **方向已纠偏（v2.0）**：旧效果留着不管；下一步是带「球面射线模拟无限空间」思想**从零写我们自己的 shader**（不是现在）
+- ~~**星空效果种类未做**~~ ✅ 已落地，但走了弯路——做出来的是**移植的旧算法**（`cosmic`；`abysseffect` 曾是它的副本），那是 14 年前的尸体（见 4b.9）。✅ **方向已纠偏（v2.0）并兑现（v2.1）**：`cosmic` 旧效果留着不管；`abysseffect` 已带「球面射线模拟无限空间」思想**从零重写为分层方向场**（见 `shaderreference.md`）
 - **用户点名的下一个想法：用程序化方式生成一只眼睛贴到物品上。** ⚠️ **它不属于颜色轴而属于效果种类轴**（`ShaderEffectTypes.register()`）——写一个 record + 一个 GLSL（SDF 画圆与竖缝），零系统改动。**已跟用户说明过这个归属**。⚠️ 真做时按 4b.9 的七问来，别再抄尸体
 - **San 联动 provider 未做** —— 这是这套系统存在的理由，但**它属于 game core**（见 4c.4），不该直接塞进 shadercore
 - ~~**`Z_PLANE` 假设平面物品** ⇒ 3D 物品位置会偏~~ ✅ **已解决**（见 4b.8 与 18h）
@@ -761,7 +805,8 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 - 遮罩红色通道空着，可作第三种行为
 - `AbyssFallPipelines.clear()` 已接上资源重载（挂在 `ModelLoadingPlugin` 回调体）。⚠️ 但清空到填回之间有一段窗口期，那期间不许建 pipeline，见教训 47
 - **`glowing` 对近黑物品几乎不发光** —— 修法涉及数值语义，待用户决定（`REFERENCE.md` 18g）
-- ~~⏳ **重构这套 14 年前的星空**~~ ❌ **v2.0 取消此计划**：不重构尸体、也不验收它。旧 `cosmic`/`abysseffect` 留着不管；要的是带思想从零重写，见 4b.9
+- ~~⏳ **重构这套 14 年前的星空**~~ ❌ **v2.0 取消此计划**：不重构尸体、也不验收它。旧 `cosmic` 留着不管；`abysseffect` 已在 v2.1 带思想从零重写（见 4b.9 与 `shaderreference.md`）
+- **v2.1 收尾待办**（转述自 `shaderreference.md` 末尾，细节以它为准）：①**外观数值回调**——当前是 debug 往明显里填的值（occupancy 0.3、hazeBrightness 0.55、layers 12、parallax 0.05、freq 6→28 等），方向确定后往「深渊氛围」收；②**6 个分层常量**（`ABYSS_LAYERS`/`PARALLAX`/`PARALLAX_FALLOFF`/`LAYER_FREQ_NEAR`/`LAYER_FREQ_FAR`/`HAZE_DEPTH_SHALLOW`）还硬编码在 `AbyssEffect.shaderDefines()`，要可调就提为字段（注意 16 字段上限）；③`maxDistance`/`domainEdge`/`distanceFalloff`/`haze.distance`/`haze.scale` 等 march 时代字段方向场已不再用，决定清理还是保留；④`san_counter` debug 遮罩与 run/config 条目是去是留。⑤（文档核查发现，非 shaderreference 原文）**`textures/shader/abyss/abyss_0..9.png` 约 28MB 自 v2.1 起零引用**（abyss 程序化生成不采样贴图）——删掉可回收体积，但那是导出的素材，**删前问用户**
 
 - **少数图标仍是占位**（多数已换成自己的美术）：`abyss_gardeners` 图标是向日葵、计数器与窥镜都用原版 `clock_00`（**指针不会转**，原版靠 `range_dispatch` 切 64 个模型才转）、两个精神效果是脚本生成的图。⚠️ **`final_death_omen_mask.png` 是脚本生成的 debug 遮罩**（1.5-Dev 改为按几何分区，见 `REFERENCE.md` 18i-2），等用户美术。✅ **剑本体贴图已由用户重画**（1.5-Dev，经 alpha 二值化后入库）
 - 深渊之花无实际功能；三个药水效果**无获取途径**（「深渊探索者」只被战利品侧读取，另两个只能 `/effect`）
@@ -783,7 +828,7 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 0. 通读本文件，再按需查 `REFERENCE.md`（动哪个功能读哪节，别通读）
 1. 读 `gradle.properties`、`fabric.mod.json`、`AbyssFall.java` 确认状态与本文档一致
 2. 读 `core/` 六个 + `config/` 七个文件（两块地基）
-3. **动渲染就读 `shadercore/` 八个文件**（地基三）。**动颜色必读 `ShaderColorSource` 的 javadoc**——那是刻意留空的接缝，不是没写完
+3. **动渲染就读 `shadercore/` 全部文件**（地基三，含 `color/`、`geometry/`、`effect/` 子包）；**动 abyss 深渊特效先读 `shaderreference.md`**。**动颜色必读 `ShaderColorSource` 的 javadoc**——那是刻意留空的接缝，不是没写完
 4. **写新 core 或动架构前先读 4c**（总路线：各 core 分工 + 最后写 game core）
 5. 现场核实 Git：`git --no-pager log --oneline -5; git status --short; git --no-pager tag`
 
@@ -853,7 +898,6 @@ Get-ChildItem $p -Directory | ForEach-Object { $_.Name }
   - 毕业武器**不调 `original`**、判 `ServerLevel`、秒杀四步顺序、`bypasses_*` 明知冗余仍保留（`REFERENCE.md` 17b–17e）
   - tooltip 染色**重建 Component 而非 `setStyle`**（`REFERENCE.md` 17g，两个已修 bug 的成因都记在那）
   - 那个 `+` 是正确的 ASCII `U+002B`，字形像「十」是 MC 字体所致，别换字符（`REFERENCE.md` 17g）
-  - `final_death_omen` 的红蓝配色**是 debug 产物**，~~遮罩定稿时连带 `FixedColorSource` 一起删~~ ⏸ **用户已改主意：暂不删**，新美术定稿前红蓝是最强对照色（`REFERENCE.md` 18d-2）；那行 xmap 的强转已于 1.5-Dev 换成 dispatch codec（18g-3）
   - **贴图 alpha 只能是 0 或 255**（1.5-Dev）——`make-death-omen-texture.ps1` 的二值化不是"洁癖"，是让厚度可见的唯一办法（`REFERENCE.md` 18i）
   - **`ShaderVertex` 携带两套 UV**（遮罩 UV + 图集 UV），`UV1` 装遮罩 UV 的定点数 —— 顶点格式只有一个浮点 UV 槽，这不是冗余设计（`REFERENCE.md` 18h-2）
   - **`ItemHullGeometry` 沿各自法线外推而非固定轴** —— 固定轴对侧壁全错（18h）

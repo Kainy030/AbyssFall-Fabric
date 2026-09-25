@@ -29,12 +29,12 @@ import net.minecraft.world.entity.player.Player;
 import com.abyssfall.damage.AbyssFallDamageTypes;
 
 /**
- * What happens when the Final Death Omen connects.
+ * What happens when an Abyssdium weapon connects.
  *
  * <p>Invoked from {@code PlayerAttackMixin} in place of the vanilla attack, on the server only.
  * By the time this runs the decision has already been made — the swing landed, the weapon is
- * ours — so nothing here asks whether the target may be hurt. That question is the one the
- * weapon declines to ask.
+ * Abyssdium — so nothing here asks whether the target may be hurt. That question is the one
+ * the material declines to ask.
  *
  * <h2>The order of the steps matters</h2>
  *

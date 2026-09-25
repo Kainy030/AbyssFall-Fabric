@@ -30,6 +30,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.util.Unit;
 import net.minecraft.world.entity.EquipmentSlotGroup;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
@@ -38,6 +39,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Rarity;
 import net.minecraft.world.item.ToolMaterial;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
+import net.minecraft.world.item.component.TooltipDisplay;
 
 import com.abyssfall.AbyssFall;
 
@@ -123,11 +125,47 @@ public final class AbyssFallItems {
 			new Item.Properties().stacksTo(1));
 
 	/**
+	 * Abyssdium — the element the Final Death Omen is forged from, and the mod's endgame
+	 * material.
+	 *
+	 * <p>Not an ore and not found: it is stated rather than mined. A plain {@link Item},
+	 * because everything it means lives elsewhere — in the {@link AbyssFallToolMaterials#ABYSSDIUM}
+	 * tool material that carries its name, and in the
+	 * {@link AbyssFallItemTags#BLESS_FROM_ABYSS} tag that tells {@code PlayerAttackMixin} which
+	 * weapons strike like the Death Omen.
+	 *
+	 * <p>Fireproof, as befits what netherite wishes it were. Its rarity is
+	 * {@link AbyssFallRarity#ABYSSAL} over {@link Rarity#EPIC} — the same pairing as the blade
+	 * it becomes, so the name drifts through greys in tooltips and in the held-item popup
+	 * alike.
+	 *
+	 * <p>It carries {@code UNBREAKABLE} outright — the element does not wear. The line
+	 * vanilla would print for it is hidden through {@code TOOLTIP_DISPLAY}, the same
+	 * switch the blade uses: the component and everything it means stays, only the words
+	 * go. And the abyss watches over it as it watches over its forgings: dropped, the
+	 * element cannot be destroyed by any means, and the void hands it back to whoever let
+	 * go of it. See {@link AbyssFallItemMechanics} and {@code NeverDestroyed} in the item
+	 * framework.
+	 */
+	public static final Item ABYSSDIUM = AbyssFallRarity.assign(
+			register("abyssdium", Item::new,
+					new Item.Properties()
+							.fireResistant()
+							.rarity(Rarity.EPIC)
+							.component(DataComponents.UNBREAKABLE, Unit.INSTANCE)
+							.component(DataComponents.TOOLTIP_DISPLAY,
+									TooltipDisplay.DEFAULT.withHidden(DataComponents.UNBREAKABLE, true))),
+			AbyssFallRarity.ABYSSAL);
+
+	/**
 	 * Final Death Omen — the endgame blade.
 	 *
-	 * <p>Built from {@code sword(NETHERITE, ...)} for everything a sword ought to have: durability,
-	 * the sweep and cobweb mining rules, the sword item tag behaviours, netherite's repair
-	 * material. Two of the resulting components are then deliberately replaced.
+	 * <p>Built from {@code sword(AbyssFallToolMaterials.ABYSSDIUM, ...)} for what a sword ought
+	 * to have: the sweep and cobweb mining rules, the sword item tag behaviours, the weapon
+	 * component. Not durability — the element knows no wear, and what is true instead of a
+	 * number is stated further down. What it installs is then adjusted: the attributes
+	 * replaced, the enchantability removed, and two components of our own added — the
+	 * unbreakability below, and a display switch that stops it being announced.
 	 *
 	 * <p>The attack damage attribute is {@link Float#MAX_VALUE}, and its tooltip line is replaced
 	 * with a fixed phrase rather than the number. Vanilla would print the value in full — a
@@ -143,11 +181,25 @@ public final class AbyssFallItems {
 	 * attribute out means it stays at the player's base value — the same rate as an empty hand,
 	 * with no recovery to sit through.
 	 *
-	 * <p>Enchantability is set to zero, which removes the component
-	 * {@code sword(...)} adds and leaves the blade unenchantable at a table. Every enchantment
+	 * <p>The enchantability component {@code sword(...)} installs is removed outright — not
+	 * zeroed, since zero is not a value the component can hold — leaving the blade
+	 * unenchantable at a table. Every enchantment
 	 * worth putting on a sword modifies part of the damage pipeline this weapon steps around, so
 	 * they would be promises the item cannot keep. See {@link FinalDeathOmen} for what does happen
-	 * when it connects.
+	 * when it connects — a strike this blade shares with every other Abyssdium forging, because
+	 * the premise belongs to the material rather than to any one weapon
+	 * ({@link AbyssFallItemTags#BLESS_FROM_ABYSS}).
+	 *
+	 * <p>It knows no wear. The material declares no durability at all, and the
+	 * {@code UNBREAKABLE} component is what makes that true rather than merely zero: without
+	 * it a max damage of zero reads as <em>already broken</em>, and the blade would shatter on
+	 * its first swing. With it, {@code isDamageableItem()} is false and every durability path
+	 * — use, anvil, grindstone — is gated off at the source. See {@link AbyssFallToolMaterials}.
+	 *
+	 * <p>The "Unbreakable" line vanilla would print for that component is hidden through
+	 * {@code TOOLTIP_DISPLAY}, vanilla's own per-component tooltip switch: only the words go —
+	 * the component, and everything it means, stays. A blade whose premise already says
+	 * everything does not need to list its properties.
 	 *
 	 * <p>Its rarity is {@link AbyssFallRarity#ABYSSAL}, so its name drifts through greys — a wave
 	 * running along it one character at a time — in tooltips and in the held-item popup alike. The
@@ -157,11 +209,14 @@ public final class AbyssFallItems {
 	public static final Item FINAL_DEATH_OMEN = AbyssFallRarity.assign(
 			register("final_death_omen", Item::new,
 					new Item.Properties()
-							.sword(ToolMaterial.NETHERITE, 3.0F, -2.4F)
+							.sword(AbyssFallToolMaterials.ABYSSDIUM, 3.0F, -2.4F)
 							.fireResistant()
 							.rarity(Rarity.EPIC)
 							.attributes(deathOmenAttributes())
-							.component(DataComponents.ENCHANTABLE, null)),
+							.component(DataComponents.ENCHANTABLE, null)
+							.component(DataComponents.UNBREAKABLE, Unit.INSTANCE)
+							.component(DataComponents.TOOLTIP_DISPLAY,
+									TooltipDisplay.DEFAULT.withHidden(DataComponents.UNBREAKABLE, true))),
 			AbyssFallRarity.ABYSSAL);
 
 	/**

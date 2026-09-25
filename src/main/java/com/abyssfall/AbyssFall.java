@@ -29,6 +29,7 @@ import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.abyssfall.block.AbyssFallBedrockDrops;
 import com.abyssfall.block.AbyssFallBlocks;
 import com.abyssfall.block.AbyssFallBoneMealHandler;
 import com.abyssfall.config.AbyssFallConfig;
@@ -37,6 +38,7 @@ import com.abyssfall.core.AbyssFallSanCommand;
 import com.abyssfall.effect.AbyssFallEffects;
 import com.abyssfall.item.AbyssFallDevInventory;
 import com.abyssfall.item.AbyssFallItemGroups;
+import com.abyssfall.item.AbyssFallItemMechanics;
 import com.abyssfall.item.AbyssFallItems;
 import com.abyssfall.loot.AbyssFallLootTables;
 import com.abyssfall.shadercore.AbyssFallShaderConfig;
@@ -71,8 +73,10 @@ public class AbyssFall implements ModInitializer {
 		AbyssFallItems.initialize();
 		AbyssFallBlocks.initialize();
 		AbyssFallItemGroups.initialize();
+		AbyssFallItemMechanics.initialize();
 		AbyssFallLootTables.initialize();
 		AbyssFallBoneMealHandler.initialize();
+		AbyssFallBedrockDrops.initialize();
 
 		// Last, and conditional: it registers nothing at all unless the config allows it.
 		AbyssFallDevInventory.initialize();
