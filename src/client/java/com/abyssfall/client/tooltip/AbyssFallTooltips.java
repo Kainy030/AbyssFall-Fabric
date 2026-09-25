@@ -50,22 +50,18 @@ import com.abyssfall.item.AbyssFallRarity;
  * brightening at once. Two characters in Chinese, five in English; the translation decides and
  * nothing here needs to know which is loaded.
  *
- * <h2>Two words, one animation, different palettes</h2>
+ * <h2>The word's palette</h2>
  *
  * <p>The Abyss word travels through greys, staying within the range the item name and lore already
- * occupy. The Infinity word travels through hues instead — the same wave, the same cycle, the same
- * per-character step, read off a colour wheel rather than a grey ramp. The timing is shared
- * deliberately: they are the same gesture, and only the palette says which weapon is being described.
+ * occupy. The word is found by its translation key, the one property that is stable across
+ * languages and cannot drift away from the item.
  *
- * <p>Which palette a word gets is decided by its translation key, so the two are told apart by the
- * one property that is stable across languages and cannot drift away from the item.
+ * <h2>Item names, for the mod's own rarity</h2>
  *
- * <h2>Item names, for the mod's own rarities</h2>
- *
- * <p>This also colours an item's name for items carrying an {@link AbyssFallRarity}: Abyssal names get
- * the same travelling grey wave, over a wider range and at their own pace, and Infinity names get a
- * fixed red. See {@code AbyssFallRarity} for why the mod's rarities are a table beside vanilla's enum
- * rather than additions to it.
+ * <p>This also colours an item's name for items carrying an {@link AbyssFallRarity}: an Abyssal name
+ * gets the same travelling grey wave, over a wider range and at its own pace. See
+ * {@code AbyssFallRarity} for why the mod's rarity is a table beside vanilla's enum rather than an
+ * addition to it.
  *
  * <p>The colouring reaches both places a name is drawn — tooltips through this class's own callback, and
  * the popup above the hotbar through {@code HudSelectedItemNameMixin}, which calls
@@ -119,33 +115,8 @@ public final class AbyssFallTooltips {
 	 * <p>Three and a half seconds: quick enough that the travel along the word is plainly a
 	 * movement rather than something you have to wait to notice, still slow enough that it never
 	 * reads as a flicker. The point is that the word does not settle.
-	 *
-	 * <p>⚠️ The hue word has its own period — see {@link #RAINBOW_CYCLE_MILLIS}. This value was
-	 * settled on for the Abyss word and is left alone.
 	 */
 	private static final float GREY_CYCLE_MILLIS = 3500.0F;
-
-	/**
-	 * 🔴 <strong>How fast the rainbow runs.</strong> One full trip round the hue wheel, in
-	 * milliseconds. Lower is faster.
-	 *
-	 * <p>Separate from {@link #GREY_CYCLE_MILLIS} because the two animations do not want the same
-	 * pace. The grey wave is a slow breath through a narrow band of greys, and hurrying it turns it
-	 * into a flicker. The rainbow travels the whole wheel, so the same period spends far longer on
-	 * each visible step and reads as sluggish. Sharing one constant would mean neither could be set
-	 * without spoiling the other.
-	 *
-	 * <p>Rough guide, at the current {@link #HUE_STEP_PER_CHARACTER}:
-	 *
-	 * <ul>
-	 *   <li>{@code 3500} — the grey wave's period. Visibly slow for hues; this is what it was.</li>
-	 *   <li>{@code 1500} — brisk, the colours clearly flowing along the word.</li>
-	 *   <li>{@code 500} — fast, a live chase light. <strong>Current value, set by Kainy after seeing
-	 *       it in game.</strong></li>
-	 *   <li>{@code 200} and below — reads as strobing rather than as motion.</li>
-	 * </ul>
-	 */
-	private static final float RAINBOW_CYCLE_MILLIS = 500.0F;
 
 	/**
 	 * How far the grey wave is offset between one character and the next, as a fraction of a cycle.
@@ -159,28 +130,10 @@ public final class AbyssFallTooltips {
 	 * the cycle <em>before</em> a later one, which is what makes it look like the light is passing
 	 * along the word rather than crawling backwards through it.
 	 *
-	 * <p>⚠️ This is the <em>grey</em> word's step and is not shared with the hue word — see
-	 * {@link #HUE_STEP_PER_CHARACTER}. It is safe for this one to exceed a full cycle, because the
-	 * cosine driving {@link #colorAt} folds; hue does not.
+	 * <p>⚠️ It is safe for this one to exceed a full cycle, because the cosine driving
+	 * {@link #colorAt} folds: a phase and that phase plus one turn produce the same grey.
 	 */
 	private static final float PHASE_STEP_PER_CHARACTER = -0.2F;
-
-	/**
-	 * How far the hue is offset between one character and the next, for the Infinity word.
-	 *
-	 * <p>🔴 <strong>Deliberately not {@link #PHASE_STEP_PER_CHARACTER}, and this is not an
-	 * inconsistency.</strong> A cosine folds, so the grey wave can span more than a full cycle and
-	 * nobody can tell: a phase and that phase plus one turn produce the same grey, which simply reads
-	 * as the wave having passed. Hue does not fold — it wraps onto itself, so a character a full turn
-	 * behind another wears its <em>exact</em> colour, and the word grows a visibly repeated band.
-	 *
-	 * <p>Measured, not guessed. At {@code -0.2} the eight letters of {@code Infinity} span 1.4 turns
-	 * and letters one and six come out byte-identical (RGB distance 0). A tenth of a turn spans 0.7,
-	 * so the word runs red through magenta, violet, blue, cyan, green without ever repeating, and the
-	 * closest pair of letters is still 91 apart in RGB. Two-character Chinese stays legible too —
-	 * red and magenta are plainly different.
-	 */
-	private static final float HUE_STEP_PER_CHARACTER = -0.1F;
 
 	/**
 	 * Darkest point of the cycle: near-black, but never pure black, which would read as a hole in
@@ -194,17 +147,6 @@ public final class AbyssFallTooltips {
 	 * that competes with them.
 	 */
 	private static final int LIGHTEST = 0x767676;
-
-	/**
-	 * Saturation and value for the Infinity word's hues.
-	 *
-	 * <p>Full saturation, because a rainbow that is not saturated is a set of pastels and reads as a
-	 * mistake rather than as a choice. Value slightly below one so the brightest hues do not glare
-	 * against the tooltip's dark background the way pure {@code 1.0} yellow does.
-	 */
-	private static final float RAINBOW_SATURATION = 0.8F;
-
-	private static final float RAINBOW_VALUE = 1.0F;
 
 	/**
 	 * 🔴 How fast an Abyssal item's name drifts, in milliseconds per cycle. Lower is faster.
@@ -248,14 +190,6 @@ public final class AbyssFallTooltips {
 	 */
 	private static final int RARITY_LIGHTEST = 0xB4B4B4;
 
-	/**
-	 * The fixed colour of an Infinity item's name — vanilla's {@code §c}.
-	 *
-	 * <p>Taken from {@code ChatFormatting} rather than written as a literal, so it is the same red
-	 * players know from {@code §c} even if vanilla ever adjusts its palette.
-	 */
-	private static final ChatFormatting INFINITY_NAME_COLOR = ChatFormatting.RED;
-
 	private AbyssFallTooltips() {
 	}
 
@@ -284,13 +218,6 @@ public final class AbyssFallTooltips {
 				if (rebuilt != null) {
 					lines.set(i, rebuilt);
 				}
-			}
-
-			// Appended last, after the recolouring pass, for two reasons: the tribute's own styling is
-			// already final and has no words the pass would match, and appending first would mean
-			// walking twenty-odd extra lines on every tooltip in the game.
-			if (stack.is(AbyssFallItems.FAKE_INFINITY_SWORD)) {
-				lines.addAll(SwordOfTheCosmosTribute.lines());
 			}
 		});
 	}
@@ -327,8 +254,6 @@ public final class AbyssFallTooltips {
 		return switch (rarity) {
 			case ABYSSAL -> nameWave(name.getString(), renamed,
 					phaseOf(nowMillis, RARITY_CYCLE_MILLIS));
-			case INFINITY -> Component.literal(name.getString())
-					.withStyle(nameStyle(INFINITY_NAME_COLOR, renamed));
 		};
 	}
 
@@ -337,15 +262,6 @@ public final class AbyssFallTooltips {
 	 */
 	public static long nameClock() {
 		return Util.getMillis();
-	}
-
-	/**
-	 * A style for a name of one fixed colour.
-	 */
-	private static Style nameStyle(ChatFormatting color, boolean italic) {
-		Style style = Style.EMPTY.withColor(color);
-
-		return italic ? style.withItalic(true) : style;
 	}
 
 	/**
@@ -438,30 +354,6 @@ public final class AbyssFallTooltips {
 	}
 
 	/**
-	 * The hue at a given point in the cycle, at full saturation.
-	 *
-	 * <p>The counterpart to {@link #colorAt}: same phase, same cycle, same per-character step, but the
-	 * phase drives hue rather than lightness. Nothing else about the animation differs — which is the
-	 * point, since both words are the same kind of thing and only their palette distinguishes them.
-	 *
-	 * <p>Linear in the phase rather than eased, unlike the grey wave. A cosine there makes the word
-	 * dwell at each end of a range and turn back; hue has no ends to dwell at, it wraps, and easing it
-	 * would make the rainbow crawl and then rush for no reason a viewer could see.
-	 *
-	 * <p>🔴 The phase must be wrapped into {@code [0, 1)} before it reaches
-	 * {@code Mth.hsvToArgb}, and this is not defensive. That method's first line is
-	 * {@code (int)(hue * 6.0F) % 6}, which for a negative hue yields a negative branch index, falls
-	 * through its switch and <strong>throws</strong>. Negative phases are the normal case here:
-	 * {@link #HUE_STEP_PER_CHARACTER} is negative, so the last letter of {@code Infinity} sits at
-	 * the incoming phase minus seven tenths. {@code Mth.positiveModulo} is what makes the wrap right
-	 * for both signs — a plain {@code %} keeps the sign of its left operand and would not help.
-	 */
-	private static int hueAt(float phase) {
-		return ARGB.opaque(Mth.hsvToRgb(
-				Mth.positiveModulo(phase, 1.0F), RAINBOW_SATURATION, RAINBOW_VALUE));
-	}
-
-	/**
 	 * A copy of {@code component} with every animated word within it replaced by a wave, or
 	 * {@code null} if it contains none.
 	 *
@@ -481,19 +373,12 @@ public final class AbyssFallTooltips {
 		if (component.getContents() instanceof TranslatableContents translatable) {
 			String key = translatable.getKey();
 
-			// Which word it is decides which palette it gets, and how fast it runs. Matching on the key
-			// rather than on the item means a line carrying either word animates wherever it appears,
-			// including on a stack this mod never built.
+			// Matching on the key rather than on the item means a line carrying the word animates
+			// wherever it appears, including on a stack this mod never built.
 			if (key.equals(AbyssFallItems.ABYSS_WORD_KEY)) {
 				return wave(key, component.getStyle(),
 						phaseOf(nowMillis, GREY_CYCLE_MILLIS),
 						PHASE_STEP_PER_CHARACTER, AbyssFallTooltips::colorAt);
-			}
-
-			if (key.equals(AbyssFallItems.INFINITY_WORD_KEY)) {
-				return wave(key, component.getStyle(),
-						phaseOf(nowMillis, RAINBOW_CYCLE_MILLIS),
-						HUE_STEP_PER_CHARACTER, AbyssFallTooltips::hueAt);
 			}
 		}
 
@@ -549,12 +434,10 @@ public final class AbyssFallTooltips {
 	 * @param style the style the word already had; the wave replaces its colour and keeps the rest,
 	 *              so bold or italic survive if the line ever gains any
 	 * @param phase where the first character sits in the cycle
-	 * @param step  how far each character is offset from the one before it. A parameter rather than a
-	 *              constant because the two palettes need different values — see
-	 *              {@link #HUE_STEP_PER_CHARACTER} for why a step that suits greys ruins hues
-	 * @param palette what a phase looks like — greys for the Abyss, hues for Infinity. Passed in
-	 *                rather than branched on inside, so the splitting, the stepping and the style
-	 *                handling stay one piece of code with one behaviour
+	 * @param step  how far each character is offset from the one before it
+	 * @param palette what a phase looks like — the grey ramp. Passed in rather than branched on
+	 *                inside, so the splitting, the stepping and the style handling stay one piece
+	 *                of code with one behaviour
 	 */
 	private static MutableComponent wave(String key, Style style, float phase, float step,
 			FloatUnaryOperator palette) {

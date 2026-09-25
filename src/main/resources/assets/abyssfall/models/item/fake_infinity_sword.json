@@ -1,7 +1,0 @@
-{
-  "parent": "minecraft:item/handheld",
-  "textures": {
-    "layer0": "abyssfall:item/fake_infinity_sword/fake_infinity_sword",
-    "layer1": "abyssfall:item/fake_infinity_sword/fake_infinity_sword_hilt"
-  }
-}

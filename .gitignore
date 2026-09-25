@@ -28,10 +28,6 @@ bin/
 # over from the 1.21.11 tree, so they can be put back once the game runs again.
 .upgrade-backup/
 
-# Third-party sources dropped in for reference while researching the shader system
-# (Re-Avaritia, NeoForge). Not ours to redistribute, and not part of this project.
-Re-Avaritia-*/
-Avaritia-master/
 
 # Scratch art dropped in the repo root while working on textures.
 Item.png

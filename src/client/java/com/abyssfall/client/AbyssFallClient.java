@@ -22,7 +22,6 @@ package com.abyssfall.client;
 import net.fabricmc.api.ClientModInitializer;
 
 import com.abyssfall.client.hud.AbyssFallSanHud;
-import com.abyssfall.client.render.ShaderLayerModelPlugin;
 import com.abyssfall.client.tooltip.AbyssFallTooltips;
 
 public class AbyssFallClient implements ClientModInitializer {
@@ -33,7 +32,5 @@ public class AbyssFallClient implements ClientModInitializer {
 		AbyssFallSanHud.initialize();
 
 		AbyssFallTooltips.initialize();
-
-		ShaderLayerModelPlugin.initialize();
 	}
 }

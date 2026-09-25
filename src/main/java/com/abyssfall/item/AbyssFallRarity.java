@@ -27,7 +27,7 @@ import net.minecraft.world.item.Item;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Rarities beyond the four vanilla provides: Abyssal and Infinity.
+ * A rarity beyond the four vanilla provides: Abyssal.
  *
  * <h2>🔴 Why this is not an addition to {@code Rarity}</h2>
  *
@@ -79,20 +79,7 @@ public enum AbyssFallRarity {
 	 * the item declared alongside this one — for both current holders that is {@code EPIC}, so light
 	 * purple. Choosing that vanilla rarity is how a fallback gets chosen.
 	 */
-	ABYSSAL,
-
-	/**
-	 * Infinity — a fixed red, vanilla's {@code §c}.
-	 *
-	 * <p>Fixed, not animated, and that contrast with {@link #ABYSSAL} is the design: the Abyss is
-	 * something that moves and cannot be pinned down, and Infinity simply is. A red above
-	 * {@code EPIC}'s light purple also reads as "past the end of the scale" in the way players
-	 * already expect from every game that has ever done this.
-	 *
-	 * <p>⚠️ The red is not stored here either — see {@link #ABYSSAL}. It lives with the rest of the
-	 * name colouring, in {@code AbyssFallTooltips}.
-	 */
-	INFINITY;
+	ABYSSAL;
 
 	/**
 	 * Which items carry which rarity.

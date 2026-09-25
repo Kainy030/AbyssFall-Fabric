@@ -4,8 +4,7 @@
 	"compatibilityLevel": "JAVA_25",
 	"client": [
 		"HudSelectedItemNameMixin",
-		"HudStatusBarHeightRegistryImplMixin",
-		"RenderTypeInvoker"
+		"HudStatusBarHeightRegistryImplMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

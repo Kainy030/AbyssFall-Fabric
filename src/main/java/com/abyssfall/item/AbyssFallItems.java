@@ -37,7 +37,6 @@ import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Rarity;
-import net.minecraft.world.item.ToolMaterial;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.item.component.TooltipDisplay;
 
@@ -63,28 +62,6 @@ public final class AbyssFallItems {
 	 * different design.
 	 */
 	private static final int ABYSS_WORD_REST_COLOR = 0x4A4A4A;
-
-	/**
-	 * Translation key of the word standing in for the Sword of the Cosmos's damage figure
-	 * ("无限" / "Infinity").
-	 *
-	 * <p>Public for the same reason as {@link #ABYSS_WORD_KEY}: the client finds the segment by key
-	 * so the animation follows the translation rather than a list of literals. A key of its own,
-	 * rather than sharing the Abyss word's, because the two words differ and because the client
-	 * colours them differently — greys for one, hues for the other. The key is what tells them apart.
-	 */
-	public static final String INFINITY_WORD_KEY = "item.abyssfall.fake_infinity_sword.infinity";
-
-	/**
-	 * The Infinity word's colour when nothing is animating it.
-	 *
-	 * <p>Chosen the same way {@link #ABYSS_WORD_REST_COLOR} was — a still frame of the animation
-	 * rather than a different design. This word cycles through hues, so its midpoint is not a grey
-	 * but a colour: the value {@code Mth.hsvToRgb(0.5F, 0.8F, 1.0F)} actually returns at the
-	 * client's saturation and value, which is the cyan halfway round the wheel. Read off the real
-	 * call rather than guessed, so a still tooltip and a moving one agree.
-	 */
-	private static final int INFINITY_WORD_REST_COLOR = 0x32FFFF;
 
 	/**
 	 * Placeholder item. It has no behaviour yet and exists so the registry, the creative
@@ -219,54 +196,6 @@ public final class AbyssFallItems {
 									TooltipDisplay.DEFAULT.withHidden(DataComponents.UNBREAKABLE, true))),
 			AbyssFallRarity.ABYSSAL);
 
-	/**
-	 * Sword of the Cosmos — a sword that is only the sky it is made of.
-	 *
-	 * <p>The first item to exist purely as a consumer of the shader system. It contributes nothing
-	 * to a fight: its attack damage modifier is zero and it declares no attack speed at all. What it
-	 * has is the cosmic effect, stated for it in {@code AbyssFallShader.json} exactly as the Final Death
-	 * Omen's is. The registry name says {@code fake} because that is what it is — the appearance of a
-	 * legendary weapon with none of the weapon behind it.
-	 *
-	 * <p>The zero-amount damage modifier is deliberate and is not the same as omitting the
-	 * attribute. Vanilla shows any modifier carrying {@code BASE_ATTACK_DAMAGE_ID} as the total
-	 * including the player's own base value ({@code ItemAttributeModifiers$Display$Default}, which
-	 * takes that branch without looking at the amount), so there is a line to override. Leaving the
-	 * attribute out entirely would remove the line, and the Infinity wording with it.
-	 *
-	 * <p>The attribute set is replaced wholesale rather than tuned through {@code sword(...)}'s
-	 * baselines, for the same reason the Final Death Omen replaces its own: the baseline is not the
-	 * final figure. {@code sword(material, damage, speed)} adds the material's
-	 * {@code attackDamageBonus} to the damage baseline — four, for netherite — so asking for a
-	 * modifier of zero through that argument would mean writing {@code -4.0F} and quietly depending
-	 * on a constant belonging to a different class. Stating the modifier outright says what the item
-	 * has.
-	 *
-	 * <p>⚠️ The two numbers still passed to {@code sword(...)} are therefore dead as far as the
-	 * attributes go — {@link #cosmosSwordAttributes()} replaces whatever they produced. They are left
-	 * as zeroes rather than removed because the call is still wanted for everything else it does:
-	 * durability, repair material, enchantability, the sweep and the cobweb rules. There is no
-	 * overload that supplies those without the two baselines.
-	 *
-	 * <p>Everything else is netherite's, unchanged — and, unlike the Final Death Omen, its
-	 * enchantability. That blade cannot be enchanted because it steps around the pipeline every
-	 * worthwhile enchantment modifies; this one goes through the pipeline like any sword, so the
-	 * enchantments mean what they say.
-	 *
-	 * <p>Its rarity is {@link AbyssFallRarity#INFINITY}, so its name is drawn in vanilla's {@code §c}
-	 * red in tooltips and in the held-item popup alike. The {@code Rarity.EPIC} beneath that is the
-	 * fallback for anywhere neither of those reaches. See {@link AbyssFallRarity} for why the two
-	 * coexist rather than one replacing the other.
-	 */
-	public static final Item FAKE_INFINITY_SWORD = AbyssFallRarity.assign(
-			register("fake_infinity_sword", Item::new,
-					new Item.Properties()
-							.sword(ToolMaterial.NETHERITE, 0.0F, 0.0F)
-							.fireResistant()
-							.rarity(Rarity.EPIC)
-							.attributes(cosmosSwordAttributes())),
-			AbyssFallRarity.INFINITY);
-
 	private AbyssFallItems() {
 	}
 
@@ -306,41 +235,6 @@ public final class AbyssFallItems {
 	}
 
 	/**
-	 * The Sword of the Cosmos's attribute set: one entry, an attack damage modifier of zero.
-	 *
-	 * <p>Stated in full rather than derived from {@code sword(...)}'s baselines, because the baseline
-	 * and the resulting modifier are not the same number: the material's {@code attackDamageBonus} is
-	 * added to it. Writing the modifier here means the figure in this method is the figure the tooltip
-	 * is computed from, with nothing in between.
-	 *
-	 * <p>Zero is a real value here, not a missing one. Vanilla's default display adds the player's own
-	 * base attack damage to any modifier bearing {@code BASE_ATTACK_DAMAGE_ID}, so a zero modifier
-	 * prints the player's bare figure. The display is overridden anyway, but the modifier has to exist
-	 * for there to be a line to override.
-	 *
-	 * <p>🔴 <strong>No {@code ATTACK_SPEED} modifier at all — the entry is absent, not set to zero.</strong>
-	 * {@code attributes(...)} replaces the whole set, so leaving it out means the player keeps their base
-	 * swing speed and the tooltip has no speed line to show. This is what the Final Death Omen does, for a
-	 * related reason: a speed figure is only meaningful when a cooldown decides how much damage lands, and
-	 * this sword deals none. Setting {@code 0.0} instead would print {@code 4 攻击速度} — a claim about a
-	 * weapon that does not fight.
-	 *
-	 * <p>The damage entry's display is overridden with the same kind of line the Final Death Omen
-	 * uses, naming Infinity instead of the Abyss. The number is still zero and still real — the
-	 * override changes what is printed, not what the attribute contributes.
-	 */
-	private static ItemAttributeModifiers cosmosSwordAttributes() {
-		return ItemAttributeModifiers.builder()
-				.add(Attributes.ATTACK_DAMAGE,
-						new AttributeModifier(Item.BASE_ATTACK_DAMAGE_ID, 0.0,
-								AttributeModifier.Operation.ADD_VALUE),
-						EquipmentSlotGroup.MAINHAND,
-						ItemAttributeModifiers.Display.override(
-								damageLine(INFINITY_WORD_KEY, INFINITY_WORD_REST_COLOR)))
-				.build();
-	}
-
-	/**
 	 * A damage line reading {@code +<word> 攻击伤害} / {@code +<word> Attack Damage}.
 	 *
 	 * <p>Assembled from four pieces because they are not all the same kind of text. The leading
@@ -357,9 +251,8 @@ public final class AbyssFallItems {
 	 * an IME would produce. It renders narrow and cross-like in Minecraft's default font, which is
 	 * simply what that glyph looks like at this size.
 	 *
-	 * <p>Parameterised rather than duplicated once a second weapon wanted the same line with a
-	 * different word: everything except those two values is what makes the line read as vanilla's,
-	 * and two copies of it would be two places to keep that right.
+	 * <p>Parameterised on the two values that are the blade's own — everything else is what makes
+	 * the line read as vanilla's, and lives here exactly once.
 	 *
 	 * @param wordKey    translation key of the word replacing the number. The client recognises the
 	 *                   segment by this key, so it is also what selects which animation the word gets
