@@ -48,9 +48,10 @@ import com.abyssfall.AbyssFall;
  * @param visuals   how loud and how busy the mod's effects are
  * @param hud       when the San readout above the hotbar is shown
  * @param san       under which circumstances the world may erode a player's San
+ * @param striking  the Abyssal Strike's modpack-facing text
  */
 public record AbyssFallConfigData(DeveloperSettings developer, LootSettings loot,
-		VisualSettings visuals, HudSettings hud, SanSettings san) {
+		VisualSettings visuals, HudSettings hud, SanSettings san, StrikingSettings striking) {
 	/**
 	 * The configuration a fresh install gets, and the fallback whenever a file cannot be read.
 	 *
@@ -61,7 +62,7 @@ public record AbyssFallConfigData(DeveloperSettings developer, LootSettings loot
 	 */
 	public static final AbyssFallConfigData DEFAULT = new AbyssFallConfigData(
 			DeveloperSettings.DEFAULT, LootSettings.DEFAULT, VisualSettings.DEFAULT,
-			HudSettings.DEFAULT, SanSettings.DEFAULT);
+			HudSettings.DEFAULT, SanSettings.DEFAULT, StrikingSettings.DEFAULT);
 
 	/**
 	 * Every block is read leniently, so a configuration file containing only the sections a
@@ -97,41 +98,53 @@ public record AbyssFallConfigData(DeveloperSettings developer, LootSettings loot
 					.orElse((Consumer<String>) error -> AbyssFall.LOGGER.warn(
 							"No readable 'san' config block ({}); using its defaults", error),
 							SanSettings.DEFAULT)
-					.forGetter(AbyssFallConfigData::san)
+					.forGetter(AbyssFallConfigData::san),
+			StrikingSettings.LENIENT_CODEC.fieldOf("striking")
+					.orElse((Consumer<String>) error -> AbyssFall.LOGGER.warn(
+							"No readable 'striking' config block ({}); using its defaults", error),
+							StrikingSettings.DEFAULT)
+					.forGetter(AbyssFallConfigData::striking)
 	).apply(instance, AbyssFallConfigData::new));
 
 	/**
 	 * This configuration with a different developer block.
 	 */
 	public AbyssFallConfigData withDeveloper(DeveloperSettings value) {
-		return new AbyssFallConfigData(value, this.loot, this.visuals, this.hud, this.san);
+		return new AbyssFallConfigData(value, this.loot, this.visuals, this.hud, this.san, this.striking);
 	}
 
 	/**
 	 * This configuration with a different loot block.
 	 */
 	public AbyssFallConfigData withLoot(LootSettings value) {
-		return new AbyssFallConfigData(this.developer, value, this.visuals, this.hud, this.san);
+		return new AbyssFallConfigData(this.developer, value, this.visuals, this.hud, this.san, this.striking);
 	}
 
 	/**
 	 * This configuration with a different visuals block.
 	 */
 	public AbyssFallConfigData withVisuals(VisualSettings value) {
-		return new AbyssFallConfigData(this.developer, this.loot, value, this.hud, this.san);
+		return new AbyssFallConfigData(this.developer, this.loot, value, this.hud, this.san, this.striking);
 	}
 
 	/**
 	 * This configuration with a different hud block.
 	 */
 	public AbyssFallConfigData withHud(HudSettings value) {
-		return new AbyssFallConfigData(this.developer, this.loot, this.visuals, value, this.san);
+		return new AbyssFallConfigData(this.developer, this.loot, this.visuals, value, this.san, this.striking);
 	}
 
 	/**
 	 * This configuration with a different san block.
 	 */
 	public AbyssFallConfigData withSan(SanSettings value) {
-		return new AbyssFallConfigData(this.developer, this.loot, this.visuals, this.hud, value);
+		return new AbyssFallConfigData(this.developer, this.loot, this.visuals, this.hud, value, this.striking);
+	}
+
+	/**
+	 * This configuration with a different striking block.
+	 */
+	public AbyssFallConfigData withStriking(StrikingSettings value) {
+		return new AbyssFallConfigData(this.developer, this.loot, this.visuals, this.hud, this.san, value);
 	}
 }

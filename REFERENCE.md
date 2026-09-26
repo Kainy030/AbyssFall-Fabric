@@ -19,9 +19,9 @@ src/main/java/com/abyssfall/
 ├── block/AbyssDirtBlock.java  AbyssFallBlocks.java  AbyssFallBoneMealHandler.java
 │        TintedGlassPaneBlock.java  AbyssFallBedrockDrops.java       见 21b
 │        AbyssFallBlockTags.java                                   见 21a
-├── config/  (7 个，见 HANDOFF 4)
+├── config/  (8 个，见 HANDOFF 4)
 ├── core/    (7 个，见 HANDOFF 3)
-├── damage/AbyssFallDamageTypes  DeathOmenDamageSource                见 17
+├── damage/AbyssFallDamageTypes  DeathOmenDamageSource  AbyssStrikeDamageSource  见 17
 ├── effect/AbyssExplorerEffect  AbyssFallEffects  SanBreakdownEffect  SanSpiritedEffect
 ├── item/AbyssFallDevInventory  AbyssFallItemGroups  AbyssFallItems
 │        AbyssFlowerItem  SanLensItem  FinalDeathOmen  FinalDeathOmenSky  见 2 / 17
@@ -465,7 +465,7 @@ long from = Math.max(this.lastShownAt, SanHudModeState.revealEndsAt());
 
 `mixin/PlayerAttackMixin`，`@Mixin(value = Player.class, priority = Integer.MAX_VALUE)`。
 
-**扳机已材质化（v2.2）**：判定从「武器是死兆将至」改为「武器在 `abyssfall:bless_from_abyss` tag 里」（见 21c）——前提属于材料而非某一把武器，任何 abyssdium 制品（或数据包加入的物品）进 tag 即获得同样的接管。**秒杀逻辑本体（17c 四步）一字未动**，迁移的只有扳机。
+**扳机 = 死兆将至物品身份 + `abyssfall:abyss_striking` tag 双闸**（`is(FDO) || is(ABYSS_STRIKING)`）——刀无 tag 依赖（保险一），整合包物品经 tag 加入裁决（保险二）。**死亡消息按武器分流**：死兆将至走自己的 lang 三变体，非死兆成员走配置文案池 `striking.death_message_1..N`（`AbyssStrikeDamageSource`，见 17e）——裁决共享，品牌不混用。秒杀逻辑本体（17c 四步）一字未动。
 
 - **`@WrapMethod`**（MixinExtras 0.5.4，**Loader 0.19.3 内嵌**，零新依赖）：vanilla 方法变成一个可调可不调的 `Operation`，「武器替换攻击」成为结构事实而非取消标志的副作用。**可叠加**，别的 mod 包裹同方法会形成嵌套链
 - ❌ **`@Overwrite` 曾被评估并否决**：`hurtServer` 全仓 **55 处覆写** + `actuallyHurt` 7 处，覆盖不全；且会**静默删掉** Fabric API 自己的 `ALLOW_DAMAGE`/`AFTER_DAMAGE` 注入点
@@ -506,6 +506,8 @@ long from = Math.max(this.lastShownAt, SanHudModeState.revealEndsAt());
 
 lang key `death.attack.death_omen.1/2/3`，数量由 `DEATH_MESSAGE_VARIANTS` 定义。
 
+**非死兆成员的文案分流**（v2.4）：`abyss_striking` 的非死兆成员击杀**用同一个伤害类型**（穿透语义不变），但死亡消息走 `AbyssStrikeDamageSource`（`Component.literal(String.format(抽中文案, %1$s死者, %2$s击杀者))`）——阀门在 `strike()` 按武器身份分流（放 `create()` 里判 `AbyssFallItems` 会造成 damage↔item 包循环）。配置块 `striking`：**无限条** `death_message_1..N`（动态键手写 Codec，读按数字排序、写从 1 重编号），`createStriking` 每次击杀从 `AbyssFallConfig.strikingDeathMessages()` 池中**随机一条并定死**（与死兆变体同规则）；默认单条 `%1$s was claimed by the abyss.`。**字面量非翻译键**，全服同文；格式串非法**刻意不校验**（整合者自负）。死兆将至自己的 lang 三变体不受影响。
+
 ### 17f. 物品属性
 
 `sword(AbyssFallToolMaterials.ABYSSDIUM, 3.0F, -2.4F)` 打底（横扫、蛛网挖掘、剑类物品行为；**材料已从下界合金改为深渊元素**，v2.2，见 21）——**耐久不在其列**：元素不知磨损（`UNBREAKABLE` + 材料耐久 0，契约与两个坑见 21a）。`sword(...)` 装上的东西随后被替换/移除/补充：
@@ -518,7 +520,7 @@ lang key `death.attack.death_omen.1/2/3`，数量由 `DEATH_MESSAGE_VARIANTS` �
 
 ⚠️ 曾计划用 Mixin 替换铁砧「过于昂贵」提示，**已放弃**：`TOO_EXPENSIVE_TEXT` 是 `AnvilScreen` 的 `private static final` 全局字段、不区分物品，替换会影响所有物品。
 
-⚠️ **剑不挖掘**（v2.2）：死兆将至**刻意不在** `dig_from_abyss` 里（见 21b/21c）——它挖不动基岩，挖掘链与剑无关。
+⚠️ **剑不挖掘**：挖掘轴 = `abyss_gazing` ∩ 原版挖掘类 tag（见 21b/21c）——死兆将至不在任何挖掘类 tag 里，挖不动基岩，挖掘链与剑无关。
 
 **贴图 `abyssfall:item/final_death_omen/final_death_omen`**（16×16，`parent: item/handheld`）。进常规创造栏，无 config 门禁。⚠️ **贴图住在同名子目录里**，见「目录结构」末尾那条约定。
 
@@ -614,21 +616,21 @@ record 六个槽位的填法与各自踩过的坑（类 javadoc 有完整契约�
 | `enchantmentValue` | `1` | 🔴 **0 不可表达**：`Enchantable` 构造器带正数校验（CODEC 同 `POSITIVE_INT`），填 0 启动即崩（教训 51，v2.2 实崩一次）。1 是死信——`isEnchantable()` 是存在性判定（教训 54），**每个产物必须移除 `ENCHANTABLE` 组件** |
 | `repairItems` | 空 tag `abyssfall:abyssdium_tool_materials` | Unbreakable 无需修复；空 tag 经 `getOrCreateTagForRegistration` 安全解析（教训 56） |
 
-**未来新 abyssdium 物品的三件套义务**：①`UNBREAKABLE` 组件（否则首用即碎）②移除 `ENCHANTABLE` 组件（否则可附魔）③按职能进 tag（打击 → `bless_from_abyss`，挖掘 → `dig_from_abyss`，见 21c）。
+**未来新 abyssdium 物品的义务**：①`UNBREAKABLE` 组件（否则首用即碎）②移除 `ENCHANTABLE` 组件（否则可附魔）③进 `abyss_gazing`（材质=不毁同轴，入则自动不毁）④挖掘类工具加对应原版类 tag（`minecraft:pickaxes`/`shovels`/`axes`/`hoes`，见 21c）。
 
 ### 21b. 挖掘链（目前整体休眠）
 
-- **`mixin/BlockDestroyProgressMixin`**：原版「不可挖掘」（`destroySpeed == -1.0F`：基岩、屏障、命令方块、末地门框架等）对 `dig_from_abyss` 成员放行——已核实客户端裂纹与服务端破坏**都**走 `BlockBehaviour.getDestroyProgress` 这唯一一道口，无 Fabric 事件可替（interaction 模块 api 包逐类查过）。代理硬度 **50**（黑曜石档，首值）。⚠️ 放行针对**全部** -1 方块，但它们**全部没有战利品表**（已逐一核实），什么都不掉——只有基岩有掉落（下条）。
+- **`mixin/BlockDestroyProgressMixin`**：原版「不可挖掘」（`destroySpeed == -1.0F`：基岩、屏障、命令方块、末地门框架等）对 `AbyssFallItemTags.digsFromAbyss`（`abyss_gazing` ∧ 原版挖掘类 tag，见 21c）放行——已核实客户端裂纹与服务端破坏**都**走 `BlockBehaviour.getDestroyProgress` 这唯一一道口，无 Fabric 事件可替（interaction 模块 api 包逐类查过）。代理硬度 **50**（黑曜石档，首值）。⚠️ 放行针对**全部** -1 方块，但它们**全部没有战利品表**（已逐一核实），什么都不掉——只有基岩有掉落（下条）。
 - **`block/AbyssFallBedrockDrops`**（Fabric `PlayerBlockBreakEvents.AFTER`，API 优先）：基岩是 `noLootTable()`，数据包战利品表不会被读 ⇒ 事件掉落；带 `preventsBlockDrops` 门（创造拆基岩不掉，与原版一致）。
 - **基岩已加入 `minecraft:mineable/pickaxe`**（`replace:false`）：未来 abyssdium 镐以 `MAX_VALUE` 秒挖基岩；对其他人零影响（-1 门在上游挡着）。
-- 🔴 **`dig_from_abyss` 目前为空**（死兆将至是剑，刻意不入——「剑不挖掘」）⇒ **挖掘链整体休眠**，等第一把 abyssdium 挖掘工具。
+- 🔴 **挖掘链整体休眠**：`abyss_gazing` 目前只有 abyssdium 元素与死兆将至（剑，不在任何挖掘类 tag）⇒ 等第一把挖掘类锻品（镐/铲/斧/锄）。
 
-### 21c. 物品 tag 双轴（`item/AbyssFallItemTags`）与 tag 译名
+### 21c. 物品 tag（`item/AbyssFallItemTags`）与 tag 译名
 
-- **`abyssfall:bless_from_abyss`（深渊庇佑者 / Bless From Abyss）**：打击轴。`PlayerAttackMixin` 的秒杀扳机查此 tag（见 17b）。当前成员：死兆将至。⚠️ **abyssdium 原材料刻意不入**——入 tag 会让一把深渊元素拿在手里也能秒杀（不毁改走三重保险覆盖它，见 22）。
-- **`abyssfall:dig_from_abyss`（深渊采集者 / Dig From Abyss）**：挖掘轴（见 21b），目前为空。
-- 两个 tag 都有 lang 译名 `tag.item.abyssfall.*`（双语）。⚠️ vanilla 自身**零** tag 翻译键（已核实 26.2 jar），这是 JEI/工具链的生态约定，游戏原生界面不显示。
-- `abyssdium_tool_materials`（修复用空 tag，见 21a）无译名。
+- **`abyssfall:abyss_gazing`（深渊凝视 / AbyssalGaze）**：材质轴与不毁轴耦为一个 tag——「abyssdium 材质的物品自带不毁」，两件事是一件事。成员：`abyssdium` 元素 + 死兆将至（及未来一切 abyssdium 物品）。不毁组合根读它（见 22），新物品入 tag 即获不毁、零代码；`digsFromAbyss` 的锻品半边也从它出发。
+- **`abyssfall:abyss_striking`（深渊打击 / AbyssalStrike，隐藏 tag）**：成员 = 死兆将至。秒杀扳机的数据闸（`PlayerAttackMixin` 判 `is(FDO) || is(ABYSS_STRIKING)`，见 17b）——死兆将至不依赖它（保险一），整合包物品经它加入裁决（保险二）；非死兆成员的击杀读配置文案池 `striking.death_message_1..N`，不穿死兆品牌（见 17e）。
+- **挖掘轴**（无专用 tag）：挖掘判定 = `AbyssFallItemTags.digsFromAbyss(stack)` = `abyss_gazing` ∧ 原版类 tag（`minecraft:pickaxes`/`shovels`/`axes`/`hoes`）。未来挖掘类锻品须在自己的数据文件登记对应原版类 tag（**tag 成员是数据不是推导**，`Item.Properties.pickaxe()` 等 helper 不自动入 tag）。
+- `abyssdium_tool_materials`（修复用空 tag，见 21a）无译名；`abyss_gazing`/`abyss_striking` 有双语 lang 译名 `tag.item.abyssfall.*`（JEI 生态约定，游戏原生界面不显示）。
 
 
 ## 22. 物品机制框架 `com.abyssfall.itemmechanismruntime` 与不毁 `NeverDestroyed`（v2.2 新增、v2.4 改名）
@@ -636,8 +638,8 @@ record 六个槽位的填法与各自踩过的坑（类 javadoc 有完整契约�
 **框架定位**：以后 AbyssFall 所有**物品**机制都进这个包，每个机制一个类；机制清单 `ItemMechanics` 枚举。🔴 **框架永远不许引用内容**（abyssdium / tag / 任何具体物品）——「abyssdium 可以使用这个清单的功能，但绝不能变成这个清单因为 abyssdium 而存在」（用户原话）。
 
 - `ItemMechanic`：机制接口。`grant(Predicate<ItemStack>)`（授予，初始化期）+ `has(stack)`（查询，运行期）。机制只知道「被谁授予」和「如何回答」，**永远不知道「为什么」**。
-- `ItemMechanics`：机制清单，`List.of(...)` 枚举全部机制。新机制 = 新类 + 这里一行；三重保险自动覆盖新机制。
-- 授予只发生在**组合根** `item/AbyssFallItemMechanics`（框架外唯一的内容↔框架接缝）：**三重保险**，每条独立授予整个清单——①`abyssdium || final_death_omen`（元素及其锻品）②`bless_from_abyss` tag ③`final_death_omen`（单独再陈述一次）。**三重不是耦合，是毕业物品和材料本身就应该包含所有物品机制**（用户原话）。
+- `ItemMechanics`：机制清单，`List.of(...)` 枚举全部机制。新机制 = 新类 + 这里一行；两重保险自动覆盖新机制。
+- 授予只发生在**组合根** `item/AbyssFallItemMechanics`（框架外唯一的内容↔框架接缝）：**两重保险**，每条独立授予整个清单——①`abyss_gazing` tag（元素及一切 abyssdium 物品，材质=不毁同轴）②`final_death_omen`（单独再陈述一次）。**两重不是耦合，是毕业物品和材料本身就应该包含所有物品机制**（用户原话）。
 - `HeldItemCensus`（v2.4 新增）：**手持普查**——注册谓词 + 监听器，每 tick 从零重数全服主/副手匹配人数（**派生非累积**，收刀/掉线自动消失，绝不滞留），变了才回调（带 `MinecraftServer` 与新旧值）；一人一计数（双手同持算一人）。全部普查共享一个 `END_SERVER_TICK` 钩（首次注册时安装，无需组合根初始化）。当前消费方：死兆天空（17h）。
 - **自检方法**（把内容与 tag 全删掉后，框架是否仍独立成立）：①grep 框架包 import 仅 `java.*`/`net.minecraft.*`；②`javac` 把框架包单独对 MC jar 编译；③写一次性 UsageCheck（给原版物品授予并查询）编译。v2.2 三项全 PASS。
 

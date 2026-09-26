@@ -48,7 +48,7 @@
 | Minecraft | **26.2**；**无映射**（26.1 起不再混淆，Fabric 停止维护第三方映射） |
 | Loader / Loom / Fabric API | 0.19.3 / 1.17.19（插件 id **`net.fabricmc.fabric-loom`**）/ 0.158.0+26.2 |
 | Gradle / JDK | 9.7.0 / **25**（`java-runtime-epsilon`），toolchain 与 `release` 都是 25 |
-| 版本 / 许可 | `2.4-Dev-Fix` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**）。⚠️ **`gradle.properties` 的 `version` 是唯一事实来源，这一行易过时，现场核一遍** |
+| 版本 / 许可 | `2.5-Dev-Fix` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**）。⚠️ **`gradle.properties` 的 `version` 是唯一事实来源，这一行易过时，现场核一遍** |
 | 源集 | `splitEnvironmentSourceSets()`：`src/main` + `src/client` |
 | Git | `https://github.com/Kainy030/AbyssFall-Fabric.git`，分支 `main` |
 
@@ -212,18 +212,20 @@ float intensity = f(change.current().ratio());   // 随 San 连续变化，无�
 
 只在 `onInitialize()` 读一次，改完必须重启。**这是需求决定不是技术限制**（`LootTableEvents.MODIFY` 本身每次数据包重载都会触发，想开热加载只需在回调里实时读配置）。**别自作主张开。**
 
-### 4.5 当前 5 块 8 项（默认值 = 改动前的行为，逐值实测对齐）
+### 4.5 当前 6 块 9 项（默认值 = 改动前的行为，逐值实测对齐）
 
 ```json
 { "developer": { "dev_tools": false, "dev_command": false },
   "loot":      { "flower_chance": 0.05, "target_tables": [ "...18 个 minecraft:chests/..." ] },
   "visuals":   { "bloom_particle_scale": 1.0, "bloom_sound_volume": 1.0 },
   "hud":       { "show_below_percent": 100.0 },
-  "san":       { "peaceful_prevents_loss": true } }
+  "san":       { "peaceful_prevents_loss": true },
+  "striking":  { "death_message_1": "%1$s was claimed by the abyss." } }
 ```
 
 - **`dev_tools`** 管开发者物品栏标签 + 里面的物品是否**注册**；**`dev_command`** 管 `/san` 是否**注册**。拆成两项是因为「创造世界用 debug 物品」和「服务器开指令」是两个不同的决定。两项默认 `false`。
 - **`hud.show_below_percent`**：百分比**低于**此值时显示。默认 `100.0` = 满值不显示、掉一点就显示。范围 `[0,100]`，**`0` 等于彻底关闭 HUD**（已写进 javadoc，不是漏洞）。
+- **`striking.death_message_1..N`**：非死兆将至的 `abyss_striking` 成员击杀时的死亡消息池——**无限条**，键为 `death_message_1`/`_2`/`_N`（动态键手写 Codec，读时按数字排序收集，写时从 1 重编号；模式外键读出忽略、写不保留）。每次击杀从池中**随机一条**（创建伤害源时定死，与死兆变体同规则）。`%1$s`=死者、`%2$s`=击杀者；**字面量非翻译键**，全服同文。死兆将至自己的 lang 三变体不受影响。格式串非法会在杀人时炸 `String.format`——**刻意不校验**，整合者自负（用户指令）。
 - ⚠️ 用户要求「所有默认值除开发者模式外全部按项目当前状态写」。**改默认值 = 改游戏行为。**
 
 **🔴 `san` 块装「规则」不装阈值**：`peaceful_prevents_loss`（默认 `true`）= 和平难度不掉理智。**别往里塞 `low_san_percent` 之类的东西。**
@@ -492,8 +494,8 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 ## 7. 当前状态
 
 - **编译已验证**：`build` 与 `releaseJars` 都 `BUILD SUCCESSFUL`。产物 `build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`
-- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v2.4-Dev-Fix`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）。tag 名与 `gradle.properties` 的 `version` 自 v2.0 起对应（如 `v2.2-Dev`/`2.2-Dev`），但两者本不必一致（`REFERENCE.md` 发布流程一节）
-- **v2.4-Dev-Fix（本轮）**：死兆天空机制（`REFERENCE.md` 17h）+ San 激活体系（本文 3.8）+ 深渊之花食物化与 `clear_minded`（`REFERENCE.md` 2/9）+ 不毁 `/give` 假物品修复（`REFERENCE.md` 22a，教训 57）+ `itemframework` 改名 `itemmechanismruntime` + 删除理智计数器（`REFERENCE.md` 原 13 节随之整段移除）。**用户已实测全部通过**：天空 1~2 人恒 1.0 / 3~5 人爬升 / 5 人封顶 2.3 / 凋灵归原版；`/give` 无假物品残留、真品不毁照常；首吃激活 + 后续 +0.7 + 成就弹窗；进世界默认具象；量化读数具体值；访问 3 秒 reveal；`/san on|off` 与休眠命令红字拒绝
+- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v2.5-Dev-Fix`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）。tag 名与 `gradle.properties` 的 `version` 自 v2.0 起对应（如 `v2.2-Dev`/`2.2-Dev`），但两者本不必一致（`REFERENCE.md` 发布流程一节）
+- **v2.5-Dev-Fix（本轮）**：tag 体系重构（`abyss_gazing` 材质=不毁同轴、`abyss_striking` 隐藏打击闸、挖掘轴改 `gazing`∩原版类 tag 推导、`dig_from_abyss` 删除，`REFERENCE.md` 21c）+ 秒杀扳机双闸与死亡文案分流（`REFERENCE.md` 17b/17e，`AbyssStrikeDamageSource`）+ `striking` 配置块（无限 `death_message_1..N` 随机，`HANDOFF.md` 4.5）。**验证：编译通过 + 配置 Codec 真机 JVM 校验全绿（往返/乱序/缺口/空块/旧格式）；游戏内实测待用户**
 
 ### 7.1 已实测通过（用户在真实环境验证，**别再列成待确认项去催他测**）
 
@@ -611,8 +613,8 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 **内容**
 - **毕业武器（死兆将至）待定项**：横扫附带目标是否也秒杀未定；`stabAttack` 那条路是剑就不需要覆盖。材料已从下界合金改为**深渊元素**（`REFERENCE.md` 17/21）
-- **深渊元素（abyssdium，v2.2 新增，见 `REFERENCE.md` 21/22）**：无配方、无战利品途径，只能创造栏取；制品目前只有死兆将至 ⇒ `dig_from_abyss` 仍为空，**挖掘链（挖基岩+掉落）整体休眠**，等第一把 abyssdium 挖掘工具；未来新 abyssdium 物品的三件套义务别忘（`UNBREAKABLE`、移除 `ENCHANTABLE`、按职能进 `bless_from_abyss`/`dig_from_abyss`，见 `REFERENCE.md` 21）
-- **ItemMechanismRuntime（v2.2 新增、v2.4 改名，见 `REFERENCE.md` 22）**：以后所有物品机制进 `itemmechanismruntime` 清单（新机制 = 新类 + `ItemMechanics` 一行），三重保险自动覆盖新机制；框架**永远不许引用内容**（abyssdium/tag/具体物品），授予只发生在组合根 `AbyssFallItemMechanics`；v2.4 加 `HeldItemCensus`（手持人数普查，死兆天空在用，`REFERENCE.md` 17h）
+- **深渊元素（abyssdium，v2.2 新增，见 `REFERENCE.md` 21/22）**：无配方、无战利品途径，只能创造栏取；制品目前只有死兆将至 ⇒ **挖掘链（挖基岩+掉落）整体休眠**，等第一把挖掘类锻品（镐/铲/斧/锄）——挖掘轴 = `abyss_gazing` ∩ 原版类 tag 推导（`digsFromAbyss`）；未来新 abyssdium 物品的义务别忘（`UNBREAKABLE`、移除 `ENCHANTABLE`、进 `abyss_gazing` + 对应原版类 tag，见 `REFERENCE.md` 21）
+- **ItemMechanismRuntime（v2.2 新增、v2.4 改名，见 `REFERENCE.md` 22）**：以后所有物品机制进 `itemmechanismruntime` 清单（新机制 = 新类 + `ItemMechanics` 一行），两重保险自动覆盖新机制；框架**永远不许引用内容**（abyssdium/tag/具体物品），授予只发生在组合根 `AbyssFallItemMechanics`；v2.4 加 `HeldItemCensus`（手持人数普查，死兆天空在用，`REFERENCE.md` 17h）
 - **自有稀有度目前只改名字颜色** —— 用户明确限定本轮只做这个。掉率、排序、tooltip 上标注稀有度名称等语义**全未设计，别自作主张加**（`REFERENCE.md` 19）
 - **少数图标仍是占位**（多数已换成自己的美术）：`abyss_gardeners` 图标是向日葵、计数器与窥镜都用原版 `clock_00`（**指针不会转**，原版靠 `range_dispatch` 切 64 个模型才转）、两个精神效果是脚本生成的图。✅ **死兆将至剑本体贴图已由用户重画**（1.5-Dev，经 alpha 二值化后入库）
 - 深渊之花无实际功能；三个药水效果**无获取途径**（「深渊探索者」只被战利品侧读取，另两个只能 `/effect`）

@@ -19,6 +19,8 @@
 
 package com.abyssfall.damage;
 
+import java.util.List;
+
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -28,6 +30,7 @@ import net.minecraft.world.damagesource.DamageType;
 import net.minecraft.world.entity.Entity;
 
 import com.abyssfall.AbyssFall;
+import com.abyssfall.config.AbyssFallConfig;
 
 /**
  * The Death Omen damage type — what the Final Death Omen kills things with.
@@ -49,6 +52,12 @@ import com.abyssfall.AbyssFall;
  * than the single key vanilla would generate from {@code msgId}. Vanilla derives its message
  * key from the type's {@code message_id} and offers no way to vary it, so the choice is made
  * where the kill is (see the mixin) and this class only names the keys.
+ *
+ * <p>Two sources share the type. The Omen's own blows ({@link DeathOmenDamageSource}, the
+ * language-file variants) are one; blows from any other member of {@code abyss_striking}
+ * ({@link AbyssStrikeDamageSource}, the configurable generic text) are the other. The
+ * verdict is one — the obituaries are two, because a weapon that merely shares the
+ * trigger has no business wearing the Omen's brand.
  */
 public final class AbyssFallDamageTypes {
 	/**
@@ -90,10 +99,32 @@ public final class AbyssFallDamageTypes {
 	 * @param attacker the entity to credit with the kill, or {@code null} for an unattributed one
 	 */
 	public static DamageSource create(ServerLevel level, Entity attacker) {
-		Holder<DamageType> type =
-				level.registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE).getOrThrow(DEATH_OMEN);
-
 		return new DeathOmenDamageSource(
-				type, attacker, level.getRandom().nextInt(DEATH_MESSAGE_VARIANTS) + 1);
+				deathOmenType(level), attacker, level.getRandom().nextInt(DEATH_MESSAGE_VARIANTS) + 1);
+	}
+
+	/**
+	 * Builds an Abyssal Strike damage source for a non-Omen member of {@code abyss_striking}:
+	 * the same damage type, with one message drawn at random from the configurable
+	 * {@code death_message_1..N} pool instead of the Omen's variants. The draw happens here,
+	 * once — the source then says the same words to everyone who asks, exactly as the
+	 * Omen's variants do. See {@link AbyssStrikeDamageSource}.
+	 *
+	 * @param level    the level whose registries hold the damage type
+	 * @param attacker the entity to credit with the kill, or {@code null} for an unattributed one
+	 */
+	public static DamageSource createStriking(ServerLevel level, Entity attacker) {
+		List<String> messages = AbyssFallConfig.strikingDeathMessages();
+
+		return new AbyssStrikeDamageSource(deathOmenType(level), attacker,
+				messages.get(level.getRandom().nextInt(messages.size())));
+	}
+
+	/**
+	 * Resolves the damage type holder fresh from the level's registries — see {@link #create}
+	 * for why nothing is cached.
+	 */
+	private static Holder<DamageType> deathOmenType(ServerLevel level) {
+		return level.registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE).getOrThrow(DEATH_OMEN);
 	}
 }

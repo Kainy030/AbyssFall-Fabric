@@ -28,19 +28,19 @@ import net.minecraft.world.entity.player.Player;
 
 import org.spongepowered.asm.mixin.Mixin;
 
+import com.abyssfall.item.AbyssFallItems;
 import com.abyssfall.item.AbyssFallItemTags;
 import com.abyssfall.item.FinalDeathOmen;
 
 /**
- * Hands an attack made with anything forged of Abyssdium — the Final Death Omen included — to
- * the Death Omen's own resolution, and leaves every other attack in the game exactly as it
- * found it.
+ * Hands an attack made with the Final Death Omen to the blade's own resolution, and leaves
+ * every other attack in the game exactly as it found it.
  *
- * <p>What counts as blessed is data, not code: membership of the
- * {@code abyssfall:bless_from_abyss} item tag ({@link AbyssFallItemTags#BLESS_FROM_ABYSS}) —
- * the Bless From Abyss (深渊庇佑者). The blessing is bestowed on what is forged of Abyssdium,
- * so the premise still belongs to the material rather than to any one weapon, and anything a
- * future item or a datapack adds to the tag strikes the same way without this class changing.
+ * <p>The trigger is twofold: the blade itself by identity first of all, and the
+ * {@code abyssfall:abyss_striking} tag as the second gate, through which a modpack
+ * author's weapon joins the verdict. What the tag does <em>not</em> carry is the Omen's
+ * voice — kills by non-Omen members read the configurable generic text
+ * ({@code striking.death_message}); see {@code AbyssStrikeDamageSource}.
  *
  * <h2>Why this cannot be an item hook or a Fabric event</h2>
  *
@@ -92,7 +92,8 @@ public abstract class PlayerAttackMixin {
 
 		// Authoritative side only; see the class comment. Anything else is vanilla's business.
 		if (!(self.level() instanceof ServerLevel level)
-				|| !self.getWeaponItem().is(AbyssFallItemTags.BLESS_FROM_ABYSS)) {
+				|| !(self.getWeaponItem().is(AbyssFallItems.FINAL_DEATH_OMEN)
+						|| self.getWeaponItem().is(AbyssFallItemTags.ABYSS_STRIKING))) {
 			original.call(target);
 			return;
 		}

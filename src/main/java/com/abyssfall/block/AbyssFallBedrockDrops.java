@@ -50,7 +50,7 @@ public final class AbyssFallBedrockDrops {
 		PlayerBlockBreakEvents.AFTER.register((level, player, pos, state, blockEntity) -> {
 			if (!state.is(Blocks.BEDROCK)
 					|| player.preventsBlockDrops()
-					|| !player.getMainHandItem().is(AbyssFallItemTags.DIG_FROM_ABYSS)) {
+					|| !AbyssFallItemTags.digsFromAbyss(player.getMainHandItem())) {
 				return;
 			}
 

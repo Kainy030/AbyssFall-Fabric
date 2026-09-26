@@ -38,8 +38,8 @@ public final class AbyssFallToolMaterials {
 	 *       empty ({@link AbyssFallBlockTags#INCORRECT_FOR_ABYSSDIUM_TOOL}), so no block is
 	 *       ever marked as denying this material. The remaining "unmineable" class — bedrock
 	 *       and its kin, destroy speed −1 — is not a tier question at all and is answered by
-	 *       {@code BlockDestroyProgressMixin}, not here, and only for the forgings in
-	 *       {@link AbyssFallItemTags#DIG_FROM_ABYSS}.</li>
+	 *       {@code BlockDestroyProgressMixin}, not here, and only for forgings whose class
+	 *       digs ({@link AbyssFallItemTags#digsFromAbyss}).</li>
 	 *   <li><b>Durability: none.</b> Declared {@code 0} because the element knows no wear.
 	 *       🔴 The number still flows into {@code MAX_DAMAGE} through {@code sword(...)} or
 	 *       {@code applyToolProperties}, and a {@code MAX_DAMAGE} of zero without

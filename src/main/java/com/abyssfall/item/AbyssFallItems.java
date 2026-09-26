@@ -112,8 +112,8 @@ public final class AbyssFallItems {
 	 * <p>Not an ore and not found: it is stated rather than mined. A plain {@link Item},
 	 * because everything it means lives elsewhere — in the {@link AbyssFallToolMaterials#ABYSSDIUM}
 	 * tool material that carries its name, and in the
-	 * {@link AbyssFallItemTags#BLESS_FROM_ABYSS} tag that tells {@code PlayerAttackMixin} which
-	 * weapons strike like the Death Omen.
+	 * {@link AbyssFallItemTags#ABYSS_GAZING} tag that gathers every abyssdium-material item
+	 * under the abyss's gaze.
 	 *
 	 * <p>Fireproof, as befits what netherite wishes it were. Its rarity is
 	 * {@link AbyssFallRarity#ABYSSAL} over {@link Rarity#EPIC} — the same pairing as the blade
@@ -167,9 +167,9 @@ public final class AbyssFallItems {
 	 * unenchantable at a table. Every enchantment
 	 * worth putting on a sword modifies part of the damage pipeline this weapon steps around, so
 	 * they would be promises the item cannot keep. See {@link FinalDeathOmen} for what does happen
-	 * when it connects — a strike this blade shares with every other Abyssdium forging, because
-	 * the premise belongs to the material rather than to any one weapon
-	 * ({@link AbyssFallItemTags#BLESS_FROM_ABYSS}).
+	 * when it connects — a verdict that belongs to this blade alone, by identity
+	 * ({@code PlayerAttackMixin}), with the hidden {@code abyss_striking} tag kept alongside
+	 * as a data-level insurance for modpack authors.
 	 *
 	 * <p>It knows no wear. The material declares no durability at all, and the
 	 * {@code UNBREAKABLE} component is what makes that true rather than merely zero: without

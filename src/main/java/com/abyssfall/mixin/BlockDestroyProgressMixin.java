@@ -52,9 +52,9 @@ import com.abyssfall.item.AbyssFallItemTags;
  * <h2>What this deliberately does not do</h2>
  *
  * <p>It changes speed, and nothing else, and only for the forgings that dig: the question is
- * asked of the {@code abyssfall:dig_from_abyss} tag — the Dig From Abyss (深渊采集者) — from
- * which swords are absent, the Final Death Omen included, because a sword is not a mining
- * tool. Whether a break drops
+ * answered by {@link AbyssFallItemTags#digsFromAbyss} — an Abyssdium forging whose class
+ * digs by vanilla's own tags, which no sword joins, the Final Death Omen included, because
+ * a sword is not a mining tool. Whether a break drops
  * anything stays where vanilla keeps it: blocks with no loot table drop nothing, and every
  * refused block in vanilla has none — bedrock's own drop exists because
  * {@code AbyssFallBedrockDrops} adds it, by event, not by injection. The speed also still
@@ -79,7 +79,7 @@ public abstract class BlockDestroyProgressMixin {
 	private void abyssfall$abyssdiumDigsTheRefused(BlockState state, Player player, BlockGetter level,
 			BlockPos pos, CallbackInfoReturnable<Float> cir) {
 		if (state.getDestroySpeed(level, pos) != -1.0F
-				|| !player.getMainHandItem().is(AbyssFallItemTags.DIG_FROM_ABYSS)) {
+				|| !AbyssFallItemTags.digsFromAbyss(player.getMainHandItem())) {
 			return;
 		}
 

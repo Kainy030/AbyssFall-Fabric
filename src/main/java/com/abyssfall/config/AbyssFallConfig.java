@@ -27,6 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -149,6 +150,25 @@ public final class AbyssFallConfig {
 	 */
 	public static SanSettings san() {
 		return data.san();
+	}
+
+	/**
+	 * The striking settings: the Abyssal Strike's modpack-facing text.
+	 */
+	public static StrikingSettings striking() {
+		return data.striking();
+	}
+
+	/**
+	 * The death messages for kills by non-Omen members of {@code abyss_striking}: the pool
+	 * a random pick is made from, as {@link String#format} patterns, {@code %1$s} victim /
+	 * {@code %2$s} striker.
+	 *
+	 * <p>A shortcut in the spirit of {@link #doesPeacefulPreventSanLoss()}: read at every
+	 * such kill, where the call site wants the texts themselves rather than the block.
+	 */
+	public static List<String> strikingDeathMessages() {
+		return data.striking().deathMessages();
 	}
 
 	/**

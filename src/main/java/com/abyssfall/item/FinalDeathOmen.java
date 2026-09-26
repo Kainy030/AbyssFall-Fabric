@@ -66,6 +66,14 @@ import com.abyssfall.damage.AbyssFallDamageTypes;
  * through {@code Entity#kill} instead. Boats, minecarts, armour stands and end crystals all
  * override it with their own idea of being destroyed, and calling it rather than removing them
  * outright lets each keep that.
+ *
+ * <h2>Shared verdict, separate obituary</h2>
+ *
+ * <p>Everything in this class runs for any weapon the {@code abyss_striking} tag admits,
+ * not only the Omen — the verdict is the abyss's, shared by all of them. The death message
+ * is the one thing that is not shared: the Omen keeps its own variants, and everyone else
+ * reads the generic configurable text ({@code striking.death_message}), because a weapon
+ * that merely shares the trigger has no business wearing the Omen's brand.
  */
 public final class FinalDeathOmen {
 	/**
@@ -93,7 +101,12 @@ public final class FinalDeathOmen {
 		// dragon and the quarter-damage reduction applied to non-head parts never enters into it.
 		Entity struck = target instanceof EnderDragonPart part ? part.parentMob : target;
 
-		DamageSource source = AbyssFallDamageTypes.create(level, attacker);
+		// The verdict is shared, the obituary is not: the Omen keeps its own death
+		// messages, and every other weapon striking through abyss_striking reads the
+		// configurable generic text (striking.death_message) — see AbyssStrikeDamageSource.
+		DamageSource source = attacker.getWeaponItem().is(AbyssFallItems.FINAL_DEATH_OMEN)
+				? AbyssFallDamageTypes.create(level, attacker)
+				: AbyssFallDamageTypes.createStriking(level, attacker);
 
 		if (struck instanceof LivingEntity victim) {
 			// Step 1: without this the kill is not a player's and the drops go with it.

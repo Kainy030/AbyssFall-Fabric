@@ -20,39 +20,47 @@
 package com.abyssfall.item;
 
 import net.minecraft.core.registries.Registries;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 
 import com.abyssfall.AbyssFall;
 
 /**
  * Item tags owned by the mod. The tags themselves are data files under
- * {@code data/abyssfall/tags/item/}; this class only holds their keys so that code can ask
- * membership questions.
+ * {@code data/abyssfall/tags/item/}; this class holds their keys so that code can ask
+ * membership questions — and answers the one question that composes our tags with
+ * vanilla's own class tags ({@link #digsFromAbyss}).
+ *
+ * <p>{@code abyss_striking} exists for modpack authors first: membership is the data-level
+ * gate that lets another weapon join the abyss's verdict. The Final Death Omen strikes by
+ * identity already and needs no tag; its membership there is the insurance, not the
+ * mechanism.
  */
 public final class AbyssFallItemTags {
 	/**
-	 * Bless From Abyss (深渊庇佑者) — the forgings the abyss has blessed with its verdict.
+	 * Abyssal Gaze (深渊凝视) — every abyssdium-material item: the element itself and
+	 * everything forged of it.
 	 *
-	 * <p>Membership is what {@code PlayerAttackMixin} asks about: an attack made with an item
-	 * in this tag is handed to {@link FinalDeathOmen#strike} in place of the vanilla attack.
-	 * The blessing is bestowed on what is forged of Abyssdium — the Final Death Omen first
-	 * among them — and on anything a datapack later adds, which strikes the same way without
-	 * any code changing.
+	 * <p>Membership couples the material axis and the immortality axis into one statement,
+	 * because they are one fact: an abyssdium item is indestructible by nature, so "what
+	 * it is made of" and "it cannot be destroyed" say the same thing. The NeverDestroyed
+	 * composition root reads it — a new abyssdium item is protected with no code change —
+	 * and {@link #digsFromAbyss} starts the digging question from it.
 	 */
-	public static final TagKey<Item> BLESS_FROM_ABYSS = create("bless_from_abyss");
+	public static final TagKey<Item> ABYSS_GAZING = create("abyss_gazing");
 
 	/**
-	 * Dig From Abyss (深渊采集者) — the forgings that dig on the abyss's behalf.
+	 * Abyssal Strike (深渊打击) — the kill trigger's data-level gate.
 	 *
-	 * <p>Membership is what {@code BlockDestroyProgressMixin} and {@code AbyssFallBedrockDrops}
-	 * ask about: only a forging in this tag digs where digging is refused, and only it brings
-	 * bedrock home. The Final Death Omen is deliberately absent — it is a sword, and swords
-	 * do not mine. The material's two axes are separate on purpose: what a forging is
-	 * <em>for</em> decides which tag it joins, and a tool meant for both joins both. Currently
-	 * empty, because no Abyssdium digging tool exists yet.
+	 * <p>Membership makes an attack resolve through the abyss's strike
+	 * ({@code PlayerAttackMixin}), alongside the Final Death Omen's own identity. The tag
+	 * is a vocabulary for modpack authors: whatever they mark with it shares the verdict
+	 * mechanically, but its victims read the configurable generic death message
+	 * ({@code striking.death_message}), never the Omen's own wording.
 	 */
-	public static final TagKey<Item> DIG_FROM_ABYSS = create("dig_from_abyss");
+	public static final TagKey<Item> ABYSS_STRIKING = create("abyss_striking");
 
 	/**
 	 * What repairs Abyssdium gear: nothing, by design.
@@ -67,6 +75,19 @@ public final class AbyssFallItemTags {
 	public static final TagKey<Item> ABYSSDIUM_TOOL_MATERIALS = create("abyssdium_tool_materials");
 
 	private AbyssFallItemTags() {
+	}
+
+	/**
+	 * Whether the stack digs on the abyss's behalf: an Abyssdium forging whose class digs —
+	 * pickaxe, shovel, axe or hoe by vanilla's own class tags. A sword is a forging too,
+	 * but swords do not dig.
+	 */
+	public static boolean digsFromAbyss(ItemStack stack) {
+		return stack.is(ABYSS_GAZING)
+				&& (stack.is(ItemTags.PICKAXES)
+						|| stack.is(ItemTags.SHOVELS)
+						|| stack.is(ItemTags.AXES)
+						|| stack.is(ItemTags.HOES));
 	}
 
 	private static TagKey<Item> create(String name) {
