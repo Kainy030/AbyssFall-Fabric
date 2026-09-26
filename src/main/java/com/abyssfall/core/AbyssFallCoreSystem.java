@@ -19,16 +19,27 @@
 
 package com.abyssfall.core;
 
+import java.util.Map;
+import java.util.WeakHashMap;
 import java.util.function.UnaryOperator;
 
+import com.mojang.serialization.Codec;
+
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.player.Player;
+
+import io.netty.buffer.ByteBuf;
 
 import net.fabricmc.fabric.api.attachment.v1.AttachmentRegistry;
 import net.fabricmc.fabric.api.attachment.v1.AttachmentSyncPredicate;
 import net.fabricmc.fabric.api.attachment.v1.AttachmentType;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 
 import com.abyssfall.AbyssFall;
 import com.abyssfall.config.AbyssFallConfig;
@@ -66,7 +77,21 @@ import com.abyssfall.config.AbyssFallConfig;
  *
  * <p>Read with {@link #get(Player)} — safe on either side, and safe before the value has ever
  * been written. Write with {@link #set}, {@link #modify}, or the {@code add*} helpers, all of
- * which require a {@link ServerPlayer} precisely because writes are a server concern.
+ * which require a {@link ServerPlayer} precisely because writes are a server concern — and
+ * all of which the dormant system refuses: before the first taste of a Flower of the Abyss
+ * a write executes, reports the untouched state, and changes nothing (see {@link #set} and
+ * {@link #SAN_ACTIVATED}).
+ *
+ * <h2>Accesses announce themselves</h2>
+ *
+ * <p>Every read through {@link #get} (and therefore through every shorthand read) fires
+ * {@link SanAccessedCallback}, and a relay forwards it to the owning client, whose HUD
+ * shows itself for a few seconds before fading back out. Writes are not accesses: the HUD
+ * already surfaces value changes through its own visibility rules, so they need no reveal.
+ * The core's own internal read-backs, the HUD's mirror, the potion effects' tick reads
+ * and refused erosion read-backs go through {@link #getSilently} and announce nothing —
+ * an access is a system or a tool deliberately looking at the value, never the machinery
+ * humming underneath.
  *
  * <p>One write is not like the others. {@link #erode} is the way the <em>world</em> takes San
  * from a player, and it is subject to the rules in the {@code san} config block — presently just
@@ -107,6 +132,39 @@ public final class AbyssFallCoreSystem {
 					.syncWith(SanState.STREAM_CODEC, AttachmentSyncPredicate.targetOnly())
 	);
 
+	/**
+	 * Registry name of the activation attachment. Also the player's save-data key, so
+	 * changing it would orphan existing saves.
+	 */
+	public static final String SAN_ACTIVATED_ATTACHMENT_NAME = "core_system_san_activated";
+
+	/**
+	 * Whether the player's San system has been awakened. Until the first taste of a Flower
+	 * of the Abyss the system is dormant, and two rules hold: the HUD draws nothing (the
+	 * visibility half of the milestone), and every write through this facade is refused —
+	 * the operation executes, reports the untouched state, and changes nothing, so the
+	 * reading holds at its default (the integrity half).
+	 *
+	 * <p>Configured to:
+	 * <ul>
+	 *   <li>{@code persistent} — survive a restart, like the reading it guards;</li>
+	 *   <li>{@code copyOnDeath} — survive dying. Having once seen, a player does not
+	 *       unsee;</li>
+	 *   <li>{@code syncWith(targetOnly)} — reach the owning client, whose HUD is the one
+	 *       that needs it.</li>
+	 * </ul>
+	 *
+	 * <p>No initializer: an absent attachment reads as dormant on both sides, so there is
+	 * nothing to seed on join.
+	 */
+	public static final AttachmentType<Boolean> SAN_ACTIVATED = AttachmentRegistry.create(
+			AbyssFall.id(SAN_ACTIVATED_ATTACHMENT_NAME),
+			builder -> builder
+					.persistent(Codec.BOOL)
+					.copyOnDeath()
+					.syncWith(ByteBufCodecs.BOOL, AttachmentSyncPredicate.targetOnly())
+	);
+
 	private AbyssFallCoreSystem() {
 	}
 
@@ -120,6 +178,58 @@ public final class AbyssFallCoreSystem {
 			AbyssFall.LOGGER.debug("San for {}: {}/{} ({}%)",
 					player.getGameProfile().name(), state.current(), state.max(), state.percent());
 		});
+
+		PayloadTypeRegistry.clientboundPlay().register(AccessedPayload.TYPE, AccessedPayload.STREAM_CODEC);
+
+		// The access relay: a read through the core pokes the owning client's HUD. Writes
+		// deliberately do not ride this — the HUD already surfaces value changes through
+		// its own visibility rules. The throttle keeps a per-tick reader from spamming
+		// the wire.
+		SanAccessedCallback.EVENT.register(player -> {
+			if (player instanceof ServerPlayer serverPlayer) {
+				sendAccessedThrottled(serverPlayer);
+			}
+		});
+	}
+
+	/**
+	 * The smallest gap between two access packets to the same player, in ticks. The HUD
+	 * reveal is seconds long, so a tighter stream of pokes would buy nothing on the wire.
+	 */
+	private static final int ACCESS_SEND_INTERVAL_TICKS = 10;
+
+	/**
+	 * When each player's last access packet was sent, by game time. Weak keys: a player
+	 * leaving takes their entry with them.
+	 */
+	private static final Map<ServerPlayer, Long> LAST_ACCESS_SENT_AT = new WeakHashMap<>();
+
+	private static void sendAccessedThrottled(ServerPlayer player) {
+		long gameTime = player.level().getGameTime();
+		Long last = LAST_ACCESS_SENT_AT.get(player);
+
+		if (last != null && gameTime - last < ACCESS_SEND_INTERVAL_TICKS) {
+			return;
+		}
+
+		LAST_ACCESS_SENT_AT.put(player, gameTime);
+		ServerPlayNetworking.send(player, new AccessedPayload());
+	}
+
+	/**
+	 * The one message the access relay sends: "your San was just read". Carries nothing —
+	 * the poke is the whole point, and the HUD's own reading tells it what to show.
+	 */
+	public record AccessedPayload() implements CustomPacketPayload {
+		public static final Type<AccessedPayload> TYPE = new Type<>(AbyssFall.id("san_accessed"));
+
+		public static final StreamCodec<ByteBuf, AccessedPayload> STREAM_CODEC =
+				StreamCodec.unit(new AccessedPayload());
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
 	}
 
 	/**
@@ -127,8 +237,25 @@ public final class AbyssFallCoreSystem {
 	 *
 	 * <p>Falls back to {@link SanState#INITIAL} rather than initialising, so this is safe to
 	 * call from the client and from contexts where writing would be wrong.
+	 *
+	 * <p>Every call fires {@link SanAccessedCallback}: a read is an access, and accesses
+	 * announce themselves (see the class comment). Callers whose read must stay silent —
+	 * the HUD's mirror, and the core's own internals — use {@link #getSilently} instead.
 	 */
 	public static SanState get(Player player) {
+		SanAccessedCallback.EVENT.invoker().onSanAccessed(player);
+		return player.getAttachedOrElse(SAN, SanState.INITIAL);
+	}
+
+	/**
+	 * The player's current San state, without counting as an access.
+	 *
+	 * <p>For the HUD's per-frame mirror — which would otherwise hold its own reveal open
+	 * forever — for the core's internal read-backs, and for the potion effects, whose tick
+	 * reads are background machinery rather than someone looking. Everyone else wants
+	 * {@link #get}.
+	 */
+	public static SanState getSilently(Player player) {
 		return player.getAttachedOrElse(SAN, SanState.INITIAL);
 	}
 
@@ -137,6 +264,33 @@ public final class AbyssFallCoreSystem {
 	 */
 	public static float getCurrent(Player player) {
 		return get(player).current();
+	}
+
+	/**
+	 * Whether the player's San system has been awakened — safe on either side, and false
+	 * before the first taste of the flower. While false, the HUD draws nothing and every
+	 * write through {@link #set} is refused.
+	 */
+	public static boolean isActivated(Player player) {
+		return player.getAttachedOrElse(SAN_ACTIVATED, Boolean.FALSE);
+	}
+
+	/**
+	 * Awakens the player's San system, permanently. Idempotent; the first taste is the
+	 * one that matters, and the caller is the one who celebrates it.
+	 */
+	public static void activate(ServerPlayer player) {
+		player.setAttached(SAN_ACTIVATED, Boolean.TRUE);
+	}
+
+	/**
+	 * Puts the player's San system back to sleep — with the reading kept exactly where it
+	 * is. The stored value is frozen, not reset: a later {@link #activate} resumes from
+	 * it. While dormant the usual rules hold: the HUD draws nothing, and every write
+	 * through {@link #set} is refused.
+	 */
+	public static void deactivate(ServerPlayer player) {
+		player.setAttached(SAN_ACTIVATED, Boolean.FALSE);
 	}
 
 	/**
@@ -169,12 +323,22 @@ public final class AbyssFallCoreSystem {
 	 * would have to be subscribed separately for each player, so routing through here is both
 	 * simpler and the only point that sees every change.
 	 *
+	 * <p>While the system is dormant ({@link #isActivated} is false) every write is refused
+	 * here at the funnel: the call executes, reports the state it found, and changes
+	 * nothing — no write, no event, and the reading holds at its default. An operation is
+	 * never an error for trying; it simply has no effect yet.
+	 *
 	 * @return the stored state, which may differ from {@code state} if it needed clamping
 	 */
 	public static SanState set(ServerPlayer player, SanState state) {
-		SanState previous = get(player);
+		if (!isActivated(player)) {
+			// Dormant: report the untouched state and change nothing — see above.
+			return getSilently(player);
+		}
+
+		SanState previous = getSilently(player);
 		player.setAttached(SAN, state);
-		SanState stored = get(player);
+		SanState stored = getSilently(player);
 
 		SanChangedCallback.EVENT.invoker()
 				.onSanChanged(new SanChangedCallback.Change(player, previous, stored));
@@ -191,7 +355,7 @@ public final class AbyssFallCoreSystem {
 	 * @return the resulting state
 	 */
 	public static SanState modify(ServerPlayer player, UnaryOperator<SanState> operator) {
-		return set(player, operator.apply(get(player)));
+		return set(player, operator.apply(getSilently(player)));
 	}
 
 	/**
@@ -236,12 +400,14 @@ public final class AbyssFallCoreSystem {
 	public static SanState erode(ServerPlayer player, float amount) {
 		if (!(amount > 0.0F)) {
 			// Written as a negated '>' so that NaN is refused too: NaN fails every comparison,
-			// and 'amount <= 0' would let it through to poison the stored value.
-			return get(player);
+			// and 'amount <= 0' would let it through to poison the stored value. Silent
+			// read-back: a refusal announces nothing at all.
+			return getSilently(player);
 		}
 
 		if (!canErode(player)) {
-			return get(player);
+			// Silent read-back, as above.
+			return getSilently(player);
 		}
 
 		return addCurrent(player, -amount);

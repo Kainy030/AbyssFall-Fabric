@@ -21,11 +21,13 @@ package com.abyssfall.client.hud;
 
 import net.minecraft.resources.Identifier;
 
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudStatusBarHeightRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 
 import com.abyssfall.AbyssFall;
+import com.abyssfall.core.SanHudModeState;
 
 /**
  * Registers the San readout into the HUD, directly above the hunger row.
@@ -37,8 +39,8 @@ import com.abyssfall.AbyssFall;
  * That row is the ambient display: legible at a glance and in the visual language the status bar
  * area already speaks.
  *
- * <p>{@link SanBarHudElement}, the violet bar with the percentage written across it, is the
- * detailed reading and is now reachable in game. Do not "unify" the two: the point is that the
+ * <p>{@link SanBarHudElement}, the violet bar with the concrete reading written across it, is
+ * the detailed reading and is now reachable in game. Do not "unify" the two: the point is that the
  * always-on display and the precise one differ in kind, and the lens is what lets a player choose
  * between them. See {@code SanHudDispatchElement} for why only one element is registered.
  *
@@ -92,6 +94,10 @@ public final class AbyssFallSanHud {
 		// until San actually drops. The element is asked rather than the config, because it is
 		// the element that knows whether it is mid-fade.
 		HudStatusBarHeightRegistry.addRight(SAN_BAR_ID, player -> element.occupiedHeight());
+
+		// Every world greets with the figurative readout: the mode lasts for the world it was
+		// chosen in and is reset, unflashed, on each entry — see SanHudModeState.
+		ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> SanHudModeState.reset());
 
 		AbyssFall.LOGGER.debug("San readout registered above the hunger row");
 	}

@@ -26,13 +26,13 @@ import java.util.Locale;
  *
  * <p>Both readouts already existed and were built to differ in kind: the icon row is the ambient
  * display, legible at a glance and deliberately coarse, while the bar spells the reading out as a
- * percentage. This enum is what lets a player move between them, and it lives in {@code core}
+ * concrete figure. This enum is what lets a player move between them, and it lives in {@code core}
  * rather than in the client package because the item that performs the switch is common code.
  *
  * <p>Deliberately not a San <em>threshold</em> or a San <em>value</em>. This is a display
  * preference and nothing else; it never affects what the reading is, only how it is drawn. The
- * three-layer visibility model still holds — the bar shows a percentage, never the underlying
- * float.
+ * three-layer visibility model still holds — the bar shows a floored figure, never the
+ * underlying float.
  */
 public enum SanHudMode {
 	/**
@@ -42,7 +42,7 @@ public enum SanHudMode {
 	ICONS,
 
 	/**
-	 * The bar with the percentage written across it.
+	 * The bar with the concrete reading written across it.
 	 */
 	PERCENT;
 

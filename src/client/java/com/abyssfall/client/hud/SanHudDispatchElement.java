@@ -20,10 +20,13 @@
 package com.abyssfall.client.hud;
 
 import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.world.entity.player.Player;
 
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 
+import com.abyssfall.core.AbyssFallCoreSystem;
 import com.abyssfall.core.SanHudMode;
 import com.abyssfall.core.SanHudModeState;
 
@@ -38,6 +41,14 @@ import com.abyssfall.core.SanHudModeState;
  * having to know to claim zero while the other is showing — a second place for the two to disagree.
  * Registering one element that forwards keeps the layout arithmetic honest: exactly one row exists,
  * and it is exactly as tall as whatever is being drawn in it.
+ *
+ * <h2>The activation gate</h2>
+ *
+ * <p>Until the San HUD has been awakened — the first taste of a Flower of the Abyss, held
+ * server-side and synced to the owning client — this element draws nothing and claims no
+ * layout height: both readouts, both modes, all of it. Past that moment the original
+ * logic runs untouched, because the gate is a cover over the whole dispatch rather than
+ * a new branch inside either readout.
  *
  * <h2>Why both delegates are kept alive</h2>
  *
@@ -54,6 +65,10 @@ public final class SanHudDispatchElement implements HudElement {
 
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor context, DeltaTracker tickCounter) {
+		if (!activated()) {
+			return;
+		}
+
 		if (SanHudModeState.get() == SanHudMode.PERCENT) {
 			this.bar.extractRenderState(context, tickCounter);
 		} else {
@@ -68,8 +83,21 @@ public final class SanHudDispatchElement implements HudElement {
 	 * row that is not being drawn, and both are free of side effects so asking is safe either way.
 	 */
 	public int occupiedHeight() {
+		if (!activated()) {
+			return 0;
+		}
+
 		return SanHudModeState.get() == SanHudMode.PERCENT
 				? this.bar.occupiedHeight()
 				: this.icons.occupiedHeight();
+	}
+
+	/**
+	 * Whether the San HUD has been awakened for the client player — see
+	 * {@code AbyssFallCoreSystem#isActivated}.
+	 */
+	private static boolean activated() {
+		Player player = Minecraft.getInstance().player;
+		return player != null && AbyssFallCoreSystem.isActivated(player);
 	}
 }

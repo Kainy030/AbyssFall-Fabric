@@ -30,22 +30,18 @@ import com.abyssfall.core.SanHudMode;
 import com.abyssfall.core.SanHudModeState;
 
 /**
- * Cognition Lens — switches the San readout between the icon row and the percentage bar.
+ * Cognition Lens — switches the San readout between the icon row and the concrete-value bar.
  *
- * <p>Built from the San Counter, and deliberately not an extension of it. The two share a shape —
- * a single-stack item whose right click reports something above the hotbar — but they belong to
- * different layers of the design: the counter is developer tooling that prints the raw float and is
- * gated behind {@code developer.dev_tools}, whereas the lens is player-facing content that only
- * ever changes how an already-visible reading is drawn. Keeping them separate is what lets the
- * counter stay out of a released build while the lens ships.
+ * <p>A single-stack item whose right click changes how the reading is drawn — player-facing
+ * content that never reveals anything the design wants hidden: the value itself is already on
+ * the screen in one shape or the other, and the lens only chooses the shape.
  *
  * <h2>Why this runs on the client and not the server</h2>
  *
- * <p>The opposite of the San Counter, and for a matching reason. The counter reads a value the
- * server owns, so it does its work server-side. The lens changes nothing the server owns: which
- * readout is drawn is a fact about one screen, so the switch happens on the client that pressed the
- * button and never leaves it. Sending it to the server would mean two players sharing a world could
- * not read their San differently, and would make a display preference into save data.
+ * <p>The lens changes nothing the server owns: which readout is drawn is a fact about one
+ * screen, so the switch happens on the client that pressed the button and never leaves it.
+ * Sending it to the server would mean two players sharing a world could not read their San
+ * differently, and would make a display preference into save data.
  *
  * <p>This is also why {@link #use} tests for the <em>logical</em> client rather than for a
  * {@code ServerPlayer}. On a single-player world both sides run in one process, so without that

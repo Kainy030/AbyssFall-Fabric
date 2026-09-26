@@ -20,14 +20,14 @@ src/main/java/com/abyssfall/
 │        TintedGlassPaneBlock.java  AbyssFallBedrockDrops.java       见 21b
 │        AbyssFallBlockTags.java                                   见 21a
 ├── config/  (7 个，见 HANDOFF 4)
-├── core/    (6 个，见 HANDOFF 3)
+├── core/    (7 个，见 HANDOFF 3)
 ├── damage/AbyssFallDamageTypes  DeathOmenDamageSource                见 17
 ├── effect/AbyssExplorerEffect  AbyssFallEffects  SanBreakdownEffect  SanSpiritedEffect
 ├── item/AbyssFallDevInventory  AbyssFallItemGroups  AbyssFallItems
-│        SanCounterItem  SanLensItem  FinalDeathOmen                  见 17
+│        AbyssFlowerItem  SanLensItem  FinalDeathOmen  FinalDeathOmenSky  见 2 / 17
 │        AbyssFallItemTags  AbyssFallToolMaterials  AbyssFallItemMechanics   见 21 / 22
-├── itemframework/ItemMechanic  ItemMechanics  NeverDestroyed
-│        SourceSlotAccess  SlotMemoryAccess                          见 22
+├── itemmechanismruntime/ItemMechanic  ItemMechanics  NeverDestroyed
+│        SourceSlotAccess  SlotMemoryAccess  HeldItemCensus           见 22
 ├── item/AbyssFallRarity.java            自有稀有度（两级），见 19
 ├── loot/AbyssFallLootTables.java
 └── mixin/  (7 个：PlayerAttackMixin        毕业武器接管点，见 17
@@ -36,11 +36,14 @@ src/main/java/com/abyssfall/
              InventorySlotMemoryMixin  ServerPlayerDropMixin      不毁引擎，见 22)
 src/client/java/com/abyssfall/client/
 ├── AbyssFallClient.java
+├── DeathOmenSkyState.java            死兆天空的客户端状态，见 17h
 ├── hud/AbyssFallSanHud.java          HUD 注册
 ├── hud/SanHudDispatchElement.java    按模式转发（唯一注册的元素）
 ├── hud/SanIconHudElement.java        图标行
-├── hud/SanBarHudElement.java         进度条
+├── hud/SanBarHudElement.java         进度条（量化模式显示具体值）
+├── hud/SanHudAccessPulse.java        访问 reveal 时钟（3 秒），见 15e
 ├── tooltip/AbyssFallTooltips.java    tooltip 逐字波浪染色 + 物品名，见 17g / 19
+├── mixin/GameRendererMixin.java          死兆天空写入点，见 17h
 ├── mixin/HudSelectedItemNameMixin.java   手持提示的物品名上色，见 19a
 └── mixin/HudStatusBarHeightRegistryImplMixin.java   见 15a
 ```
@@ -69,7 +72,7 @@ textures/item/
 1. `models/item/*.json` 的 `layer0`
 2. 写这些文件的美术脚本（`make-death-omen-texture.ps1`）
 
-**Mixin 现在有九个**（`main` 七个 + `client` 两个），配置两份。`src/main` 下的 `mixin/` 包在 26.2 迁移时曾被删除（`WitherRoseBlockMixin` 改成数据文件，见 4），v1.3-Dev 为毕业武器**重新建立**——那次删除是因为不再需要，不是因为禁止。
+**Mixin 现在有十个**（`main` 七个 + `client` 三个），配置两份。`src/main` 下的 `mixin/` 包在 26.2 迁移时曾被删除（`WitherRoseBlockMixin` 改成数据文件，见 4），v1.3-Dev 为毕业武器**重新建立**——那次删除是因为不再需要，不是因为禁止。
 
 `onInitialize()` 调用顺序**有依赖关系，勿随意调整**：
 ```java
@@ -93,7 +96,9 @@ AbyssFallDevInventory.initialize();   // 最后，条件注册
 
 ## 2. 物品：深渊之花 `abyssfall:abyss_flower`
 
-`Rarity.EPIC`（`Rarity` 只有 COMMON/UNCOMMON/RARE/EPIC，无 legendary）。无行为，占位。贴图 `make-item-texture.ps1`（16×16 桃花）。
+`Rarity.EPIC`（`Rarity` 只有 COMMON/UNCOMMON/RARE/EPIC，无 legendary）。贴图 `make-item-texture.ps1`（16×16 桃花）。
+
+**v2.4 起是食物**（`AbyssFlowerItem`，`FoodProperties(1, 0.6F, true)`——半格、**永远可吃**，饱腹也能继续献祭；`Item.Properties.food()` 自动带 `Consumables.DEFAULT_FOOD`）。**首吃 `activate()` 激活 San 系统**（HUD 亮起、写入解锁，见 `HANDOFF.md` 3.8）但**不加任何 San 值**；**之后每次上限 +0.7**（`addMax`，current 不动；0.7 刻意偏离整数网格）。吃下完成的钩子是 `Item.finishUsingItem`（26.2 已核存在），`instanceof ServerPlayer` 守服务端。首吃成就 `clear_minded` 见 9。
 
 ## 3. 方块：深渊污泥 `abyssfall:abyss_dirt`
 
@@ -173,13 +178,14 @@ AbyssFallDevInventory.initialize();   // 最后，条件注册
 
 **一个事实**：vanilla 只有 2 张表含真正 EPIC 物品（试炼密室 `reward_ominous_unique` 的沉重核心、远古城市的静默盔甲纹饰模板），**沙漠神殿并不含 EPIC**（附魔金苹果是 `RARE`）⇒ 用户把口径从「所有含 EPIC 的箱子」改为「高价值结构宝箱」。
 
-## 9. 成就系统（3 个，链式）
+## 9. 成就系统（4 个，链式）
 
 | 注册名 | 中文 / 英文 | 父节点 | 图标 | 触发 |
 |---|---|---|---|---|
 | `abyss_fall` | 深渊浮现 / AbyssFall | 无（根，末地背景） | 深渊之花 | 背包有深渊之花 |
 | `abyssdirt` | 黏糊糊的烂泥巴 / It's so sticky... | `abyss_fall` | `minecraft:dirt` | 背包有深渊污泥 |
 | `abyss_gardeners` | 深渊园艺师 / The Gardener of The Abyss | `abyssdirt` | `minecraft:sunflower` | 见下 |
+| `clear_minded` | 头脑清明 / ClearMinded | `abyss_gardeners` | 深渊之花 | 首吃深渊之花（`minecraft:consume_item` 纯数据，**无需代码授予**——能吃不是开花那种 vanilla 表达不了的情况） |
 
 `abyss_gardeners` 两条 criteria，`requirements` 写成 `[["bloom_wither_rose"], ["obtain_abyss_flower"]]`（**两个独立数组即 AND**）：`bloom_wither_rose` 用 `minecraft:impossible` trigger、由 `AbyssFallAdvancements.awardBloom()` 在催熟成功瞬间显式授予；`obtain_abyss_flower` 是 `inventory_changed` 纯数据。
 
@@ -214,29 +220,15 @@ AbyssFallDevInventory.initialize();   // 最后，条件注册
 
 标题**三色**：「深渊」DARK_GRAY 粗 + 「浮现」GRAY 粗 + 「开发者物品栏」血红 `0xB01030` 粗斜。前两段**复用主标签的 lang key**，第三段是 `itemGroup.abyssfall.dev`。血红用 `TextColor.fromRgb(0xB01030)` 而非 `ChatFormatting.DARK_RED`（创造界面背景偏亮，原版暗红发棕）。en_us 的 `.dev` 值是 `" Dev Inventory"`（**有前导空格**，否则拼成 `AbyssFallDev Inventory`）；中文不需要。
 
-**🔴 里面的物品与标签都不是 `static final`**，而是在 `initialize()` 里创建、用普通 static 字段持有——`static final` 在类被触碰的瞬间就完成注册，开关根本没机会起作用。`getSanCounter()` 在关闭时返回 null（javadoc 说明这是刻意的，项目没有 `@Nullable` 依赖）。
+**🔴 里面的物品与标签都不是 `static final`**，而是在 `initialize()` 里创建、用普通 static 字段持有——`static final` 在类被触碰的瞬间就完成注册，开关根本没机会起作用。访问器（如 `getDevIcon()`）在关闭时返回 null（javadoc 说明这是刻意的，项目没有 `@Nullable` 依赖）。**栏位目前为空**（只有图标布景，下一件工具来时再加）。
 
 **后果要知道**：关掉开关后，存档里已有的这些物品会在加载时被当作未知物品**丢弃**——这是「真的没注册」的必然结果、不是 bug（用户原话就是「物品也不会被注册」）。若想改成「物品仍存在、只是标签不显示」，那是另一套语义（只把标签注册设为条件性）。
-
-## 13. 理智计数器 `abyssfall:san_counter`
-
-开发者专用 debug 物品，在开发者物品栏，`stacksTo(1)`，图标占位 `minecraft:item/clock_00`。**作用**：主手右键，在生命/饱食度上方显示 `理智值：当前 / 最大`，3 秒后淡出，再按重新计时。
-
-**🔴「3 秒 + 淡出 + 重按续期」全是原版行为，一行计时器都没写。** `Hud.setOverlayMessage` 把 `overlayMessageTime` **无条件**设为 60 ticks（= 3 秒，无条件赋值所以重按即重置），alpha 算式让最后 20 ticks 线性淡出。链路 `ServerPlayer.sendOverlayMessage(c)` → `sendSystemMessage(c, true)` → `ClientboundSystemChatPacket(overlay=true)` → `ChatListener` → `Hud.setOverlayMessage`。⚠️ 26.2 移除了 `displayClientMessage(Component, boolean)`，替代品落点相同，**这套依据继续成立**。
-
-**刻意只在服务端读值**（`player instanceof ServerPlayer`）：客户端那份 attachment 只是镜像，debug 工具必须报告权威值。返回 `InteractionResult.SUCCESS`（`SwingSource.CLIENT`）让挥手动画立刻播放。
 
 ## 13b. 认知窥镜 `abyssfall:san_lens`
 
 **玩家向内容，不是 debug 工具**，所以注册在 `AbyssFallItems` / 默认创造栏而非开发者栏。`stacksTo(1)`、`Rarity.EPIC`。贴图见 13d。**作用**：右键在两种 San 读数间切换 + 快捷栏上方提示（机制见 15c）。
 
-**🔴 与理智计数器端相反**：
-
-| | 理智计数器 | 认知窥镜 |
-|---|---|---|
-| 判定 | `player instanceof ServerPlayer` | **`level.isClientSide()`** |
-| 在哪侧干活 | **服务端**（读权威值） | **客户端**（改的是纯屏幕状态） |
-| 消息 | `ServerPlayer.sendOverlayMessage` 走系统聊天包 | 本地 `player.sendOverlayMessage`（`LocalPlayer` 覆写为 `chatListener().handleOverlay`） |
+**🔴 干活的是客户端，不是服务端**（`level.isClientSide()` 判定）：改的是纯屏幕状态，服务端一无所知；消息走本地 `player.sendOverlayMessage`（`LocalPlayer` 覆写为 `chatListener().handleOverlay`），不走系统聊天包。
 
 ⚠️ **必须判 `isClientSide()` 而不是 `instanceof ServerPlayer`**：`use()` 两侧都跑，单人世界两端同进程，不判会切两次、自己抵消。
 
@@ -392,7 +384,7 @@ ResourceKey.create(Registries.CREATIVE_MODE_TAB, Identifier.withDefaultNamespace
 - **那个 Mixin 只认 `SAN_BAR_ID` 一个 id**，注册两个的话另一条会飘走、不再紧贴饱食度
 - 两个 delegate **常驻不重建**（各自持有抖动/行波/闪光/淡出状态，重建会清空 ⇒ 来回切一次就看到冷启动跳变）
 
-**模式状态在 `core/SanHudModeState`（main 源集）**而非 client 包，因为物品是双端代码、够不到 client 源集。它是 `static` 单值：**不做 attachment**（偏好哪种读数是「关于屏幕」不是「关于角色」的事，做成 attachment 会同步、进存档、让服务端有意见，而同世界两个玩家应能各看各的）；**不跨重启保留**（存配置会让每次切换都写盘，还会把显示开关拖进「明确不做热加载」的文件——要保留是另一个决定，别顺手做）。
+**模式状态在 `core/SanHudModeState`（main 源集）**而非 client 包，因为物品是双端代码、够不到 client 源集。它是 `static` 单值：**不做 attachment**（偏好哪种读数是「关于屏幕」不是「关于角色」的事，做成 attachment 会同步、进存档、让服务端有意见，而同世界两个玩家应能各看各的）；**按世界重置**——`ClientPlayConnectionEvents.JOIN` 调 `reset()`，每次进世界（初访或重返）都静默回到具象，量化永远是该次来访的刻意之举，也因此没有跨重启保留的必要。
 
 **切换后强制显示 `REVEAL_MILLIS = 500`**（用户定的；我给 2000 → 1000 → 他改成 500）。实现只有一行，在两个元素的 `alphaFor` 里：
 
@@ -429,6 +421,14 @@ long from = Math.max(this.lastShownAt, SanHudModeState.revealEndsAt());
 **⚠️ 半格方向：保留左半、右半透明**（「从右往左掏空」，和一条从左往右缩短的进度条一致）。**别拿 `food_half.png` 反推**（`HANDOFF.md` 教训 21）。
 
 配色：主体 `9B6BC9`、高光 `C4A2E3`、暗部 `6E4A96`、滴落 `4A2E68`；亮版主体 `E4CDF4`；空槽只有纯黑轮廓 + `282828` 内部（这两值从原版 `food_empty.png` 读出）。**轮廓在亮版里不提亮**（全提会让图标失去形状）。
+
+### 15e. 激活闸门、量化读数与访问 reveal（v2.4 新增）
+
+**激活闸门**（`SanHudDispatchElement`）：San 系统未激活（首吃深渊之花前，见 2）时元素**什么都不画、`occupiedHeight` 报 0**——两种模式一起盖死；激活后原逻辑零改动。激活状态是 attachment `core_system_san_activated`（持久 + 死亡保留 + 只同步本人，`HANDOFF.md` 3.8）。
+
+**量化模式读数**：`San: 87`——具体当前值、截断取整（`describe()` 用 `(int) state.current()`），不再显示百分比；上限抬高后与百分比读数真正拉开差异。可见性阈值 `hud.show_below_percent` 仍是百分比语义（另一回事，未动）。
+
+**访问 reveal**：San 被**读取**时 HUD 亮 **3 秒**再走原 1 秒淡出（写入不算——HUD 自身可见性逻辑已覆盖数值变动）。`core/SanAccessedCallback`（`get()` 及全部快捷读派发）→ 服务端节流空包（10 tick/人，`StreamCodec.unit`）/ 客户端本地直戳 → `client/hud/SanHudAccessPulse.endsAt()` 插进两个元素 `alphaFor` 的 `Math.max`（与切换 reveal 同一机制）。**HUD 镜像读走 `getSilently`**——否则显示会自我维持永不淡出；药水效果 tick 读同样静默（后台机械不算访问）。`/san query` 会让**被查询者**的 HUD 亮。
 
 ## 16. 测试协议系统
 
@@ -546,6 +546,16 @@ lang key `death.attack.death_omen.1/2/3`，数量由 `DEATH_MESSAGE_VARIANTS` �
 
 - **用户明确要求不打日志**：「我们的武器不需要跟任何人解释」
 
+### 17h. 天空机制：死兆压顶（v2.4 新增）
+
+有人手持死兆将至（主/副手）时**全服所有玩家**的天空按凋零 boss 的效果变暗。26.2 的凋零天空机制 = `BossEvent.setDarkenScreen` → `BossHealthOverlay.shouldDarkenScreen()` → `GameRenderer.tick` 斜坡 `bossOverlayWorldDarkening` → lightmap 着色器 `mix(color, color*vec3(0.7,0.6,0.6), f)`（**f 本身不 clamp**，>1 线性外推：≈2.5 绿蓝熄灭、≈3.3 纯黑——0~2.3 量程全程可见梯度）。
+
+**计数**（服务端，`itemmechanismruntime/HeldItemCensus`，见 22）：主/副手手持人数，**每 tick 从零重数**（派生非累积，收刀/掉线自动消失，绝不滞留）；变化才 `VAR_INT` payload 广播 + JOIN 补发。**凋灵不计数**，归 vanilla 自己管。
+
+**映射**（`item/FinalDeathOmenSky` 常量）：0 人 = 正常；**1~2 人恒 1.0**（孤剑 = 真凋灵）；3 人起线性，**5 人封顶 2.3**（压抑红昏，不到纯黑）。
+
+**渲染**（`client/mixin/GameRendererMixin`）：`@Shadow` 拿 `bossOverlayWorldDarkening`，在 `ScreenEffectRenderer.tick()` 调用后（`runsNormally` 门内，暂停即冻结）以 `max(vanilla, 缓动值)` 写入——**只抬不压**，真凋零在场时 vanilla 永远赢；插值/lightmap 上传等下游全走 vanilla 原路径。缓动在 `DeathOmenSkyState`：按 vanilla 自己的速率（0.05 升 / 0.0125 降）向 `min(count,5)` 映射的目标逼近。
+
 
 ## 19. 自有稀有度：Abyssal（v1.8-Dev 新增）
 
@@ -621,13 +631,14 @@ record 六个槽位的填法与各自踩过的坑（类 javadoc 有完整契约�
 - `abyssdium_tool_materials`（修复用空 tag，见 21a）无译名。
 
 
-## 22. 物品机制框架 `com.abyssfall.itemframework` 与不毁 `NeverDestroyed`（v2.2 新增）
+## 22. 物品机制框架 `com.abyssfall.itemmechanismruntime` 与不毁 `NeverDestroyed`（v2.2 新增、v2.4 改名）
 
 **框架定位**：以后 AbyssFall 所有**物品**机制都进这个包，每个机制一个类；机制清单 `ItemMechanics` 枚举。🔴 **框架永远不许引用内容**（abyssdium / tag / 任何具体物品）——「abyssdium 可以使用这个清单的功能，但绝不能变成这个清单因为 abyssdium 而存在」（用户原话）。
 
 - `ItemMechanic`：机制接口。`grant(Predicate<ItemStack>)`（授予，初始化期）+ `has(stack)`（查询，运行期）。机制只知道「被谁授予」和「如何回答」，**永远不知道「为什么」**。
 - `ItemMechanics`：机制清单，`List.of(...)` 枚举全部机制。新机制 = 新类 + 这里一行；三重保险自动覆盖新机制。
 - 授予只发生在**组合根** `item/AbyssFallItemMechanics`（框架外唯一的内容↔框架接缝）：**三重保险**，每条独立授予整个清单——①`abyssdium || final_death_omen`（元素及其锻品）②`bless_from_abyss` tag ③`final_death_omen`（单独再陈述一次）。**三重不是耦合，是毕业物品和材料本身就应该包含所有物品机制**（用户原话）。
+- `HeldItemCensus`（v2.4 新增）：**手持普查**——注册谓词 + 监听器，每 tick 从零重数全服主/副手匹配人数（**派生非累积**，收刀/掉线自动消失，绝不滞留），变了才回调（带 `MinecraftServer` 与新旧值）；一人一计数（双手同持算一人）。全部普查共享一个 `END_SERVER_TICK` 钩（首次注册时安装，无需组合根初始化）。当前消费方：死兆天空（17h）。
 - **自检方法**（把内容与 tag 全删掉后，框架是否仍独立成立）：①grep 框架包 import 仅 `java.*`/`net.minecraft.*`；②`javac` 把框架包单独对 MC jar 编译；③写一次性 UsageCheck（给原版物品授予并查询）编译。v2.2 三项全 PASS。
 
 ### 22a. 不毁 `NeverDestroyed`：五种死法与五个引擎 mixin
@@ -639,8 +650,10 @@ record 六个槽位的填法与各自踩过的坑（类 javadoc 有完整契约�
 | 熔岩/火/仙人掌/一切伤害 | `ItemEntity.hurtServer` 问 `ItemStack.canBeHurtBy` | `ItemStackUndyingMixin`：一律答 false。枚举清单会过时，全免疫不会；附带 `fireImmune()` 为真（不起火苗） |
 | 爆炸 | 🔴 **有伤害前置门**：`ServerExplosion.hurtEntities` 先问 `ignoreExplosion`（教训 55） | `ItemEntityUndyingMixin`：一律答 true ⇒ **无伤害也无击退**（防被崩进虚空/崩丢） |
 | `/kill` | `Entity.kill` = `remove(KILLED)`，**不是伤害**（教训 53） | `EntityUndyingMixin`：取消移除 |
-| 5 分钟 despawn | `tick` 里 `age >= 6000 → discard` | `ItemEntityUndyingMixin`：套 vanilla 自己的 `setUnlimitedLifetime()`（age=-32768，随 NBT 持久） |
+| 5 分钟 despawn | `tick` 里 `age >= 6000 → discard` | `ItemEntityUndyingMixin`：套 vanilla 自己的 `setUnlimitedLifetime()`（age=-32768，随 NBT 持久）。**豁免 `/give` 动画假实体**（`abyssfall$fake`，见下） |
 | 虚空 | `Entity.onBelowWorld` = 裸 `discard()`（物品实体不受伤直接删） | `EntityUndyingMixin`：拦截并执行回栏（见 22b） |
+
+**`/give` 假实体豁免**：`/give` 成功后 vanilla 会 `player.drop()` 一个 `makeFakeItem()` 动画假人（`pickupDelay=32767` 永不可拾取 + `age=5999` 下一 tick 必死）。`ItemEntityUndyingMixin` 向 `makeFakeItem` 注入 `@Unique abyssfall$fake` 标记（NBT 持久化），冻结逻辑跳过带标记者——**真实掉落物永不经过该方法，零误伤**（v2.4 实报「假物品永存且捡不起来」bug，教训 57）。
 
 **熔岩驻面**（`ItemEntityUndyingMixin`，替换 `setUnderLavaMovement`）：**像在地上一样停在液面，不抖**。`getFluidHeight(LAVA)` = 物品底部低于液面的深度；深度 > 驻留带 **0.15**（刻意高于原版 0.1 的走重力阈值，低于它会重陷抖动）则以 ≤ **0.08** m/tick 上浮、且每 tick 上浮量被剩余距离封顶（渐近、零过冲）；到带后垂直速度恒零、重力永不运行。水平 ×**0.6**（地面摩擦同级，落哪停哪）。三个常量首值可调。
 
@@ -650,7 +663,7 @@ record 六个槽位的填法与各自踩过的坑（类 javadoc 有完整契约�
 
 **来源格记忆链**（`abyssfall$sourceSlot`，NBT `AbyssFallSourceSlot` 持久化，区块卸载不丢）：`InventorySlotMemoryMixin` 暂存 `removeItem` 的格子+返回对象（Q 键经 `removeFromSelected`→`removeItem`、背包拖拽经 `Slot.remove` 都覆盖）→ `ServerPlayerDropMixin`（所有服务端丢出路径汇聚于 `ServerPlayer.drop(3参)`）先做引用匹配、失败再全栏身份扫描兜底（死亡掉落 `dropAll` 由此覆盖）→ 写进物品实体。两招都落空 = 来源未知，回栏走 vanilla `add()`——**绝不猜格子**（猜错会删错占用者）。
 
-**duck 接口**（`SourceSlotAccess`/`SlotMemoryAccess`）住 `itemframework` 包——mixin 配置的 `package` 只允许 mixin 类（教训 52，v2.2 实崩一次）。
+**duck 接口**（`SourceSlotAccess`/`SlotMemoryAccess`）住 `itemmechanismruntime` 包——mixin 配置的 `package` 只允许 mixin 类（教训 52，v2.2 实崩一次）。
 
 ## Git / 发布流程（由你负责）
 

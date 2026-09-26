@@ -40,6 +40,7 @@ import com.abyssfall.item.AbyssFallDevInventory;
 import com.abyssfall.item.AbyssFallItemGroups;
 import com.abyssfall.item.AbyssFallItemMechanics;
 import com.abyssfall.item.AbyssFallItems;
+import com.abyssfall.item.FinalDeathOmenSky;
 import com.abyssfall.loot.AbyssFallLootTables;
 
 public class AbyssFall implements ModInitializer {
@@ -67,6 +68,11 @@ public class AbyssFall implements ModInitializer {
 		AbyssFallBlocks.initialize();
 		AbyssFallItemGroups.initialize();
 		AbyssFallItemMechanics.initialize();
+
+		// The blade's own weather. Needs the item registry and nothing else; registers its
+		// payload type, a census of drawn blades, and the join push for latecomers.
+		FinalDeathOmenSky.initialize();
+
 		AbyssFallLootTables.initialize();
 		AbyssFallBoneMealHandler.initialize();
 		AbyssFallBedrockDrops.initialize();

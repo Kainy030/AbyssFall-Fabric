@@ -21,7 +21,9 @@ package com.abyssfall.client;
 
 import net.fabricmc.api.ClientModInitializer;
 
+import com.abyssfall.client.DeathOmenSkyState;
 import com.abyssfall.client.hud.AbyssFallSanHud;
+import com.abyssfall.client.hud.SanHudAccessPulse;
 import com.abyssfall.client.tooltip.AbyssFallTooltips;
 
 public class AbyssFallClient implements ClientModInitializer {
@@ -30,6 +32,13 @@ public class AbyssFallClient implements ClientModInitializer {
 		// Must happen during client initialisation: both HUD registries freeze once the client
 		// has finished starting, so there is no later opportunity to register.
 		AbyssFallSanHud.initialize();
+
+		// Registers the receiver for the Death Omen's sky darkening; like the HUD, it hooks a
+		// registry that closes once the client is up, so it cannot wait.
+		DeathOmenSkyState.initialize();
+
+		// The access reveal's receiver and its local-read hook.
+		SanHudAccessPulse.initialize();
 
 		AbyssFallTooltips.initialize();
 	}

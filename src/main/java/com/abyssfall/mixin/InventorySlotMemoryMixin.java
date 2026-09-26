@@ -28,7 +28,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import com.abyssfall.itemframework.SlotMemoryAccess;
+import com.abyssfall.itemmechanismruntime.SlotMemoryAccess;
 
 /**
  * A one-entry memory of what the inventory last gave up: the slot {@code removeItem}

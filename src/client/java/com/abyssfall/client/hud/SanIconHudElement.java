@@ -59,7 +59,7 @@ import com.abyssfall.core.SanState;
  * <p>San is continuous and the core is careful never to bucket it, so quantising to twenty halves
  * is a decision made <em>here</em>, for this display only, and nowhere else. Nothing else in the
  * mod learns about it: the ratio is read raw and rounded at the point of drawing. A player who
- * wants the real number has {@code /san}, the San Counter, and — eventually — the bar.
+ * wants the real number has {@code /san} and — in quantified mode — the bar.
  *
  * <p>The rounding is deliberately generous at the bottom. Any San above zero keeps at least one
  * half icon lit, because rounding the last sliver away would draw "almost gone" and "gone"
@@ -334,7 +334,7 @@ public final class SanIconHudElement implements HudElement {
 			return;
 		}
 
-		SanState state = AbyssFallCoreSystem.get(player);
+		SanState state = AbyssFallCoreSystem.getSilently(player);
 
 		// Watching for a change here, before anything decides whether to draw, so a loss that
 		// happens while the row is hidden still arms the shudder for the moment it appears.
@@ -463,7 +463,7 @@ public final class SanIconHudElement implements HudElement {
 			return 0.0F;
 		}
 
-		return alphaFor(AbyssFallCoreSystem.get(player), Util.getMillis());
+		return alphaFor(AbyssFallCoreSystem.getSilently(player), Util.getMillis());
 	}
 
 	/**
@@ -487,7 +487,8 @@ public final class SanIconHudElement implements HudElement {
 		// The later of the two: the last time San itself warranted showing, and the end of the
 		// post-switch reveal. Taking the later one is what lets a switch extend a fade that was
 		// already running instead of being ignored because the row had recently been visible.
-		long from = Math.max(this.lastShownAt, SanHudModeState.revealEndsAt());
+		long from = Math.max(this.lastShownAt,
+				Math.max(SanHudModeState.revealEndsAt(), SanHudAccessPulse.endsAt()));
 
 		if (from == 0L) {
 			return 0.0F;

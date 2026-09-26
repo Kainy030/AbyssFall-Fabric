@@ -19,13 +19,13 @@
 
 package com.abyssfall.item;
 
-import com.abyssfall.itemframework.ItemMechanic;
-import com.abyssfall.itemframework.ItemMechanics;
+import com.abyssfall.itemmechanismruntime.ItemMechanic;
+import com.abyssfall.itemmechanismruntime.ItemMechanics;
 
 /**
  * The composition root of the item mechanics: who holds them, stated in one place.
  *
- * <p>The framework in {@code com.abyssfall.itemframework} defines the mechanics and
+ * <p>The framework in {@code com.abyssfall.itemmechanismruntime} defines the mechanics and
  * stays ignorant of this mod's content — it must never come to exist because Abyssdium
  * exists. Ownership is stated here instead, as <b>three independent insurances</b>, each
  * granted across the entire mechanic list. These three are not coupling: the endgame

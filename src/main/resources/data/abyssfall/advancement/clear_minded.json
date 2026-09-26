@@ -1,0 +1,35 @@
+{
+  "parent": "abyssfall:abyss_gardeners",
+  "criteria": {
+    "eat_abyss_flower": {
+      "trigger": "minecraft:consume_item",
+      "conditions": {
+        "item": {
+          "items": "abyssfall:abyss_flower"
+        }
+      }
+    }
+  },
+  "requirements": [
+    [
+      "eat_abyss_flower"
+    ]
+  ],
+  "display": {
+    "icon": {
+      "id": "abyssfall:abyss_flower",
+      "count": 1
+    },
+    "title": {
+      "translate": "advancements.abyssfall.clear_minded.title"
+    },
+    "description": {
+      "translate": "advancements.abyssfall.clear_minded.description"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "sends_telemetry_event": false
+}

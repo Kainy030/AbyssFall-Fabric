@@ -115,15 +115,34 @@ public final class AbyssFallSanCommand {
 								.executes(context -> apply(context, AbyssFallCoreSystem::restore))))
 				.then(Commands.literal("reset")
 						.then(Commands.argument("target", EntityArgument.player())
-								.executes(context -> apply(context, AbyssFallCoreSystem::reset))));
+								.executes(context -> apply(context, AbyssFallCoreSystem::reset))))
+				.then(Commands.literal("on")
+						.then(Commands.argument("target", EntityArgument.player())
+								.executes(context -> applyActivation(context, true))))
+				.then(Commands.literal("off")
+						.then(Commands.argument("target", EntityArgument.player())
+								.executes(context -> applyActivation(context, false))));
 	}
 
 	/**
 	 * Runs a mutation against the {@code target} argument and reports the result.
+	 *
+	 * <p>Refuses with a message when the target's San system is dormant. The funnel in
+	 * {@code AbyssFallCoreSystem#set} would refuse the write anyway — silently, by design,
+	 * because gameplay callers must be free to try — but an operator typing a command
+	 * deserves to be told rather than left to wonder why nothing moved.
 	 */
 	private static int apply(CommandContext<CommandSourceStack> context,
 			Function<ServerPlayer, SanState> mutator) throws CommandSyntaxException {
 		ServerPlayer target = EntityArgument.getPlayer(context, "target");
+
+		if (!AbyssFallCoreSystem.isActivated(target)) {
+			context.getSource().sendFailure(Component.literal(String.format(Locale.ROOT,
+					"San system is not activated for %s (see /san on); nothing was changed.",
+					target.getGameProfile().name())));
+			return 0;
+		}
+
 		SanState state = mutator.apply(target);
 
 		context.getSource().sendSuccess(() -> describe(target, state), true);
@@ -135,6 +154,30 @@ public final class AbyssFallSanCommand {
 
 	private static int reportSelf(CommandSourceStack source) throws CommandSyntaxException {
 		return report(source, source.getPlayerOrException());
+	}
+
+	/**
+	 * Switches the target's San system on or off and reports the switch's new position.
+	 * Deactivation keeps the reading where it is — frozen, not reset — see
+	 * {@link AbyssFallCoreSystem#deactivate}.
+	 */
+	private static int applyActivation(CommandContext<CommandSourceStack> context, boolean active)
+			throws CommandSyntaxException {
+		ServerPlayer target = EntityArgument.getPlayer(context, "target");
+
+		if (active) {
+			AbyssFallCoreSystem.activate(target);
+		} else {
+			AbyssFallCoreSystem.deactivate(target);
+		}
+
+		boolean now = AbyssFallCoreSystem.isActivated(target);
+		context.getSource().sendSuccess(() -> Component.literal(String.format(Locale.ROOT,
+				"%s: San system %s", target.getGameProfile().name(),
+				now ? "activated" : "dormant (reading preserved)")), true);
+
+		// Brigadier result codes are integers; the switch position maps neatly onto one.
+		return now ? 1 : 0;
 	}
 
 	private static int report(CommandSourceStack source, ServerPlayer target) {

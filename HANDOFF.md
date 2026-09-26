@@ -31,7 +31,7 @@
 
 > 「原则是尽量不使用 mixin，因为我以前是写外挂的，我的思考方式就是遇事不决用钩子，所以需要你来最大程度地不用 mixin，用 Fabric API 事件。但凡是有例外，有时候不得不用钩子的时候就要放心大胆地用钩子，**你在代码中看到的钩子就是不得不用的情况**。」
 
-⇒ 目前**九个** Mixin（主端 7 + 客户端 2）。客户端 2 个不变：`client/mixin/HudStatusBarHeightRegistryImplMixin`（HUD 高度，`REFERENCE.md` 15a）+ `client/mixin/HudSelectedItemNameMixin`（手持提示的物品名上色，`REFERENCE.md` 19a）。主端 7 个：`mixin/PlayerAttackMixin`（毕业武器接管，`REFERENCE.md` 17）+ 深渊元素体系 6 个：`BlockDestroyProgressMixin`（挖掘解禁，`REFERENCE.md` 21）、`EntityUndyingMixin`（kill 拒绝 + 虚空回栏）、`ItemEntityUndyingMixin`（爆炸豁免 + despawn 冻结 + 熔岩驻面 + 来源格持久化）、`ItemStackUndyingMixin`（全伤害免疫）、`InventorySlotMemoryMixin` 与 `ServerPlayerDropMixin`（回栏记忆链）——后五者全部见 `REFERENCE.md` 22。**都不要当技术债清理、不要试图用 API 重写**——每个的「为什么非得是钩子」都写在它自己的类 javadoc 里（老四个的理由另见各自那节）。写新功能时优先找 API 事件，找不到再注入并说明理由。
+⇒ 目前**十个** Mixin（主端 7 + 客户端 3）。客户端 3 个：`client/mixin/HudStatusBarHeightRegistryImplMixin`（HUD 高度，`REFERENCE.md` 15a）+ `client/mixin/HudSelectedItemNameMixin`（手持提示的物品名上色，`REFERENCE.md` 19a）+ `client/mixin/GameRendererMixin`（死兆天空写入点，`REFERENCE.md` 17h）。主端 7 个：`mixin/PlayerAttackMixin`（毕业武器接管，`REFERENCE.md` 17）+ 深渊元素体系 6 个：`BlockDestroyProgressMixin`（挖掘解禁，`REFERENCE.md` 21）、`EntityUndyingMixin`（kill 拒绝 + 虚空回栏）、`ItemEntityUndyingMixin`（爆炸豁免 + despawn 冻结 + 熔岩驻面 + 来源格持久化）、`ItemStackUndyingMixin`（全伤害免疫）、`InventorySlotMemoryMixin` 与 `ServerPlayerDropMixin`（回栏记忆链）——后五者全部见 `REFERENCE.md` 22。**都不要当技术债清理、不要试图用 API 重写**——每个的「为什么非得是钩子」都写在它自己的类 javadoc 里（老四个的理由另见各自那节）。写新功能时优先找 API 事件，找不到再注入并说明理由。
 
 **其他相处方式**：
 - 他问「这两个功能有什么区别」是真想搞清语义边界 → 直接答区别 + 什么情况下才看得出差异。说「简单回复即可」时别长篇大论。
@@ -48,7 +48,7 @@
 | Minecraft | **26.2**；**无映射**（26.1 起不再混淆，Fabric 停止维护第三方映射） |
 | Loader / Loom / Fabric API | 0.19.3 / 1.17.19（插件 id **`net.fabricmc.fabric-loom`**）/ 0.158.0+26.2 |
 | Gradle / JDK | 9.7.0 / **25**（`java-runtime-epsilon`），toolchain 与 `release` 都是 25 |
-| 版本 / 许可 | `2.2-Dev` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**）。⚠️ **`gradle.properties` 的 `version` 是唯一事实来源，这一行易过时，现场核一遍** |
+| 版本 / 许可 | `2.4-Dev-Fix` / GPL-3.0-or-later（**每个 .java 带 GPL 头，新文件照抄**）。⚠️ **`gradle.properties` 的 `version` 是唯一事实来源，这一行易过时，现场核一遍** |
 | 源集 | `splitEnvironmentSourceSets()`：`src/main` + `src/client` |
 | Git | `https://github.com/Kainy030/AbyssFall-Fabric.git`，分支 `main` |
 
@@ -81,10 +81,11 @@ cd D:/MC26.2-AbyssFall-Fabric
 
 ### 3.2 结构与 API
 
-`core/`：`AbyssFallCoreSystem`（门面：attachment 注册 + 全部读写 + 事件派发）、`SanState`（不可变 record，自带 Codec/StreamCodec）、`SanChangedCallback`、`SanHudMode` + `SanHudModeState`（只是显示偏好，见 `REFERENCE.md` 15c）、`AbyssFallSanCommand`。
+`core/`：`AbyssFallCoreSystem`（门面：attachment 注册 + 全部读写 + 事件派发）、`SanState`（不可变 record，自带 Codec/StreamCodec）、`SanChangedCallback`、`SanAccessedCallback`（读取申报，见 3.8）、`SanHudMode` + `SanHudModeState`（只是显示偏好，见 `REFERENCE.md` 15c）、`AbyssFallSanCommand`。
 
-- **读**（两端安全，收 `Player`）：`get` `getCurrent` `getMax` `getRatio` `getPercent`
-- **写**（只收 `ServerPlayer`）：`set` `modify` `addCurrent` `setCurrent` `addMax` `setMax` `restore` `reset`
+- **读**（两端安全，收 `Player`）：`get`（**申报访问**）`getCurrent` `getMax` `getRatio` `getPercent`；`getSilently`（不申报——HUD 镜像 / core 内部 / 药水效果专用）
+- **写**（只收 `ServerPlayer`）：`set` `modify` `addCurrent` `setCurrent` `addMax` `setMax` `restore` `reset`——**未激活全部拒绝**（见 3.8）
+- **激活**：`isActivated`（双端可读）`activate` `deactivate`（冻结保留读数，见 3.8）
 - **规则化写**：`erode(player, amount)` + `canErode(player)` ← **世界侵蚀 San 必须走这里**（见 4.5）
 - `SanState`：`ratio()` `percent()` `isFull()` `isEmpty()` `withCurrent/addCurrent/withMax/addMax` `full(max)` `INITIAL`；常量 `DEFAULT_MAX=100` `MIN_MAX=1` `MAX_MAX=10000`
 - `Change`：`currentDelta()` `maxDelta()` `ratioDelta()` `isNoOp()` `crossedDown(t)` `crossedUp(t)`——阈值由调用方传入：
@@ -98,20 +99,27 @@ float intensity = f(change.current().ratio());   // 随 San 连续变化，无�
 
 **attachment 注册名 `abyssfall:core_system_san`**（用户指定，是存档 key，**改名会孤立所有存档**）。Fabric Data Attachment API，builder 四项：`initializer(() -> SanState.INITIAL)`、`persistent(CODEC)`、`copyOnDeath()`（San 是经历的记录，重生不洗白）、`syncWith(STREAM_CODEC, targetOnly())`（只同步本人）。
 
-**四处勿改的写法**（已验证的妥协，别「优化」）：
+**六处勿改的写法**（已验证的妥协，别「优化」）：
 1. **current 与 max 合成一个 record**，invariant 在 canonical constructor 强制。
 2. **`ServerPlayerEvents.JOIN` 钩子不是多余的**：回调做一次 `getAttachedOrCreate(SAN)`，否则全新玩家可能没有存储的 attachment、不触发同步推送。**这是 API 事件不是 Mixin。**
 3. **事件从 `set()` 派发，不用 `onAttachedSet`**：后者按 target 实例订阅（`default <A> Event<OnAttachedSet<A>> onAttachedSet(...)`），无法全局监听。
 4. **`set()` 里回读两次**（`previous` → `setAttached` → `stored`）：传入值可能被 clamp，事件必须携带真实存储值。
+5. **`set()` 开头的激活闸门**：未激活直接返回 `getSilently`——不写、不发事件；所有写都汇于 `set()`，一处即全覆盖（见 3.8）。
+6. **`get()` 申报访问、`getSilently()` 不申报**：HUD 镜像若走 `get()`，访问 reveal 会被自我维持到永不淡出（见 3.8）。
+
+**激活 attachment 注册名 `abyssfall:core_system_san_activated`**（也是存档 key）：`persistent(Codec.BOOL)` + `copyOnDeath()` + `syncWith(ByteBufCodecs.BOOL, targetOnly())`，**无 initializer**（缺席即未激活）。v2.4 由「HUD 激活」扩义为「系统激活」（见 3.8）。
 
 ### 3.4 两个语义决策（他可能会问，也可能想改）
 
 1. **提高上限不白送 San**：`withMax` 提高时 current 不动；降低到 current 以下才会把 current 拖下来。
 2. **`restore`** = current 回满到当前上限；**`reset`** = current 与上限一起回默认 100。上限没动过时两者结果相同。
 
-### 3.5 `/san` 命令（8 条）
+### 3.5 `/san` 命令（10 条）
 
-**两道门**：整棵树要 `dev_command=true` 才注册，且全部分支要 3 级 `LEVEL_ADMINS`。分支：`/san`、`query` `set` `add` `max set` `max add` `restore` `reset`。输出 `<名字>: San 100.00 / 100.00 (100.00%)`（刻意用英文调试格式、无 lang key，两位小数为看清 0.1% 级变化）。
+**两道门**：整棵树要 `dev_command=true` 才注册，且全部分支要 3 级 `LEVEL_ADMINS`。分支：`/san`、`query` `set` `add` `max set` `max add` `restore` `reset` `on` `off`。输出 `<名字>: San 100.00 / 100.00 (100.00%)`（刻意用英文调试格式、无 lang key，两位小数为看清 0.1% 级变化）。
+
+- `on`/`off` 切换激活；`off` **冻结保留读数不重置**，再 `on` 原值续用
+- **修改类分支（`apply()`）在目标未激活时红字拒绝且不执行**（`San system is not activated for ... nothing was changed.`）——代码调用走漏斗静默拒绝是设计，命令管理员必须被告知
 
 - `.requires()` **只写在根节点一处**（Brigadier 对失败节点不向下遍历）。**别「补全」成每分支一遍。**
 - **无参数 `/san` 也要 3 级**：玩家只应通过游戏内手段得知百分比、永不得知底层 float（见 3.7），打印 float 的指令是 debug 设施而非权利。已写进 javadoc，别当旧注释删掉。
@@ -121,7 +129,7 @@ float intensity = f(change.current().ratio());   // 随 San 连续变化，无�
 
 ### 3.6 当前状态：只有框架，零世界规则
 
-`SanChangedCallback` **没有任何监听者**——预期如此（「我们现在要的是框架」）。San 已经会自己动了（两个药水效果每 10 秒扣/回，`REFERENCE.md` 7b，`erode()` 有了第一个调用方），但**什么情况下给玩家上这个 debuff 完全没设计**，目前只能 `/effect` 手动给。真正的侵蚀来源（黑暗、深渊、目击恐怖等）还没有。
+`SanChangedCallback` 仍**没有任何监听者**（访问 reveal 只挂 `SanAccessedCallback`，见 3.8）。San 已经会自己动了（两个药水效果每 10 秒扣/回，`REFERENCE.md` 7b；深渊之花首吃激活、之后每次上限 +0.7，`REFERENCE.md` 2），但**什么情况下给玩家上这个 debuff 完全没设计**，目前只能 `/effect` 手动给。真正的侵蚀来源（黑暗、深渊、目击恐怖等）还没有。
 
 ### 3.7 🔴 三层信息可见性模型
 
@@ -135,15 +143,21 @@ float intensity = f(change.current().ratio());   // 随 San 连续变化，无�
 
 | 层 | 途径 | 看到 | 门禁 |
 |---|---|---|---|
-| 调试 | `/san`、理智计数器 | 精确 float | `dev_command`/`dev_tools` + 3 级 |
-| 游戏内进阶 | 认知窥镜 | 百分比 | 无门禁，创造栏可取 |
+| 调试 | `/san` | 精确 float | `dev_command` + 3 级 |
+| 游戏内进阶 | 认知窥镜（量化模式） | 截整的具体值 | 无门禁，创造栏可取 |
 | 游戏内基础 | HUD 默认态 | 图标（约 5% 粒度） | 无 |
 
 **核心原则：内部连续、外部模糊。** 内部读真实 ratio；玩家感知是粗糙的，而「能知道多精确」本身是玩法内容。所以图标 HUD 看不出 5% 以内变化**是设计意图，不是与「连续参数」矛盾**。
 
 **已知且被接受的「泄漏」，不要修**：`STREAM_CODEC` 把两个 float 同步给客户端。**用户明确说不改。**
 
-**只需守住一件事：所有游戏内官方界面只显示百分比。** 新增任何 San 显示途径时，先问它属于哪一层。
+### 3.8 San 激活体系与访问申报（v2.4 新增）
+
+**激活**：首吃深渊之花 `activate()`（`REFERENCE.md` 2），`/san on|off` 也可切换（3.5）。未激活（休眠）时两条规则：HUD 整体不画不占高；`set()` 拒绝一切写——操作可执行、返回未改值、不发事件（与「被拒侵蚀不申报」同一先例）。`off` 冻结保留读数，再 `on` 原值续用。
+
+**访问 reveal**（HUD 亮 3 秒 + 原曲线淡出）：**读取才算访问**——`get()` 及全部快捷读派 `SanAccessedCallback`，服务端读 → 节流空包（10 tick/人）、客户端读 → 本地直戳；**写入不算**（HUD 自身可见性逻辑已覆盖数值变动）。**静默名单**（一律走 `getSilently`）：HUD 镜像读、core 内部回读、药水效果 tick 读、被拒路径回读。
+
+**只需守住一件事：所有游戏内官方界面永不显示底层 float**（量化层的截整具体值是形态，不是泄漏）。新增任何 San 显示途径时，先问它属于哪一层。
 
 ---
 
@@ -442,7 +456,7 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 
 51. **组件 record 的构造器可能带校验，CODEC 也是**：`Enchantable(int)` 对 `value <= 0` 直接 `IllegalArgumentException`（CODEC 同为 `POSITIVE_INT`），启动即崩——崩溃链 `sword() → applyCommonProperties → enchantable(0)`（v2.2 实崩一次）。**给组件/record 填「极端但合理」的值之前，先读它的构造器与 CODEC。** 「附魔能力 0」在代码与数据两侧都不可表达；「禁止附魔」的正解是移除 `ENCHANTABLE` 组件（见 54）。
 
-52. 🔴 **mixin 配置的 `package` 里只允许 mixin 类**：任何非 mixin 类（duck 接口、工具类）住进去，类加载时被 `IllegalClassLoadError` 拒载——**编译与 `analyze_mixin` 都查不出，只有启动才炸**（v2.2 实崩一次）。项目的 duck 接口住 `com.abyssfall.itemframework`（`SourceSlotAccess`/`SlotMemoryAccess`），新接口照此办理。
+52. 🔴 **mixin 配置的 `package` 里只允许 mixin 类**：任何非 mixin 类（duck 接口、工具类）住进去，类加载时被 `IllegalClassLoadError` 拒载——**编译与 `analyze_mixin` 都查不出，只有启动才炸**（v2.2 实崩一次）。项目的 duck 接口住 `com.abyssfall.itemmechanismruntime`（`SourceSlotAccess`/`SlotMemoryAccess`），新接口照此办理。
 
 53. **26.2 的「杀死」不一定是伤害**：`/kill` 走 `Entity.kill(ServerLevel)` = `remove(KILLED)` 直接移除；虚空走 `Entity.onBelowWorld` = 裸 `discard()`（物品实体不受伤直接删）；despawn 是 `age >= 6000` 的判定。全都不过 `hurtServer` ⇒ **伤害免疫一个都挡不住**。做「不毁/免死」类需求时，**逐条核实每种「破坏」到底是伤害还是移除**，分别拦截。
 
@@ -451,6 +465,10 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 55. **爆炸有伤害前置门**：`ServerExplosion.hurtEntities` 先问 `entity.ignoreExplosion(this)`，通过的才谈伤害/击退——`canBeHurtBy` 全免疫够不着这道门（v2.2 实测爆炸是唯一漏网死因）。让实体彻底豁免爆炸（**含击退**）的正解是答 `ignoreExplosion = true`。
 
 56. **`Item.Properties.repairable(TagKey)` 对空 tag 安全**：bootstrap 期经 `MappedRegistry.getOrCreateTagForRegistration` 现场创建命名 tag，数据包加载时再填充（或保持空）。「无修复材料」的正解 = 空 tag 文件，不是 null、也不是省掉这个 record 字段。
+
+57. **vanilla 的 `/give` 成功后会生成 `makeFakeItem()` 动画假实体**（`pickupDelay=32767` 永不可拾取 + `age=5999` 下一 tick 必死）——任何「生命周期拦截/豁免」类钩子都必须先决定假实体算不算数：不毁的 despawn 冻结曾把它赦免成永存假物品（v2.4 实报）。正解 = 拦截语义入口（`makeFakeItem` 打标记）而非按状态猜（age=5999 的真实掉落物正是该救的）。
+
+58. **26.2 没有 `Entity#getServer()`**：取服务器用 `level().getServer()`（在 `Level` 上，客户端侧为 null）。
 
 
 ---
@@ -474,8 +492,8 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 ## 7. 当前状态
 
 - **编译已验证**：`build` 与 `releaseJars` 都 `BUILD SUCCESSFUL`。产物 `build/release/{abyssfall,abyssfall-doc,abyssfall-source}.jar`
-- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v2.2-Dev`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）。tag 名与 `gradle.properties` 的 `version` 自 v2.0 起对应（如 `v2.2-Dev`/`2.2-Dev`），但两者本不必一致（`REFERENCE.md` 发布流程一节）
-- **v2.2-Dev（本轮）**：深渊元素材料体系 + ItemFramework/不毁落地（`REFERENCE.md` 21/22）。两轮启动崩溃均已修复并记住（`Enchantable` 正数校验 → 教训 51；duck 接口住 mixin 包 → 教训 52）。用户已实测通过：秒杀、死亡消息、熔岩/火/仙人掌/kill/爆炸豁免、虚空回栏（含空位优先）、熔岩浮面、5 分钟不消失。**未实测**：熔岩驻面静止版（最后改为贴面不抖）、深渊元素 tooltip「无法破坏」行隐藏
+- **Git 状态 / tag / CI 结果一律现场核实。** tag 到 `v2.4-Dev-Fix`（26.2 时期为 `v1.1-Dev` 起；`0.1-Dev`~`v0.5-Dev` 属 1.21.11 时期）。tag 名与 `gradle.properties` 的 `version` 自 v2.0 起对应（如 `v2.2-Dev`/`2.2-Dev`），但两者本不必一致（`REFERENCE.md` 发布流程一节）
+- **v2.4-Dev-Fix（本轮）**：死兆天空机制（`REFERENCE.md` 17h）+ San 激活体系（本文 3.8）+ 深渊之花食物化与 `clear_minded`（`REFERENCE.md` 2/9）+ 不毁 `/give` 假物品修复（`REFERENCE.md` 22a，教训 57）+ `itemframework` 改名 `itemmechanismruntime` + 删除理智计数器（`REFERENCE.md` 原 13 节随之整段移除）。**用户已实测全部通过**：天空 1~2 人恒 1.0 / 3~5 人爬升 / 5 人封顶 2.3 / 凋灵归原版；`/give` 无假物品残留、真品不毁照常；首吃激活 + 后续 +0.7 + 成就弹窗；进世界默认具象；量化读数具体值；访问 3 秒 reveal；`/san on|off` 与休眠命令红字拒绝
 
 ### 7.1 已实测通过（用户在真实环境验证，**别再列成待确认项去催他测**）
 
@@ -589,12 +607,12 @@ $b=[System.IO.File]::ReadAllBytes($f); ($b[0..2] | ForEach-Object{ $_.ToString('
 - 事件仍无监听者。框架就绪，等玩法来用
 - 🔴 **什么情况下侵蚀 San —— 最大的空白。** 药水效果已能扣 San，但没有任何东西会给玩家上那个 debuff。黑暗、深渊、目击恐怖等真正的侵蚀来源全未设计
 - 差异化渲染（San 低看到不同渲染）—— **属于 game core 的活**，不是 SanCore 也不是渲染 core 的（见 4c.4）
-- 显示道具已实现（认知窥镜），四个待定点已定：双向切换、手持右键、无耐久时效、与理智计数器并存
+- 显示道具已实现（认知窥镜），待定点已定：双向切换、手持右键、无耐久时效
 
 **内容**
 - **毕业武器（死兆将至）待定项**：横扫附带目标是否也秒杀未定；`stabAttack` 那条路是剑就不需要覆盖。材料已从下界合金改为**深渊元素**（`REFERENCE.md` 17/21）
 - **深渊元素（abyssdium，v2.2 新增，见 `REFERENCE.md` 21/22）**：无配方、无战利品途径，只能创造栏取；制品目前只有死兆将至 ⇒ `dig_from_abyss` 仍为空，**挖掘链（挖基岩+掉落）整体休眠**，等第一把 abyssdium 挖掘工具；未来新 abyssdium 物品的三件套义务别忘（`UNBREAKABLE`、移除 `ENCHANTABLE`、按职能进 `bless_from_abyss`/`dig_from_abyss`，见 `REFERENCE.md` 21）
-- **ItemFramework（v2.2 新增，见 `REFERENCE.md` 22）**：以后所有物品机制进 `itemframework` 清单（新机制 = 新类 + `ItemMechanics` 一行），三重保险自动覆盖新机制；框架**永远不许引用内容**（abyssdium/tag/具体物品），授予只发生在组合根 `AbyssFallItemMechanics`
+- **ItemMechanismRuntime（v2.2 新增、v2.4 改名，见 `REFERENCE.md` 22）**：以后所有物品机制进 `itemmechanismruntime` 清单（新机制 = 新类 + `ItemMechanics` 一行），三重保险自动覆盖新机制；框架**永远不许引用内容**（abyssdium/tag/具体物品），授予只发生在组合根 `AbyssFallItemMechanics`；v2.4 加 `HeldItemCensus`（手持人数普查，死兆天空在用，`REFERENCE.md` 17h）
 - **自有稀有度目前只改名字颜色** —— 用户明确限定本轮只做这个。掉率、排序、tooltip 上标注稀有度名称等语义**全未设计，别自作主张加**（`REFERENCE.md` 19）
 - **少数图标仍是占位**（多数已换成自己的美术）：`abyss_gardeners` 图标是向日葵、计数器与窥镜都用原版 `clock_00`（**指针不会转**，原版靠 `range_dispatch` 切 64 个模型才转）、两个精神效果是脚本生成的图。✅ **死兆将至剑本体贴图已由用户重画**（1.5-Dev，经 alpha 二值化后入库）
 - 深渊之花无实际功能；三个药水效果**无获取途径**（「深渊探索者」只被战利品侧读取，另两个只能 `/effect`）
@@ -687,6 +705,8 @@ Get-ChildItem $p -Directory | ForEach-Object { $_.Name }
   - 那个 `+` 是正确的 ASCII `U+002B`，字形像「十」是 MC 字体所致，别换字符（`REFERENCE.md` 17g）
   - **自有稀有度是旁表不是 data component**，且 vanilla `Rarity` 真的不可扩展（`REFERENCE.md` 19）
   - **手持提示要 Mixin 而 tooltip 不要**——同一需求两个答案（`REFERENCE.md` 19a）
+  - 死兆天空：`GameRendererMixin` 的 `max()` 写入「只抬不压」与 `ScreenEffectRenderer.tick` 注入锚点（`REFERENCE.md` 17h）
+  - 不毁 despawn 冻结对 `abyssfall$fake` 假实体放行（`/give` 动画假人，教训 57）
 
   他要求过「最大程度按 HANDOFF 执行，有矛盾随时通知我」——照做，但矛盾要先自己核实过再报。
 - **能跑就跑一遍**（教训 13）。他不要你跑 runClient，但**不禁止你跑纯 Java 验证**，成本极低且他很认这种证据。

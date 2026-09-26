@@ -110,7 +110,9 @@ public class SanSpiritedEffect extends MobEffect {
 	@Override
 	public boolean applyEffectTick(ServerLevel level, LivingEntity entity, int amplifier) {
 		if (entity instanceof ServerPlayer player) {
-			float amount = AbyssFallCoreSystem.getMax(player) * restoreFractionFor(amplifier);
+			// getSilently: a potion's tick read is background machinery, not an access
+			// worth revealing the HUD for — see SanAccessedCallback.
+			float amount = AbyssFallCoreSystem.getSilently(player).max() * restoreFractionFor(amplifier);
 
 			// addCurrent, not erode: erode exists to gate what the world takes away, and giving
 			// San back is not something the difficulty has an opinion about.

@@ -34,7 +34,6 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
-import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
 import net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTab;
 
 import com.abyssfall.AbyssFall;
@@ -88,8 +87,6 @@ public final class AbyssFallDevInventory {
 
 	private static Item devIcon;
 
-	private static Item sanCounter;
-
 	private static CreativeModeTab devTab;
 
 	private AbyssFallDevInventory() {
@@ -112,9 +109,6 @@ public final class AbyssFallDevInventory {
 		// one of the tools means the icon never changes just because the tooling does.
 		devIcon = register("abyss_dev_icon", Item::new, new Item.Properties());
 
-		sanCounter = register("san_counter", SanCounterItem::new,
-				new Item.Properties().stacksTo(1));
-
 		devTab = FabricCreativeModeTab.builder()
 				.title(buildTitle())
 				.icon(() -> new ItemStack(devIcon))
@@ -122,12 +116,9 @@ public final class AbyssFallDevInventory {
 
 		Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, DEV_TAB_KEY, devTab);
 
-		// Only the San Counter is offered. The icon item is registered but withheld on
-		// purpose: it is scenery for the tab, not something anyone should be able to take
-		// out of it.
-		CreativeModeTabEvents.modifyOutputEvent(DEV_TAB_KEY)
-				.register(entries -> entries.accept(sanCounter));
-
+		// Nothing is offered in the tab: its only item is the icon, withheld on purpose as
+		// scenery rather than something anyone should take out of it. The tab stands empty
+		// until the next tool needs a home.
 		AbyssFall.LOGGER.info("Developer inventory registered");
 	}
 
@@ -142,21 +133,12 @@ public final class AbyssFallDevInventory {
 	/**
 	 * The tab icon item, or {@code null} if the developer inventory is disabled.
 	 *
-	 * <p>Nullable for the same reason as {@link #getSanCounter()}.
-	 */
-	public static Item getDevIcon() {
-		return devIcon;
-	}
-
-	/**
-	 * The San Counter, or {@code null} if the developer inventory is disabled.
-	 *
 	 * <p>Nullable on purpose. The alternative — handing out a stand-in — would let a caller
 	 * believe an item exists when it does not, and everything that reaches for this is
 	 * developer tooling that can reasonably be asked to check.
 	 */
-	public static Item getSanCounter() {
-		return sanCounter;
+	public static Item getDevIcon() {
+		return devIcon;
 	}
 
 	/**

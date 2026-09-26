@@ -61,7 +61,7 @@ import com.abyssfall.core.SanState;
  * <p>Read from the attachment on the client's own player, which holds the value the server last
  * pushed. The attachment is registered with {@code syncWith(targetOnly())}, so what is drawn is
  * the server's authoritative reading for this player and nothing the client worked out for
- * itself. That is the same value the San Counter reports; the counter reads it server-side
+ * itself. That is the same value {@code /san} reports; the command reads it server-side
  * because a debug tool must not trust a mirror, whereas a HUD necessarily draws from the synced
  * copy every frame and has no reason to distrust it.
  *
@@ -250,7 +250,7 @@ public final class SanBarHudElement implements HudElement {
 			return;
 		}
 
-		SanState state = AbyssFallCoreSystem.get(player);
+		SanState state = AbyssFallCoreSystem.getSilently(player);
 
 		// Watching for a change here, before anything decides whether to draw, so a loss that
 		// happens while the bar is hidden still arms the shudder for the moment it appears.
@@ -366,7 +366,7 @@ public final class SanBarHudElement implements HudElement {
 			return 0.0F;
 		}
 
-		return alphaFor(AbyssFallCoreSystem.get(player), Util.getMillis());
+		return alphaFor(AbyssFallCoreSystem.getSilently(player), Util.getMillis());
 	}
 
 	/**
@@ -389,7 +389,8 @@ public final class SanBarHudElement implements HudElement {
 		// The later of the two: the last time San itself warranted showing, and the end of the
 		// post-switch reveal. Taking the later one is what lets a switch extend a fade that was
 		// already running instead of being ignored because the row had recently been visible.
-		long from = Math.max(this.lastShownAt, SanHudModeState.revealEndsAt());
+		long from = Math.max(this.lastShownAt,
+				Math.max(SanHudModeState.revealEndsAt(), SanHudAccessPulse.endsAt()));
 
 		if (from == 0L) {
 			return 0.0F;
@@ -579,15 +580,14 @@ public final class SanBarHudElement implements HudElement {
 	}
 
 	/**
-	 * Formats the reading as {@code San: 90.00%}.
+	 * Formats the reading as {@code San: 87} — the concrete current value, not a percentage.
 	 *
-	 * <p>Only the current reading is shown, as a percentage of the ceiling, because the ceiling
-	 * is always {@code 100%} by definition of what a percentage is — writing it out on both sides
-	 * of a slash would be redundant. Two decimal places match {@code /san} and the San Counter,
-	 * and keep sub-percent movement visible — which matters for a value whose whole design is
-	 * that every point in the range is its own condition.
+	 * <p>The quantified readout says how much San there is rather than how full the vessel is:
+	 * with a ceiling that moves as the game progresses, a percentage reports a share, while this
+	 * reports the amount itself. The decimal point is omitted and the fraction truncated, so
+	 * the figure never pretends to more precision than a glance can read.
 	 */
 	private static String describe(SanState state) {
-		return String.format(Locale.ROOT, "San: %.2f%%", state.percent());
+		return String.format(Locale.ROOT, "San: %d", (int) state.current());
 	}
 }

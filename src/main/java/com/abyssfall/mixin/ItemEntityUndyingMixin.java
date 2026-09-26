@@ -33,8 +33,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import com.abyssfall.itemframework.NeverDestroyed;
-import com.abyssfall.itemframework.SourceSlotAccess;
+import com.abyssfall.itemmechanismruntime.NeverDestroyed;
+import com.abyssfall.itemmechanismruntime.SourceSlotAccess;
 
 /**
  * The undying rule as it applies to the item entity itself: it does not expire, and it
@@ -50,6 +50,16 @@ import com.abyssfall.itemframework.SourceSlotAccess;
  * a dispenser — with no enumeration of creation paths to keep in step. The marker itself
  * is persisted in the entity's {@code Age} field, so it stays immortal across a save
  * reload even before its first tick back.
+ *
+ * <p><b>The one exemption.</b> Vanilla's own animation dummies — the pickup flourish
+ * {@code /give} spawns through {@code makeFakeItem}: never pickable, and aged 5999 so the
+ * very next tick discards it. A dummy only <em>looks like</em> the stack it copies; it is
+ * not a dropped stack, so the undying rule leaves its one-tick life alone — freezing it
+ * would pin an unkillable, unpickable ghost to the ground forever (the {@code /give}
+ * duplicate bug). The exemption is keyed on {@code makeFakeItem} itself, never on any
+ * state the entity happens to be in, so a genuinely dropped stack — including one a tick
+ * away from natural expiry, whose age reads exactly the same 5999 — is never mistaken for
+ * a dummy.
  *
  * <p><b>Explosions.</b> An explosion reaches an item entity through a gate of its own,
  * ahead of any damage question: {@code ServerExplosion.hurtEntities} first asks
@@ -98,11 +108,25 @@ public abstract class ItemEntityUndyingMixin implements SourceSlotAccess {
 		this.abyssfall$sourceSlot = slot;
 	}
 
+	/**
+	 * Whether this entity is one of vanilla's animation dummies — see the class comment.
+	 * Persisted alongside the source slot: a dummy caught by a save inside its one tick of
+	 * life must still be allowed to die after the reload.
+	 */
+	@Unique
+	private boolean abyssfall$fake;
+
+	@Inject(method = "makeFakeItem", at = @At("RETURN"))
+	private void abyssfall$markFakeItem(CallbackInfo ci) {
+		this.abyssfall$fake = true;
+	}
+
 	@Inject(method = "tick", at = @At("HEAD"))
 	private void abyssfall$neverDestroyedDoesNotExpire(CallbackInfo ci) {
 		ItemEntity self = (ItemEntity)(Object)this;
 
-		if (self.getAge() != ABYSSFALL_INFINITE_LIFETIME
+		if (!this.abyssfall$fake
+				&& self.getAge() != ABYSSFALL_INFINITE_LIFETIME
 				&& NeverDestroyed.INSTANCE.has(self.getItem())) {
 			self.setUnlimitedLifetime();
 		}
@@ -168,10 +192,12 @@ public abstract class ItemEntityUndyingMixin implements SourceSlotAccess {
 	@Inject(method = "addAdditionalSaveData", at = @At("RETURN"))
 	private void abyssfall$saveSourceSlot(ValueOutput output, CallbackInfo ci) {
 		output.putInt("AbyssFallSourceSlot", this.abyssfall$sourceSlot);
+		output.putBoolean("AbyssFallFake", this.abyssfall$fake);
 	}
 
 	@Inject(method = "readAdditionalSaveData", at = @At("RETURN"))
 	private void abyssfall$loadSourceSlot(ValueInput input, CallbackInfo ci) {
 		this.abyssfall$sourceSlot = input.getIntOr("AbyssFallSourceSlot", -1);
+		this.abyssfall$fake = input.getBooleanOr("AbyssFallFake", false);
 	}
 }

@@ -138,7 +138,9 @@ public class SanBreakdownEffect extends MobEffect {
 	@Override
 	public boolean applyEffectTick(ServerLevel level, LivingEntity entity, int amplifier) {
 		if (entity instanceof ServerPlayer player) {
-			float amount = AbyssFallCoreSystem.getMax(player) * drainFractionFor(amplifier);
+			// getSilently: a potion's tick read is background machinery, not an access
+			// worth revealing the HUD for — see SanAccessedCallback.
+			float amount = AbyssFallCoreSystem.getSilently(player).max() * drainFractionFor(amplifier);
 
 			// Refused outright on Peaceful, when the setting says so. Nothing else here needs to
 			// know that; erode() is the single place the rule lives.

@@ -27,7 +27,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import com.abyssfall.itemframework.NeverDestroyed;
+import com.abyssfall.itemmechanismruntime.NeverDestroyed;
 
 /**
  * What the abyss watches over, no harm may reach: the damage half of the undying rule.

@@ -17,7 +17,7 @@
  * along with AbyssFall.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.abyssfall.itemframework;
+package com.abyssfall.itemmechanismruntime;
 
 import net.minecraft.world.item.ItemStack;
 

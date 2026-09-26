@@ -29,14 +29,15 @@ import net.minecraft.util.Util;
  * <p>Which readout you prefer is not a fact about your character, it is a fact about your screen —
  * the same kind of thing as a keybind or a video option. Storing it as an attachment would sync it,
  * persist it into the save, and make it something the server has an opinion about, none of which is
- * wanted: two players sharing a world should be free to read their own San differently, and the
- * choice should survive being made in one world and carried to the next.
+ * wanted: two players sharing a world should be free to read their own San differently.
  *
- * <p>It is therefore a single static value, held for as long as the game runs. It intentionally
- * does not persist across restarts. Writing it to a config file would mean saving on every switch
- * and would drag a display toggle into a file the project has decided is not hot-reloaded; if the
- * preference turns out to be worth keeping between sessions, that is a separate decision to make
- * deliberately rather than a side effect of implementing the switch.
+ * <p>It is therefore a single static value — and a per-world one. Entering a world, any world,
+ * first visit or return, resets the readout to the figurative row ({@link #reset()} is called from
+ * the client's join event): a new save always greets with the icons, and the quantified readout is
+ * always a deliberate act of that visit. There is deliberately no persistence across restarts —
+ * restarting and rejoining is just another world entry and takes the same reset path, so a file
+ * would add nothing. Writing one would also mean saving on every switch and dragging a display
+ * toggle into a file the project has decided is not hot-reloaded.
  *
  * <h2>Why it lives in {@code core} rather than in the client package</h2>
  *
@@ -97,6 +98,16 @@ public final class SanHudModeState {
 	public static void set(SanHudMode value) {
 		mode = value == null ? SanHudMode.DEFAULT : value;
 		switchedAt = Util.getMillis();
+	}
+
+	/**
+	 * Returns the readout to the default without a reveal: entering a world is not a switch the
+	 * player made, so nothing flashes. The reveal clock is zeroed rather than left running, so a
+	 * switch made moments before leaving a world cannot leak its reveal into the next one.
+	 */
+	public static void reset() {
+		mode = SanHudMode.DEFAULT;
+		switchedAt = 0L;
 	}
 
 	/**

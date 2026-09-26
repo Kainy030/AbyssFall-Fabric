@@ -3,8 +3,6 @@
 	"itemGroup.abyssfall.tail": "Fall",
 	"itemGroup.abyssfall.dev": " Dev Inventory",
 	"item.abyssfall.abyss_flower": "Flower of the Abyss",
-	"item.abyssfall.san_counter": "San Counter",
-	"item.abyssfall.san_counter.readout": "San: %s / %s",
 	"item.abyssfall.san_lens": "Cognition Lens",
 	"item.abyssfall.san_lens.switched": "Perception shifted: %s",
 	"item.abyssfall.san_lens.mode.icons": "Figurative",
@@ -28,5 +26,7 @@
 	"advancements.abyssfall.abyssdirt.title": "It's so sticky...",
 	"advancements.abyssfall.abyssdirt.description": "There seem to be dark rose petals and crushed bone fragments scattered across the mud. Black... rose petals... and... crushed bones?",
 	"advancements.abyssfall.abyss_gardeners.title": "The Gardener of The Abyss",
-	"advancements.abyssfall.abyss_gardeners.description": "Spend a wither rose on abyss dirt to force the first Flower of the Abyss into bloom"
+	"advancements.abyssfall.abyss_gardeners.description": "Spend a wither rose on abyss dirt to force the first Flower of the Abyss into bloom",
+	"advancements.abyssfall.clear_minded.title": "ClearMinded",
+	"advancements.abyssfall.clear_minded.description": "First tasting the flower from abyss."
 }

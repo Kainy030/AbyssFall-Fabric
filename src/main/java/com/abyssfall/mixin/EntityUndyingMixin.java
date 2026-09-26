@@ -31,8 +31,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import com.abyssfall.itemframework.NeverDestroyed;
-import com.abyssfall.itemframework.SourceSlotAccess;
+import com.abyssfall.itemmechanismruntime.NeverDestroyed;
+import com.abyssfall.itemmechanismruntime.SourceSlotAccess;
 
 /**
  * The two removals that are not damage, and what happens instead of them.

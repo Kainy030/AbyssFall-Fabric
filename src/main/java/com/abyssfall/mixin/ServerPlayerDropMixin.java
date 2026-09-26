@@ -29,9 +29,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import com.abyssfall.itemframework.NeverDestroyed;
-import com.abyssfall.itemframework.SlotMemoryAccess;
-import com.abyssfall.itemframework.SourceSlotAccess;
+import com.abyssfall.itemmechanismruntime.NeverDestroyed;
+import com.abyssfall.itemmechanismruntime.SlotMemoryAccess;
+import com.abyssfall.itemmechanismruntime.SourceSlotAccess;
 
 /**
  * Marks a stack holding {@code NeverDestroyed} with the slot it left, the moment it

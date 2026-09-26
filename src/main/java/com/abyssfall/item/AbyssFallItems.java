@@ -35,6 +35,7 @@ import net.minecraft.world.entity.EquipmentSlotGroup;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Rarity;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
@@ -64,21 +65,24 @@ public final class AbyssFallItems {
 	private static final int ABYSS_WORD_REST_COLOR = 0x4A4A4A;
 
 	/**
-	 * Placeholder item. It has no behaviour yet and exists so the registry, the creative
-	 * tab and the resource pipeline can be exercised end to end.
+	 * Flower of the Abyss — a token food whose first taste awakens the San system and whose
+	 * later tastes grow the San ceiling. Both rules live in {@link AbyssFlowerItem}; the
+	 * food values are a token mouthful (half a shank, always edible) so the tithe can be
+	 * paid with a full stomach.
 	 *
 	 * <p>Uses {@link Rarity#EPIC}, the highest rarity vanilla provides.
 	 */
-	public static final Item ABYSS_FLOWER = register("abyss_flower", Item::new,
-			new Item.Properties().rarity(Rarity.EPIC));
+	public static final Item ABYSS_FLOWER = register("abyss_flower", AbyssFlowerItem::new,
+			new Item.Properties()
+					.rarity(Rarity.EPIC)
+					.food(new FoodProperties(1, 0.6F, true)));
 
 	/**
-	 * Cognition Lens — switches the San readout between the icon row and the percentage bar.
+	 * Cognition Lens — switches the San readout between the icon row and the concrete-value bar.
 	 *
-	 * <p>Registered here rather than in {@code AbyssFallDevInventory} even though it was built from
-	 * the San Counter, because it is player-facing content: it reveals nothing the design wants
-	 * hidden, only changing how an already-visible reading is drawn. Stacks to one, since a second
-	 * copy would do nothing a first cannot.
+	 * <p>Registered here rather than in {@code AbyssFallDevInventory} because it is player-facing
+	 * content: it reveals nothing the design wants hidden, only changing how an already-visible
+	 * reading is drawn. Stacks to one, since a second copy would do nothing a first cannot.
 	 *
 	 * <p>Uses {@link Rarity#EPIC}, the highest rarity vanilla provides.
 	 */
