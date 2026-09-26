@@ -18,44 +18,18 @@
 | Java | 25 |
 | 许可 | GPL-3.0-or-later |
 
-## 设计语言：完全解耦
+## 设计信条
 
-从立项至今，本项目只有一条架构纪律：**每个子系统都不知道自己被谁使用。** 依赖图里
-所有箭头都指向「使用者」，永不反向——core 被使用，而不是 core 去使用。
+这个 mod 只有一条架构纪律：**每个子系统都不知道自己被谁使用。** San core 只管数值，
+HUD、药水效果、物品各自直连它、互不认识；新增系统不改旧系统。加行为时的判断顺序是
+自有数据结构 → Fabric API → Mixin，全项目 10 个 Mixin（主端 7 + 客户端 3）都是确认
+API 无缝可借之后的决定，理由写在各自的类文档里。
 
-```
-SanCore（只管数值，不知道用途）
-    ↑ 被读、被写、被监听
-HUD / 药水效果 / 物品 / 战利品 ……（各自直连 core，互不认识）
-```
+这条纪律对使用者的意义很实际：**几乎所有机制的门都开在 vanilla 原生面上**——tag、
+数据包、效果、命令、Fabric 事件——而不是开在我们自造的私有格式上。你会在下面的章节
+反复看到这一点。
 
-- **core 不认识任何消费方。** `com.abyssfall.core` 对本项目其他代码的全部引用只有主
-  入口（`MOD_ID` / `LOGGER`）与配置包——这是静态依赖分析的结论，不是愿景。整个依赖
-  图无环。
-- **新增 core 不改旧 core。** 写一个新的 system core 只需要写它自己；将来汇总它们的
-  game core（总闸，规划中）只需要在它自己身上加边，现有代码一行不动。
-- **换算规则不属于任何 core。**「San% → 渲染强度」这类公式是玩法，住在将来的 game
-  core 里；core 永远不知道自己的数值被怎么解释。
-
-**判断顺序：自有数据结构 → Fabric API → Mixin。** 每加一个行为，先问能不能用自己的
-数据结构表达，再问 Fabric API 或事件能不能挂，都走不通才注入。全项目目前只有 10 个
-Mixin（主端 7 + 客户端 3），每一个都是确认 API 无缝可借之后的决定，「为什么非得是
-钩子」写在各自的类文档里。Mixin 在这里不是默认工具，是最后手段。
-
-**三面分离：**
-
-- **配置面** —— `config/abyssfall/` 下按功能分块的 JSON5 文件。读宽（缺字段回落
-  默认、坏块只丢该块）写严（全量写出、原子替换），玩家手改到一半也不会毁掉配置。
-- **数据面** —— tag、伤害类型、战利品、配方、进度，全部走 vanilla 数据包格式，整合
-  包作者不碰 Java 就能改写行为。
-- **代码面** —— core 暴露完整的读写 API 与 Fabric 事件，其他模组可以像本模组自己的
-  内容一样驱动 San。
-
-**路线图：先 core，后总闸。** system core 逐个先写（San core 已完成，更多规划中），
-最后才写那个知道一切的 game core。总闸不存在时，core 在物理上没办法偷偷依赖别人——
-这是刻意保持的「无法耦合」状态，而不是尚未完成的耦合。
-
-## 下限：普通玩家得到的内容
+## 写给玩家：这个 mod 里有什么
 
 本模组对「直接玩法内容」刻意保持克制。以下是全部。
 
@@ -119,45 +93,59 @@ San 是贯穿整个模组的变量，其他一切都围绕它运转。每位玩�
 - **启动协议** —— 首次加载时的双语告知弹窗。
 - **开发者工具** —— `/san` 调试指令与开发者物品栏，默认不注册，需在配置中显式开启。
 
-## 上限：整合包作者得到的地基
+## 写给整合包作者：不写代码的扩展面
 
-下面列出的每一个接口都真实存在于当前构建中，不是路线图。
+这一章的每样东西都可以直接抄进你的数据包或配置。所有 id 都真实存在于当前构建。
 
-### Tag：一行 JSON 就是一个开关
+### 用 tag 给任何物品装上深渊的机制
 
-| Tag | 类型 | 作用 | 默认成员 |
+本 mod 的机制判定读的是 tag，不是物品名单。你的数据包放一个同名 tag 文件即可并入
+（vanilla 默认合并多个数据包的同名 tag）：
+
+```json
+// data/abyssfall/tags/item/abyss_gazing.json
+{
+  "values": [
+    "mymod:ancient_relic"
+  ]
+}
+```
+
+这一行 JSON 让 `mymod:ancient_relic` 立即获得「不毁」：火烧、爆炸、`/kill`、五分钟
+消失都杀不掉它，掉进虚空会被送回主人的物品栏。可用的 tag 全集：
+
+| Tag | 类型 | 装上之后的效果 | 默认成员 |
 |---|---|---|---|
-| `abyssfall:abyss_gazing` | item | 持有即**不毁**：伤害/爆炸/`/kill`/消失/虚空全部豁免，虚空改为回栏 | 深渊元素、终焉死兆 |
-| `abyssfall:abyss_striking` | item | 攻击经**深渊绝杀**结算：一击即死，受害者读可配置的通用讣告 | 终焉死兆 |
-| `abyssfall:abyssdium_tool_materials` | item | 深渊质装备的修复材料。设计上不可修复，故**默认为空**——填入任何物品即改变铁砧行为 | （空） |
-| `abyssfall:incorrect_for_abyssdium_tool` | block | 深渊质工具的采收否决清单。**默认为空**（无物可拒）；填入方块即剥夺其掉落 | （空） |
-| `minecraft:supports_wither_rose` | block | 允许种植凋零玫瑰（即：允许建立深渊之花生产线） | 深渊污泥 |
-| `minecraft:mineable/pickaxe`、`.../shovel` | block | 本模组方块的采掘工具归属 | 染色玻璃板 / 深渊污泥 |
-| `minecraft:bypasses_*`（8 个） | damage_type | `death_omen` 伤害穿透护甲、护盾、附魔、抗性、无敌帧等全部减免 | `abyssfall:death_omen` |
+| `abyssfall:abyss_gazing` | item | 不毁（全死法豁免，虚空回栏） | 深渊元素、终焉死兆 |
+| `abyssfall:abyss_striking` | item | 攻击变成即死裁决，受害者读你可配置的通用讣告 | 终焉死兆 |
+| `abyssfall:abyssdium_tool_materials` | item | 深渊质装备的修复材料（默认为空 = 不可修复；填入即生效） | 空 |
+| `abyssfall:incorrect_for_abyssdium_tool` | block | 深渊质工具挖它不产生掉落（默认为空；填入即生效） | 空 |
+| `minecraft:supports_wither_rose` | block | 允许种凋零玫瑰，即可建深渊之花生产线 | 深渊污泥 |
+| `minecraft:mineable/pickaxe`、`.../shovel` | block | 本 mod 方块的采掘工具归属 | 染色玻璃板、深渊污泥 |
+| `minecraft:bypasses_*`（共 8 个） | damage_type | `death_omen` 伤害穿透护甲/护盾/附魔/抗性/无敌帧等 | `abyssfall:death_omen` |
 
-两个组合规则值得点名：
+两条组合规则：
 
-- **挖掘资格 = `abyss_gazing` ∧ vanilla 工具类 tag**（镐/铲/斧/锄）。同时满足的物品
-  可以缓慢掘进基岩类「不可破坏」方块（创造模式外），基岩被破坏后掉落自身。换句话
-  说：给整合包自定义的镐打上这两个 tag，它就是一把深渊质工具。
-- **绝杀的讣告是双轨的。** 终焉死兆自己的击杀读它专属的三句讣告；`abyss_striking`
-  其他成员的击杀读配置里的通用池（见下），不穿死兆的品牌。
+- 挖掘资格 = 在 `abyss_gazing` 里 ∧ 在 vanilla 的镐/铲/斧/锄类 tag 里。两者都满足
+  的工具可以缓慢掘进基岩类方块（生存模式），基岩被破坏后掉落自身。给你的自定义镐
+  打上这两个 tag，它就是一把深渊质工具。
+- 绝杀的讣告分两套：终焉死兆自己杀人用它专属的三句台词；其他 `abyss_striking` 成员
+  杀人用配置里的通用池（见配置章），不会冒死兆的名。
 
-### 伤害类型：可以引用的「死法」
+### 伤害类型可以在任何 JSON 里引用
 
-`abyssfall:death_omen` 本身是数据文件（`data/abyssfall/damage_type/`），任何需要伤害
-类型的 JSON——`/damage` 命令、自定义战利品表、其他模组的内容——都可以直接引用它。
-它在 8 个 `bypasses_*` tag 中的成员资格同样可以用数据包增删。
+`abyssfall:death_omen` 是普通数据文件，`/damage`、自定义战利品表、附魔效果等任何
+需要伤害类型的地方都能直接用。它在 8 个 `bypasses_*` tag 里的成员资格也可以用你的
+数据包增删。
 
-### 战利品：追加，永不覆盖
+### 战利品：往哪张表塞花，你说了算
 
-- 注入永远以**新的独立奖池**追加，不编辑、不删除、不改权重任何既有条目——你的数据
-  包、脚本、其他模组对同一张表写的一切原样成立。
-- `loot.target_tables` 接受**任何**战利品表标识符：其他模组的表、你自己新建的表、
-  甚至钓鱼/以物易物这类非宝箱表，都可以成为深渊之花的出现地点。
-- 配置了却没人提供的表不会静默失败：加载结束后会在日志里点名警告。
+`loot.target_tables` 接受任意战利品表 id——vanilla 的、其他 mod 的、你自己新建的、
+钓鱼或以物易物这类非宝箱表都行。注入永远以新的独立奖池追加，不动表里已有的任何条
+目，所以和你的数据包、其他 mod 的改写不冲突。配置了但不存在的表会在加载结束时写进
+日志警告，不会静默失败。
 
-### 配置面：`config/abyssfall/abyssfall.json5`
+### 配置文件：`config/abyssfall/abyssfall.json`
 
 | 键 | 默认 | 含义 |
 |---|---|---|
@@ -165,81 +153,160 @@ San 是贯穿整个模组的变量，其他一切都围绕它运转。每位玩�
 | `developer.dev_command` | `false` | 注册 `/san` 命令树 |
 | `hud.show_below_percent` | `100.0` | San 百分比低于该值才显示读数；`0` = 永不显示 |
 | `loot.flower_chance` | `0.05` | 深渊之花在目标表中的概率，`[0, 1]` |
-| `loot.target_tables` | 18 张高价值宝箱表 | 注入目标，任意战利品表标识符 |
+| `loot.target_tables` | 18 张高价值宝箱表 | 注入目标，任意战利品表 id |
 | `visuals.bloom_particle_scale` | `1.0` | 开花粒子数量倍率，`[0, 2]` |
 | `visuals.bloom_sound_volume` | `1.0` | 开花音量倍率，`[0, 2]` |
 | `san.peaceful_prevents_loss` | `true` | 和平难度阻止世界侵蚀 San |
-| `striking.death_message_N` | 一条 | 绝杀通用讣告池。`N` 从 1 起**没有上限**，击杀时随机取一；`%1$s` = 受害者，`%2$s` = 行刑者 |
+| `striking.death_message_N` | 一条 | 绝杀通用讣告池。`N` 从 1 起没有上限，击杀时随机取一；`%1$s` = 受害者，`%2$s` = 行刑者 |
 
-缺字段回落默认值、单块损坏只重置该块、写盘是原子替换——整合包可以放心地把这份文件
-交给玩家改。
+容错行为：文件整个解析失败 → 原文件改名备份为 `abyssfall.json.broken-<时间戳>` 并
+写入默认值；单个块解析失败 → 只有那个块回落默认，其余键照常生效，文件原样保留。
+缺字段一律回落默认值，旧版本写的文件永远能继续用。
 
-### 行为面：效果与命令是现成的杠杆
+### 用效果驱动 San：数据包侧的正确杠杆
 
-- **三个药水效果就是三根 San 杠杆**：`/effect give @p abyssfall:san_breakdown 600 2`
-  即「每 10 秒扣上限的 4%，持续 30 秒」。任务奖励、区域诅咒、BOSS 光环、减益道具
-  ……任何能发效果的机制都能直接驱动 San，不需要写一行 Java。反向用
-  `abyssfall:san_spirited` 就是恢复手段，`abyssfall:abyss_explorer` 是宝箱增益。
-- **`/san` 命令树**（`dev_command=true` 且 3 级权限）：`query` / `set` / `add` /
-  `max set` / `max add` / `restore` / `reset` / `on` / `off`。命令方块、数据包函数、
-  脚本模组的命令执行都能驱动它。
-- **激活开关是进度门**：`on` / `off` 切换某个玩家的 San 系统激活状态，`off` 冻结
-  并保留读数。整合包可以把「深渊何时开始注视这个玩家」做成自己的进度条件——默认
-  流程（首朵深渊之花唤醒）只是默认。
+三个药水效果就是三根现成的 San 杠杆，任何能发效果的机制（任务奖励、区域诅咒、BOSS
+光环、自定义道具）都能直接驱动 San，不用写 Java：
 
-### Java 面：给其他模组的 API
+```
+/effect give @p abyssfall:san_breakdown 30 2
+```
 
-`com.abyssfall.core.AbyssFallCoreSystem` 是 San 系统的全部入口，任何模组都可以调用：
+这条命令给玩家 30 秒 III 级精神崩溃：每 10 秒扣除上限的 4%，共 3 次，合计约 12%。
+等级与速率的对应是 I~V 级 = 每次扣上限的 1% / 2% / 4% / 8% / 12.5%。反向恢复用
+`abyssfall:san_spirited`（同一张速率表），`abyssfall:abyss_explorer` 则是开箱必得
+深渊之花的增益。
 
-- **读**（双端安全）：`getCurrent` / `getMax` / `getRatio` / `getPercent`，以及不申
-  报访问的 `getSilently`。
-- **写**（仅 `ServerPlayer`，未激活一律拒绝）：`setCurrent` / `addCurrent` /
-  `setMax` / `addMax` / `restore` / `reset`。激活闸门是设计而非障碍：玩家未被深渊
-  注视时，无人能动他的 San。
-- **规则化写**：`erode(player, amount)` —— 世界侵蚀 San 的统一入口，遵守和平难度
-  配置；`canErode(player)` 可预判。
-- **激活**：`isActivated` / `activate` / `deactivate`（冻结保留读数）。
-- **事件**（Fabric `Event`）：`SanChangedCallback` —— 每次真实变化派发，携带变化
-  前后的完整状态与 `currentDelta` / `ratioDelta` / `crossedDown(t)` / `crossedUp(t)`
-  等工具；`SanAccessedCallback` —— 读取申报，「玩家瞥了一眼自己的理智」本身是一个
-  可以监听的行为。
-- **Attachment**（Fabric Data Attachment API）：`abyssfall:core_system_san` 与
-  `abyssfall:core_system_san_activated` 是稳定的存档键，持久化、死亡保留、仅同步本人
-  都已内建——其他模组可以直接读取，不必发明自己的 San 存储。
-- **物品机制框架**：`ItemMechanic.grant(Predicate<ItemStack>)` 允许任何模组把「不毁」
-  授予自己的物品；机制定义与持有者在代码层面就是分离的。
+### `/san` 命令：先说清谁能用
 
-### KubeJS：不需要专用插件
+`/san` 有 `query` / `set` / `add` / `max set` / `max add` / `restore` / `reset` /
+`on` / `off` 共九类操作，两道门：**`dev_command=true` 才注册**，且全树要求 **3 级
+权限（`LEVEL_ADMINS`）**。这意味着：
 
-本模组没有、也不计划绑定特定的脚本生态。上面所有接口走的都是 vanilla 数据面与命令
-面，而这正是 KubeJS 的母语：
+- 可以用：服务器控制台、RCON、以服务器身份执行命令的脚本引擎（4 级）。
+- **不可以用：命令方块、命令方块矿车、数据包函数**——它们在 vanilla 里一律只有 2
+  级权限（`GAMEMASTER`），且 `/function` 会把调用方的权限压到不超过 2 级，管理员
+  手动跑也一样。数据包侧请用上面那三根效果杠杆。
 
-- **tag 事件**：在 server scripts 里把 KubeJS 自定义物品加入 `abyssfall:abyss_gazing`
-  或 `abyssfall:abyss_striking`，它们立即获得不毁或绝杀——这是「上限由整合包作者决
-  定」最直接的体现。
-- **效果驱动**：用实体 API 或 `/effect` 按任务、维度、区域给玩家挂
-  `san_breakdown` / `san_spirited`，就是一套完整的自定义 San 经济。
-- **命令驱动**：开启 `dev_command` 后，脚本可通过命令执行调用整个 `/san` 树做精确
-  读写与激活控制。
-- **战利品共存**：本模组的注入是追加奖池，与脚本侧的战利品改写互不冲突；
-  `target_tables` 也可以直接指向脚本或数据包注册的表。
-- **数据包能做的都能做**：替换配方、撤销或改写进度、编辑 `bypasses_*` 成员、往空
-  tag 里填修复材料与采收否决。
+### 激活开关是留给你的进度门
 
-已知的边界：`abyssfall:core_system_san` attachment 目前没有脚本侧的直接读写绑定，
-精确数值操作请走 `/san` 命令或 Java 侧 API。
+新玩家的 San 系统默认**未激活**：数值在，但一切写入（包括效果）都会被拒绝，HUD 也
+不显示。默认流程是吃下第一朵深渊之花唤醒。你可以用 `/san on` / `/san off`（控制台
+或服务端脚本）自己决定深渊何时开始注视某个玩家——`off` 是冻结并保留读数，不是重置。
 
-## 子系统一览
+## 写给 mod 作者：为 AbyssFall 写扩展
 
-| 子系统 | 位置 | 职责 | 解耦方式 |
-|---|---|---|---|
-| San core | `core/` | 数值、持久化、同步、事件派发 | 不认识 HUD、效果、物品、战利品中的任何一个 |
-| 配置 | `config/` | 六个独立分块，读宽写严、原子落盘 | 只被读取，不认识任何消费方 |
-| HUD | `client/hud/` | 双模式读数与全部动态反馈 | 只读 attachment 镜像与本地偏好，不改数值 |
-| 物品机制运行时 | `itemmechanismruntime/` | 「机制」的定义与查询 | 机制不认识持有者；授予关系由包外的组合根陈述 |
-| 深渊绝杀 | `damage/` + 一个 Mixin | 即死裁决与双轨讣告 | 触发只问 tag 与身份，不认识具体武器 |
-| 战利品注入 | `loot/` | 向配置的表追加独立奖池 | 不认识表里既有的任何内容 |
-| 启动协议 | `agreement/` | 首次加载的双语告知 | `preLaunch` 入口，与一切游戏系统无关 |
+**我们欢迎并鼓励社区为 AbyssFall 写扩展 mod、联动 mod、魔改 mod。** 如果你在做这样
+的东西，这一章是给你的；卡住了或者有想要的能力，来
+[Issues](https://github.com/Kainy030/AbyssFall-Fabric/issues) 说一声。
+
+### 为什么成本比看起来低
+
+- **26.2 没有混淆。** Minecraft 从 26.1 起不再混淆，Fabric 也不再维护第三方映射。
+  你引用 AbyssFall 的类和引用 vanilla 的类一样，没有映射层，没有重映射，名字就是
+  最终名字。
+- **入口全是 `public static`。** San 系统的全部能力在
+  `com.abyssfall.core.AbyssFallCoreSystem` 一个类里，不用找服务加载、不用翻注册表。
+- **Javadoc 就是 API 文档。** 每个公开类和公开方法都有完整的行为契约，Releases 里
+  的 `abyssfall-doc.jar` 是完整的文档站。源码本身（GPL）也随时可读。
+
+### 依赖方式
+
+目前没有发布到 maven（见「诚实的现状」）。从
+[Releases](https://github.com/Kainy030/AbyssFall-Fabric/releases) 下载 jar 放进
+你项目的 `libs/`，然后：
+
+```groovy
+implementation files("libs/abyssfall.jar")
+```
+
+（26.2 的 Loom 没有 `modImplementation`——没有映射就没有重映射，那个配置不复存在。
+）运行时依赖照常在 `fabric.mod.json` 里声明 `"abyssfall": ">=2.5"`。
+
+### 五个能直接抄的例子
+
+监听 San 变化，在跌破 20% 的那一刻做一次事（事件在服务端、值已落库后派发）：
+
+```java
+SanChangedCallback.EVENT.register(change -> {
+    if (change.crossedDown(0.20F)) {
+        ServerPlayer player = change.player();
+        // 你的逻辑：施加诅咒、刷怪、放音效……
+    }
+});
+```
+
+让世界侵蚀 San（统一入口，自动遵守「和平难度不侵蚀」配置）：
+
+```java
+AbyssFallCoreSystem.erode(serverPlayer, 5.0F);
+```
+
+把你 mod 的物品变成「不毁」（火烧、爆炸、`/kill`、消失、虚空全部豁免）：
+
+```java
+NeverDestroyed.INSTANCE.grant(stack -> stack.is(MyItems.ANCIENT_RELIC));
+```
+
+让你的物品名带上深渊的灰色逐字波浪：
+
+```java
+AbyssFallRarity.assign(MyItems.ANCIENT_RELIC, AbyssFallRarity.ABYSSAL);
+```
+
+客户端读本地玩家的 San（已自动同步到本人客户端），驱动你自己的渲染：
+
+```java
+Player self = Minecraft.getInstance().player;
+SanState state = self == null ? null : self.getAttached(AbyssFallCoreSystem.SAN);
+if (state != null) {
+    float ratio = state.ratio();
+}
+```
+
+写操作只收 `ServerPlayer`，且玩家未激活时一律拒绝——如果你的 mod 想掌管某个玩家的
+唤醒时机，自己调 `AbyssFallCoreSystem.activate(serverPlayer)` 即可，之后一切正常。
+
+完整能力清单：读（`getCurrent` / `getMax` / `getRatio` / `getPercent` /
+`getSilently`）、写（`setCurrent` / `addCurrent` / `setMax` / `addMax` / `restore`
+/ `reset`）、规则化写（`erode` / `canErode`）、激活（`isActivated` / `activate` /
+`deactivate`）、事件（`SanChangedCallback` 带 `crossedDown` / `crossedUp` /
+`ratioDelta` 等工具；`SanAccessedCallback` 在玩家查看自己 San 时派发）。
+
+### 硬边界：几件不跟我们合作就做不到的事
+
+这些是设计决定，不是遗漏。列出来免得你白试：
+
+- **读 attachment 需要编译期依赖。** Fabric 的 attachment 注册表没有按 id 反查的
+  API，所以「零依赖读 San」不存在——按上面的方式依赖 jar，或者用你自己的包发数据。
+- **客户端看不到其他玩家的 San。** 同步只发本人（刻意的隐私设计）。服务端代码不受
+  此限，想看谁看谁。
+- **不能往我们的物品机制清单里注册新机制。** 「不毁」可以授予任何物品，但机制列表
+  本身（`ItemMechanics`）是封闭的。你想要自己的机制，按同样的形状自己写一个即可，
+  我们的实现（`itemmechanismruntime` 包）可以当范本。
+- **`/san` 命令有 3 级权限门槛**（见整合包章），你的 mod 要替玩家调 San，走
+  `AbyssFallCoreSystem` 而不是命令。
+
+### 许可与扩展的分发
+
+AbyssFall 是 GPL-3.0-or-later。分发与它静态链接的扩展 mod 时遵守 GPL 即可；只用
+数据包/tag/命令面交互的作品不受任何约束。
+
+## 诚实的现状
+
+不写场面话，几件你迟早会发现的事先放在这里：
+
+- **没有 maven 仓库**，发布只有 GitHub Releases。扩展 mod 的编译期依赖目前只能本地
+  jar。有实际需求就到 Issues 里说，人多就发布。
+- **版本号还是 Dev 阶段**（当前 `2.5-Dev-Fix`）。San core 的 API 自引入起保持向后
+  兼容、行为契约写死在 javadoc 里，但公开面整体尚未冻结——2.2 曾整套移除 shader
+  系统。跨版本升级前看一眼 Release Notes 是明智的。
+- **26.2 上目前没有 KubeJS**（Modrinth 上其 Fabric 构建没有 26.2 版本）。所以本文档
+  通篇不假设任何脚本引擎存在：数据包 + 命令 + 效果就是今天可用的全部魔改面。哪天有
+  引擎登陆 26.2，tag/效果/命令这些面即插即用；想自己写脚本绑定的人，上一章的 Java
+  API 就是现成的绑定层。
+- 这个 mod 的「内容少」是产品决定，不是烂尾。玩家体验的下限由我们负责，上限由整合
+  包作者负责——我们把精力花在地基上，也接受因此显得「小」。
 
 ## 构建
 
